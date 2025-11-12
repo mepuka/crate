@@ -33,7 +33,9 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse CORS origins from comma-separated string."""
-        return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+        if not self.CORS_ORIGINS.strip():
+            return []
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
     # FAISS
     FAISS_NLIST: int = 1024  # Number of clusters for IVF

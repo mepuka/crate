@@ -28,3 +28,23 @@ def test_cors_origins_as_list():
     settings = Settings(CORS_ORIGINS="http://localhost:3000,https://example.com")
     assert len(settings.cors_origins_list) == 2
     assert "http://localhost:3000" in settings.cors_origins_list
+
+
+def test_cors_origins_empty_string():
+    """Test that empty CORS origins returns empty list."""
+    settings = Settings(CORS_ORIGINS="")
+    assert settings.cors_origins_list == []
+
+
+def test_cors_origins_whitespace_handling():
+    """Test that whitespace in CORS list is handled correctly."""
+    settings = Settings(CORS_ORIGINS=" http://localhost:3000 , , https://example.com ")
+    assert len(settings.cors_origins_list) == 2
+    assert "http://localhost:3000" in settings.cors_origins_list
+    assert "https://example.com" in settings.cors_origins_list
+
+
+def test_cors_origins_whitespace_only():
+    """Test that whitespace-only CORS origins returns empty list."""
+    settings = Settings(CORS_ORIGINS="   ")
+    assert settings.cors_origins_list == []
