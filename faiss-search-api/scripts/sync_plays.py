@@ -137,7 +137,7 @@ class PlaySyncService:
         Returns:
             List of new TrackPlay objects (airbreaks filtered out)
         """
-        url = f"{self.KEXP_API_BASE}/plays/?ordering=-id&limit=100"
+        url = f"{self.KEXP_API_BASE}/plays/?limit=100"
 
         for attempt in range(self.MAX_RETRIES):
             try:
@@ -256,8 +256,9 @@ class PlaySyncService:
             play_ids = np.append(play_ids, new_ids_array)
 
             # Atomic write: temp file + rename
-            temp_path = self.play_ids_path + '.tmp'
-            np.save(temp_path, play_ids)
+            # Note: np.save() adds .npy extension automatically, so we need to account for that
+            temp_path = self.play_ids_path.replace('.npy', '.tmp.npy')
+            np.save(temp_path.replace('.npy', ''), play_ids)  # np.save adds .npy
             os.rename(temp_path, self.play_ids_path)
 
         except Exception as e:
@@ -294,9 +295,10 @@ class PlaySyncService:
             inserted_ids = self.insert_plays(new_plays)
             self._log_info(f"Inserted {len(inserted_ids)} new plays into database")
 
-            # Update alignment file
-            self.update_play_ids_alignment(inserted_ids)
-            self._log_info(f"Updated play_ids.npy with {len(inserted_ids)} new IDs")
+            # TODO: Update alignment file when embedding generation is implemented
+            # Skipping play_ids.npy update to avoid mismatch with embeddings
+            # self.update_play_ids_alignment(inserted_ids)
+            # self._log_info(f"Updated play_ids.npy with {len(inserted_ids)} new IDs")
 
             # Calculate stats
             duration_ms = int((time.time() - start_time) * 1000)
