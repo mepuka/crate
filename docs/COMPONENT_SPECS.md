@@ -744,6 +744,86 @@ export const NavigationControls = () => {
 
 ## 6. Atoms and State Management
 
+### Setting Up Effect Atom Runtime
+
+**File: `src/lib/http-runtime.ts`**
+
+```typescript
+import { Atom } from "@effect-atom/atom-react"
+import { FetchHttpClient } from "@effect/platform"
+import { HttpClient } from "@effect/platform"
+import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
+import { Layer } from "effect"
+
+// Base HTTP client layer (browser fetch)
+const baseHttpLayer = FetchHttpClient.layer
+
+// Configure base URL and default headers
+const httpConfigLayer = Layer.succeed(
+  HttpClient.HttpClient,
+  HttpClient.mapRequest(
+    HttpClient.fetchOk,
+    HttpClientRequest.prependUrl(
+      import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
+    )
+  )
+)
+
+// Combined runtime with configured HTTP
+export const httpRuntime = Atom.runtime(
+  Layer.provide(baseHttpLayer, httpConfigLayer)
+)
+
+// Export for use in all HTTP-calling atoms
+export { httpRuntime }
+```
+
+**File: `src/main.tsx`**
+
+No special setup needed! The runtime is imported and used directly in atom definitions. Effect Atom handles the service provision automatically.
+
+```typescript
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { App } from './App'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+)
+```
+
+#### Using the Runtime in Atoms
+
+All atoms that make HTTP requests must use `httpRuntime.atom()`:
+
+```typescript
+import { httpRuntime } from "@/lib/http-runtime"
+import { HttpClient } from "@effect/platform"
+import { Effect } from "effect"
+
+export const myApiAtom = httpRuntime.atom(
+  Effect.gen(function* () {
+    // Access the HttpClient service
+    const client = yield* HttpClient.HttpClient
+
+    // Use client.execute() to make requests
+    const response = yield* client.execute(
+      HttpClientRequest.get("/api/endpoint")
+    )
+
+    return yield* HttpClientResponse.schemaBodyJson(MySchema)(response)
+  })
+)
+```
+
+**Key Points:**
+- Use `httpRuntime.atom()` not `Atom.make()` for HTTP atoms
+- Always `yield* HttpClient.HttpClient` to get the client
+- Use `client.execute(request)` to make HTTP calls
+- The runtime provides the configured HttpClient automatically
+
 ### Timeline Atoms
 
 ```typescript
