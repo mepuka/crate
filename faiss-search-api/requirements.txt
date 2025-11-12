@@ -1,0 +1,19 @@
+# FastAPI
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+pydantic==2.9.0
+pydantic-settings==2.6.0
+
+# ML/Search
+faiss-cpu==1.12.0
+sentence-transformers==3.3.0
+numpy==2.3.4
+
+# Database
+# (SQLite is built-in)
+
+# Utilities
+psutil==6.1.0
+
+# Optional: for joblib PCA files
+joblib==1.4.2

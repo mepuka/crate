@@ -32,4 +32,4 @@ logs/
 *.log
 
 # Docker
-.dockerignore
+# .dockerignore should be committed
