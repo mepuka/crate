@@ -218,6 +218,72 @@ createRoot(document.getElementById("root")!).render(
 
 ---
 
+## HttpClient Runtime Setup
+
+Effect Atom requires a runtime to provide services like HttpClient. Create a shared runtime with the FetchHttpClient layer:
+
+**File: `src/lib/http-runtime.ts`**
+
+```typescript
+import { Atom } from "@effect-atom/atom-react"
+import { FetchHttpClient } from "@effect/platform"
+import { HttpClient } from "@effect/platform"
+import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
+import { Layer } from "effect"
+
+// Create runtime with HTTP client for browser
+export const httpRuntime = Atom.runtime(
+  FetchHttpClient.layer
+)
+
+// For configuration (base URL, headers)
+const httpConfig = Layer.succeed(
+  HttpClient.HttpClient,
+  HttpClient.mapRequest(
+    HttpClient.fetchOk,
+    HttpClientRequest.prependUrl(
+      import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
+    )
+  )
+)
+
+// Runtime with configured client
+export const configuredHttpRuntime = Atom.runtime(
+  Layer.provide(FetchHttpClient.layer, httpConfig)
+)
+```
+
+**Usage Pattern:**
+
+All atoms that make HTTP requests must use `httpRuntime.atom()`:
+
+```typescript
+import { httpRuntime } from "@/lib/http-runtime"
+import { HttpClient } from "@effect/platform"
+
+export const myApiAtom = httpRuntime.atom(
+  Effect.gen(function* () {
+    // Access the HttpClient service
+    const client = yield* HttpClient.HttpClient
+
+    // Use client.execute() to make requests
+    const response = yield* client.execute(
+      HttpClientRequest.get("/api/endpoint")
+    )
+
+    return yield* HttpClientResponse.schemaBodyJson(MySchema)(response)
+  })
+)
+```
+
+**Key Points:**
+- Use `httpRuntime.atom()` not `Atom.make()` for HTTP atoms
+- Always `yield* HttpClient.HttpClient` to get the client
+- Use `client.execute(request)` to make HTTP calls
+- The runtime provides the configured HttpClient automatically
+
+---
+
 ## Core Atoms
 
 ### 1. Timeline Atom (Data Fetching)
@@ -225,70 +291,90 @@ createRoot(document.getElementById("root")!).render(
 ```typescript
 // src/Timeline.ts
 import { Atom } from "@effect-atom/atom-react"
+import { httpRuntime } from "@/lib/http-runtime"
 import { HttpClient } from "@effect/platform"
 import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
 import * as HttpClientResponse from "@effect/platform/HttpClientResponse"
-import { Effect, pipe } from "effect"
-import { TimelineResponse } from "./Domain/Play"
+import { Effect } from "effect"
+import { Schema } from "@effect/schema"
 
 export interface TimelineState {
   plays: PlayResult[]
   cursor: string | null
   hasMore: boolean
+  isLoading: boolean
+  error: string | null
 }
 
-// Timeline atom with automatic HTTP fetching
-export const timelineAtom = Atom.make(
-  pipe(
-    HttpClientRequest.get("/api/plays/timeline"),
-    HttpClientRequest.setUrlParam("limit", "50"),
-    HttpClient.fetchOk,
-    Effect.flatMap(HttpClientResponse.schemaBodyJson(TimelineResponse)),
-    Effect.map((response) => ({
-      plays: response.results,
-      cursor: response.next_cursor,
-      hasMore: response.has_more
-    }))
-  )
-)
+// Define response schema
+const TimelineResponse = Schema.Struct({
+  results: Schema.Array(PlayResult),
+  next_cursor: Schema.NullOr(Schema.String),
+  has_more: Schema.Boolean,
+  total_count: Schema.Number,
+  anchor_position: Schema.optional(Schema.Number)
+})
+
+// Timeline atom with proper HttpClient service access
+export const timelineAtom = httpRuntime.atom(
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+
+    const request = HttpClientRequest.get("/api/plays/timeline").pipe(
+      HttpClientRequest.setUrlParams({ limit: "50" })
+    )
+
+    const response = yield* client.execute(request)
+    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response)
+
+    return {
+      plays: data.results,
+      cursor: data.next_cursor,
+      hasMore: data.has_more,
+      isLoading: false,
+      error: null
+    } satisfies TimelineState
+  })
+).pipe(Atom.keepAlive)
 
 // Computed atom for current plays
 export const currentPlaysAtom = Atom.map(timelineAtom, (state) => state.plays)
 
 // Append more plays (infinite scroll action)
-export const appendPlaysAtom = Atom.fnEffect((get) =>
-  Effect.gen(function* () {
-    const state = yield* get(timelineAtom)
+export const appendPlaysAtom = Atom.make(
+  Effect.fn(function* (get: Atom.Context, cursor: string) {
+    const client = yield* HttpClient.HttpClient
+    const currentState = yield* get(timelineAtom)
 
-    if (!state.hasMore) return state
-
-    const response = yield* pipe(
-      HttpClientRequest.get("/api/plays/timeline"),
+    const request = HttpClientRequest.get("/api/plays/timeline").pipe(
       HttpClientRequest.setUrlParams({
-        cursor: state.cursor ?? "",
+        cursor,
         limit: "50"
-      }),
-      HttpClient.fetchOk,
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(TimelineResponse))
+      })
     )
 
+    const response = yield* client.execute(request)
+    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response)
+
     return {
-      plays: [...state.plays, ...response.results],
-      cursor: response.next_cursor,
-      hasMore: response.has_more
+      ...currentState,
+      plays: [...currentState.plays, ...data.results],
+      cursor: data.next_cursor,
+      hasMore: data.has_more
     }
   })
 )
 
 // Jump to position (anchor, date, percentage)
-export const jumpToPositionAtom = Atom.fn((params: {
-  anchor_id?: number
-  since?: string
-  percentage?: number
-}) =>
-  Effect.gen(function* () {
-    const request = pipe(
-      HttpClientRequest.get("/api/plays/timeline"),
+export const jumpToPositionAtom = Atom.fn(
+  Effect.fn(function* (params: {
+    anchor_id?: number
+    since?: string
+    percentage?: number
+  }) {
+    const client = yield* HttpClient.HttpClient
+
+    const request = HttpClientRequest.get("/api/plays/timeline").pipe(
       HttpClientRequest.setUrlParams({
         limit: "50",
         ...(params.anchor_id && { anchor_id: String(params.anchor_id) }),
@@ -297,17 +383,14 @@ export const jumpToPositionAtom = Atom.fn((params: {
       })
     )
 
-    const response = yield* pipe(
-      request,
-      HttpClient.fetchOk,
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(TimelineResponse))
-    )
+    const response = yield* client.execute(request)
+    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response)
 
     return {
-      plays: response.results,
-      cursor: response.next_cursor,
-      hasMore: response.has_more,
-      anchorPosition: response.anchor_position
+      plays: data.results,
+      cursor: data.next_cursor,
+      hasMore: data.has_more,
+      anchorPosition: data.anchor_position
     }
   })
 )
@@ -324,26 +407,41 @@ import * as HttpClientResponse from "@effect/platform/HttpClientResponse"
 import { Effect, pipe, Stream, Schedule, Duration } from "effect"
 import { SearchResponse } from "./Domain/Play"
 
+// Search response schema
+const SearchResponse = Schema.Struct({
+  results: Schema.Array(PlayResult),
+  total: Schema.Number,
+  query_time_ms: Schema.Number,
+  query: Schema.String
+})
+
 // Search query atom (user input)
 export const searchQueryAtom = Atom.make("")
 
 // Search results atom (derived from query)
-export const searchResultsAtom = Atom.make((get) =>
-  pipe(
-    Effect.sync(() => get(searchQueryAtom)),
-    Effect.flatMap((query) => {
-      if (query.length < 3) {
-        return Effect.succeed({ results: [], total: 0, query_time_ms: 0, query: "" })
-      }
+export const searchResultsAtom = httpRuntime.atom(
+  Effect.gen(function* (get) {
+    const query = yield* get(searchQueryAtom)
+    const client = yield* HttpClient.HttpClient
 
-      return pipe(
-        HttpClientRequest.post("/api/search"),
-        HttpClientRequest.bodyJson({ query, limit: 20, offset: 0 }),
-        HttpClient.fetchOk,
-        Effect.flatMap(HttpClientResponse.schemaBodyJson(SearchResponse))
-      )
-    })
-  )
+    if (!query.trim() || query.length < 3) {
+      return { results: [], total: 0, query_time_ms: 0, query: "" }
+    }
+
+    const request = HttpClientRequest.post("/api/plays/search").pipe(
+      HttpClientRequest.jsonBody({ query, limit: 20 })
+    )
+
+    const response = yield* client.execute(request)
+    const data = yield* HttpClientResponse.schemaBodyJson(SearchResponse)(response)
+
+    return {
+      results: data.results,
+      total: data.total,
+      query_time_ms: data.query_time_ms,
+      query: data.query
+    }
+  })
 )
 
 // Debounced search (300ms delay)
@@ -618,12 +716,16 @@ export const VirtualTimeline = () => {
 ```typescript
 // src/PlayDetails.ts
 export const playDetailsFamily = Atom.family((playId: number) =>
-  Atom.make(
-    pipe(
-      HttpClientRequest.get(`/api/plays/${playId}`),
-      HttpClient.fetchOk,
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(PlayResult))
-    )
+  httpRuntime.atom(
+    Effect.gen(function* () {
+      const client = yield* HttpClient.HttpClient
+
+      const request = HttpClientRequest.get(`/api/plays/${playId}`)
+      const response = yield* client.execute(request)
+      const data = yield* HttpClientResponse.schemaBodyJson(PlayResult)(response)
+
+      return data
+    })
   )
 )
 
@@ -637,8 +739,9 @@ const playDetails = useAtomValue(playDetailsFamily(playId))
 // src/Favorites.ts
 export const favoritesAtom = Atom.make<Set<number>>(new Set())
 
-export const toggleFavoriteAtom = Atom.fnEffect((get, playId: number) =>
-  Effect.gen(function* () {
+export const toggleFavoriteAtom = Atom.fn(
+  Effect.fn(function* (get: Atom.Context, playId: number) {
+    const client = yield* HttpClient.HttpClient
     const favorites = yield* get(favoritesAtom)
     const newFavorites = new Set(favorites)
 
@@ -652,11 +755,10 @@ export const toggleFavoriteAtom = Atom.fnEffect((get, playId: number) =>
     yield* Atom.set(favoritesAtom, newFavorites)
 
     // Persist to backend
-    yield* pipe(
-      HttpClientRequest.post("/api/favorites/toggle"),
-      HttpClientRequest.bodyJson({ playId }),
-      HttpClient.fetchOk
+    const request = HttpClientRequest.post("/api/favorites/toggle").pipe(
+      HttpClientRequest.jsonBody({ playId })
     )
+    yield* client.execute(request)
 
     return newFavorites
   })

@@ -788,19 +788,25 @@ export class TimelineResponse extends Schema.Class<TimelineResponse>("TimelineRe
 }) {}
 
 // Timeline atom
-export const timelineAtom = Atom.make(
-  pipe(
-    HttpClientRequest.get("/api/plays/timeline"),
-    HttpClientRequest.setUrlParam("limit", "50"),
-    HttpClient.fetchOk,
-    Effect.flatMap(HttpClientResponse.schemaBodyJson(TimelineResponse)),
-    Effect.map((response) => ({
-      plays: response.results,
-      cursor: response.next_cursor,
-      hasMore: response.has_more,
+export const timelineAtom = httpRuntime.atom(
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+
+    const request = HttpClientRequest.get("/api/plays/timeline").pipe(
+      HttpClientRequest.setUrlParams({ limit: "50" })
+    )
+
+    const response = yield* client.execute(request)
+    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response)
+
+    return {
+      plays: data.results,
+      cursor: data.next_cursor,
+      hasMore: data.has_more,
       isLoading: false,
       error: null
-    })),
+    }
+  }).pipe(
     Effect.catchAll((error) =>
       Effect.succeed({
         plays: [],
@@ -811,28 +817,29 @@ export const timelineAtom = Atom.make(
       })
     )
   )
-)
+).pipe(Atom.keepAlive)
 
 // Append plays for infinite scroll
-export const appendPlaysAtom = Atom.fnEffect((get) =>
-  Effect.gen(function* () {
-    const state = yield* get(timelineAtom)
-    if (!state.hasMore || state.isLoading) return state
+export const appendPlaysAtom = Atom.make(
+  Effect.fn(function* (get: Atom.Context, cursor: string) {
+    const client = yield* HttpClient.HttpClient
+    const currentState = yield* get(timelineAtom)
 
-    const response = yield* pipe(
-      HttpClientRequest.get("/api/plays/timeline"),
+    const request = HttpClientRequest.get("/api/plays/timeline").pipe(
       HttpClientRequest.setUrlParams({
-        cursor: state.cursor ?? "",
+        cursor,
         limit: "50"
-      }),
-      HttpClient.fetchOk,
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(TimelineResponse))
+      })
     )
 
+    const response = yield* client.execute(request)
+    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response)
+
     return {
-      plays: [...state.plays, ...response.results],
-      cursor: response.next_cursor,
-      hasMore: response.has_more,
+      ...currentState,
+      plays: [...currentState.plays, ...data.results],
+      cursor: data.next_cursor,
+      hasMore: data.has_more,
       isLoading: false,
       error: null
     }
@@ -861,22 +868,27 @@ export class SearchResponse extends Schema.Class<SearchResponse>("SearchResponse
 
 // Search atom family (one atom per query string)
 export const searchAtom = Atom.family((query: string) =>
-  Atom.make(
-    pipe(
-      HttpClientRequest.post("/api/search"),
-      HttpClientRequest.jsonBody({
-        query,
-        limit: 20,
-        offset: 0
-      }),
-      HttpClient.fetchOk,
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(SearchResponse)),
-      Effect.map((response) => ({
-        results: response.results,
-        total: response.total,
-        queryTimeMs: response.query_time_ms
-      }))
-    )
+  httpRuntime.atom(
+    Effect.gen(function* () {
+      const client = yield* HttpClient.HttpClient
+
+      const request = HttpClientRequest.post("/api/search").pipe(
+        HttpClientRequest.jsonBody({
+          query,
+          limit: 20,
+          offset: 0
+        })
+      )
+
+      const response = yield* client.execute(request)
+      const data = yield* HttpClientResponse.schemaBodyJson(SearchResponse)(response)
+
+      return {
+        results: data.results,
+        total: data.total,
+        queryTimeMs: data.query_time_ms
+      }
+    })
   )
 )
 ```
@@ -908,25 +920,40 @@ export function useDebounce<T>(value: T, delay: number): T {
 
 ## 7. HTTP Client Configuration
 
-All HTTP requests are handled through Effect's HttpClient within atoms. Configure the base URL using environment variables:
+See `src/lib/http-runtime.ts` for the Effect Atom runtime configuration with HttpClient.
+
+All HTTP-calling atoms use `httpRuntime.atom()` to access the HttpClient service:
 
 ```typescript
-// src/lib/http.ts
+import { httpRuntime } from "@/lib/http-runtime"
 import { HttpClient } from "@effect/platform"
+import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
+import * as HttpClientResponse from "@effect/platform/HttpClientResponse"
 import { Effect } from "effect"
 
-export const baseHttpClient = HttpClient.mapRequest(
-  HttpClient.client,
-  HttpClientRequest.prependUrl(
-    import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
-  )
+export const myApiAtom = httpRuntime.atom(
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+
+    const request = HttpClientRequest.get("/api/endpoint")
+    const response = yield* client.execute(request)
+    const data = yield* HttpClientResponse.schemaBodyJson(MySchema)(response)
+
+    return data
+  })
 )
 ```
+
+**Key Pattern:**
+- Use `httpRuntime.atom()` not `Atom.make()` for HTTP atoms
+- Always `yield* HttpClient.HttpClient` to get the client service
+- Use `client.execute(request)` to make HTTP calls
+- The runtime provides the configured HttpClient automatically
 
 **Note**: Unlike React Query or Axios, Effect's HttpClient is used directly within atoms. This provides:
 - Type-safe request/response handling with Effect Schema
 - Built-in error handling and retry capabilities
-- Composable HTTP operations using pipe
+- Composable HTTP operations using Effect.gen
 - No need for separate API client layer
 
 ---
