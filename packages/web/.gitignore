@@ -1,0 +1,34 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+build
+.vite
+
+# Environment
+.env
+.env.local
+.env.production.local
+.env.development.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TanStack Router generated files
+src/routeTree.gen.ts
