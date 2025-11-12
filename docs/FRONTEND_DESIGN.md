@@ -128,7 +128,7 @@ export class PlayResult extends Schema.Class<PlayResult>("PlayResult")({
 
   // Metadata
   album: Schema.NullOr(Schema.String),
-  airdate: Schema.DateTimeUtc,  // Parsed from ISO string
+  airdate: Schema.DateFromString,  // Automatically transforms ISO 8601 strings to Date objects
   labels: Schema.Array(Schema.String),
   rotation_status: Schema.NullOr(Schema.String),
   is_local: Schema.Boolean,
@@ -315,7 +315,7 @@ const TimelineResponse = Schema.Struct({
   anchor_position: Schema.optional(Schema.Number)
 })
 
-// Timeline atom with proper HttpClient service access
+// Timeline atom with proper HttpClient service access and error handling
 export const timelineAtom = httpRuntime.atom(
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
@@ -324,8 +324,19 @@ export const timelineAtom = httpRuntime.atom(
       HttpClientRequest.setUrlParams({ limit: "50" })
     )
 
-    const response = yield* client.execute(request)
-    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response)
+    const response = yield* client.execute(request).pipe(
+      Effect.mapError(cause => new NetworkError({
+        cause,
+        url: "/api/plays/timeline"
+      }))
+    )
+
+    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response).pipe(
+      Effect.mapError(cause => new TimelineApiError({
+        cause,
+        context: "Failed to parse timeline response"
+      }))
+    )
 
     return {
       plays: data.results,
@@ -334,7 +345,24 @@ export const timelineAtom = httpRuntime.atom(
       isLoading: false,
       error: null
     } satisfies TimelineState
-  })
+  }).pipe(
+    Effect.catchTags({
+      NetworkError: (error) => Effect.succeed({
+        plays: [],
+        cursor: null,
+        hasMore: false,
+        isLoading: false,
+        error: `Network error: ${error.url}`
+      }),
+      TimelineApiError: (error) => Effect.succeed({
+        plays: [],
+        cursor: null,
+        hasMore: false,
+        isLoading: false,
+        error: `API error: ${error.context}`
+      })
+    })
+  )
 ).pipe(Atom.keepAlive)
 
 // Computed atom for current plays
@@ -366,8 +394,8 @@ export const appendPlaysAtom = Atom.make(
 )
 
 // Jump to position (anchor, date, percentage)
-export const jumpToPositionAtom = Atom.fn(
-  Effect.fn(function* (params: {
+export const jumpToPositionAtom = Atom.make(
+  Effect.fn(function* (get: Atom.Context, params: {
     anchor_id?: number
     since?: string
     percentage?: number
@@ -418,30 +446,59 @@ const SearchResponse = Schema.Struct({
 // Search query atom (user input)
 export const searchQueryAtom = Atom.make("")
 
-// Search results atom (derived from query)
+// Search results atom (derived from query) with error handling
 export const searchResultsAtom = httpRuntime.atom(
   Effect.gen(function* (get) {
     const query = yield* get(searchQueryAtom)
     const client = yield* HttpClient.HttpClient
 
     if (!query.trim() || query.length < 3) {
-      return { results: [], total: 0, query_time_ms: 0, query: "" }
+      return { results: [], total: 0, query_time_ms: 0, query: "", error: null }
     }
 
     const request = HttpClientRequest.post("/api/plays/search").pipe(
       HttpClientRequest.jsonBody({ query, limit: 20 })
     )
 
-    const response = yield* client.execute(request)
-    const data = yield* HttpClientResponse.schemaBodyJson(SearchResponse)(response)
+    const response = yield* client.execute(request).pipe(
+      Effect.mapError(cause => new NetworkError({
+        cause,
+        url: "/api/plays/search"
+      }))
+    )
+
+    const data = yield* HttpClientResponse.schemaBodyJson(SearchResponse)(response).pipe(
+      Effect.mapError(cause => new SearchApiError({
+        cause,
+        query
+      }))
+    )
 
     return {
       results: data.results,
       total: data.total,
       query_time_ms: data.query_time_ms,
-      query: data.query
+      query: data.query,
+      error: null
     }
-  })
+  }).pipe(
+    Effect.catchTags({
+      NetworkError: () => Effect.succeed({
+        results: [],
+        total: 0,
+        query_time_ms: 0,
+        query: "",
+        error: "Network connection failed"
+      }),
+      SearchApiError: (error) => Effect.succeed({
+        results: [],
+        total: 0,
+        query_time_ms: 0,
+        query: error.query,
+        error: `Search failed for "${error.query}"`
+      })
+    })
+  )
 )
 
 // Debounced search (300ms delay)
@@ -739,7 +796,7 @@ const playDetails = useAtomValue(playDetailsFamily(playId))
 // src/Favorites.ts
 export const favoritesAtom = Atom.make<Set<number>>(new Set())
 
-export const toggleFavoriteAtom = Atom.fn(
+export const toggleFavoriteAtom = Atom.make(
   Effect.fn(function* (get: Atom.Context, playId: number) {
     const client = yield* HttpClient.HttpClient
     const favorites = yield* get(favoritesAtom)
@@ -775,17 +832,74 @@ export const toggleFavoriteAtom = Atom.fn(
 // src/Domain/errors.ts
 import { Data } from "effect"
 
-export class NetworkError extends Data.TaggedError("NetworkError")<{
-  message: string
+// API Errors
+export class TimelineApiError extends Data.TaggedError("TimelineApiError")<{
+  readonly cause: unknown
+  readonly context?: string
 }> {}
 
-export class NotFoundError extends Data.TaggedError("NotFoundError")<{
-  playId: number
+export class SearchApiError extends Data.TaggedError("SearchApiError")<{
+  readonly cause: unknown
+  readonly query: string
+}> {}
+
+export class PlayNotFoundError extends Data.TaggedError("PlayNotFoundError")<{
+  readonly playId: number
+}> {}
+
+export class NetworkError extends Data.TaggedError("NetworkError")<{
+  readonly cause: unknown
+  readonly url: string
+}> {}
+
+// Validation Errors
+export class InvalidCursorError extends Data.TaggedError("InvalidCursorError")<{
+  readonly cursor: string
+}> {}
+
+export class InvalidPercentageError extends Data.TaggedError("InvalidPercentageError")<{
+  readonly percentage: number
 }> {}
 
 export class ValidationError extends Data.TaggedError("ValidationError")<{
-  errors: string[]
+  readonly errors: string[]
 }> {}
+```
+
+### Error Handling Patterns
+
+All HTTP-calling atoms follow this pattern:
+
+1. **Define domain errors** with TaggedError
+2. **Map HTTP errors** to domain errors with `mapError`
+3. **Handle errors by tag** with `catchTags`
+4. **Return user-friendly state** with error messages
+
+Example:
+
+```typescript
+const myAtom = httpRuntime.atom(
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+
+    const request = HttpClientRequest.get("/api/endpoint")
+
+    const response = yield* client.execute(request).pipe(
+      Effect.mapError(cause => new NetworkError({ cause, url: "/api/endpoint" }))
+    )
+
+    const data = yield* HttpClientResponse.schemaBodyJson(MySchema)(response).pipe(
+      Effect.mapError(cause => new MyDomainError({ cause }))
+    )
+
+    return data
+  }).pipe(
+    Effect.catchTags({
+      NetworkError: (error) => Effect.succeed({ /* fallback state */ }),
+      MyDomainError: (error) => Effect.succeed({ /* fallback state */ })
+    })
+  )
+)
 ```
 
 ### Error Boundaries
