@@ -748,41 +748,43 @@ export const NavigationControls = () => {
 
 ```typescript
 // src/atoms/timeline.ts
-import { Atom } from "@effect-atom/atom"
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "@effect/platform"
-import * as S from "@effect/schema/Schema"
+import { Atom } from "@effect-atom/atom-react"
+import { HttpClient } from "@effect/platform"
+import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
+import * as HttpClientResponse from "@effect/platform/HttpClientResponse"
+import { Schema } from "@effect/schema"
 import { Effect, pipe } from "effect"
 
 // Schema definitions (matching FastAPI Pydantic models)
-export class PlayResult extends S.Class<PlayResult>("PlayResult")({
-  id: S.Number,
-  artist: S.String,
-  song: S.String,
-  similarity: S.Number,
-  album: S.NullOr(S.String),
-  airdate: S.DateTimeUtc,
-  labels: S.Array(S.String),
-  rotation_status: S.NullOr(S.String),
-  is_local: S.Boolean,
-  is_live: S.Boolean,
-  is_request: S.Boolean,
-  comment: S.NullOr(S.String),
-  show: S.Number,
-  artist_mbid: S.NullOr(S.Array(S.String)),
-  recording_mbid: S.NullOr(S.String),
-  release_mbid: S.NullOr(S.String),
-  release_group_mbid: S.NullOr(S.String),
-  thumbnail_uri: S.NullOr(S.String),
-  image_uri: S.NullOr(S.String),
+export class PlayResult extends Schema.Class<PlayResult>("PlayResult")({
+  id: Schema.Number,
+  artist: Schema.String,
+  song: Schema.String,
+  similarity: Schema.Number,
+  album: Schema.NullOr(Schema.String),
+  airdate: Schema.DateTimeUtc,
+  labels: Schema.Array(Schema.String),
+  rotation_status: Schema.NullOr(Schema.String),
+  is_local: Schema.Boolean,
+  is_live: Schema.Boolean,
+  is_request: Schema.Boolean,
+  comment: Schema.NullOr(Schema.String),
+  show: Schema.Number,
+  artist_mbid: Schema.NullOr(Schema.Array(Schema.String)),
+  recording_mbid: Schema.NullOr(Schema.String),
+  release_mbid: Schema.NullOr(Schema.String),
+  release_group_mbid: Schema.NullOr(Schema.String),
+  thumbnail_uri: Schema.NullOr(Schema.String),
+  image_uri: Schema.NullOr(Schema.String),
 }) {}
 
-export class TimelineResponse extends S.Class<TimelineResponse>("TimelineResponse")({
-  results: S.Array(PlayResult),
-  next_cursor: S.NullOr(S.String),
-  has_more: S.Boolean,
-  query_time_ms: S.Number,
-  total_count: S.optional(S.Number),
-  anchor_position: S.optional(S.Number),
+export class TimelineResponse extends Schema.Class<TimelineResponse>("TimelineResponse")({
+  results: Schema.Array(PlayResult),
+  next_cursor: Schema.NullOr(Schema.String),
+  has_more: Schema.Boolean,
+  query_time_ms: Schema.Number,
+  total_count: Schema.optional(Schema.Number),
+  anchor_position: Schema.optional(Schema.Number),
 }) {}
 
 // Timeline atom
@@ -842,17 +844,19 @@ export const appendPlaysAtom = Atom.fnEffect((get) =>
 
 ```typescript
 // src/atoms/search.ts
-import { Atom } from "@effect-atom/atom"
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "@effect/platform"
-import * as S from "@effect/schema/Schema"
+import { Atom } from "@effect-atom/atom-react"
+import { HttpClient } from "@effect/platform"
+import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
+import * as HttpClientResponse from "@effect/platform/HttpClientResponse"
+import { Schema } from "@effect/schema"
 import { Effect, pipe } from "effect"
 import { PlayResult } from "./timeline"
 
-export class SearchResponse extends S.Class<SearchResponse>("SearchResponse")({
-  results: S.Array(PlayResult),
-  total: S.Number,
-  query_time_ms: S.Number,
-  query: S.String,
+export class SearchResponse extends Schema.Class<SearchResponse>("SearchResponse")({
+  results: Schema.Array(PlayResult),
+  total: Schema.Number,
+  query_time_ms: Schema.Number,
+  query: Schema.String,
 }) {}
 
 // Search atom family (one atom per query string)
