@@ -1,0 +1,1046 @@
+# KXP Radio Crate - Frontend Design Document (Effect Atom Edition)
+
+## Project Vision
+
+A single-page React application built with **Effect Atom** that presents KXP Radio plays as an infinite, chronologically-ordered "crate" - a visual metaphor for browsing through records. Users can scroll endlessly through **2.2M+ plays from 2007 to present**, search semantically using FAISS embeddings, and share specific positions in the timeline via URL.
+
+---
+
+## Core Concepts
+
+### 1. The "Crate" Metaphor
+- **Always Chronological**: Plays are ALWAYS shown in the order they aired (by `airdate DESC`)
+- **Infinite Exploration**: No traditional pagination - just scroll forever using cursor-based navigation
+- **Position-Based URLs**: URLs represent positions/slices in the timeline, not traditional "pages"
+- **Semantic Search**: Natural language search powered by FAISS embeddings ("psychedelic rock", "jazz fusion")
+- **Reactive State**: Effect Atom manages all state with first-class async support
+
+### 2. URL Philosophy
+```
+/                           → Default view (most recent plays, scrolling backwards in time)
+/play/$playId               → Jump to specific play with context
+/search?q=nirvana           → Semantic search results in chronological order
+/timeline?since=2015-03-15  → Jump to specific date
+/timeline?percentage=0.5    → Jump to 50% through timeline (~2016)
+```
+
+**Key Insight**: Every URL is just a different "window" into the same chronologically-ordered stream, managed by reactive atoms.
+
+---
+
+## Technology Stack
+
+### Frontend Core
+```json
+{
+  "framework": "React 18+",
+  "language": "TypeScript",
+  "state": "@effect-atom/atom-react (reactive state)",
+  "effects": "Effect-TS (async operations, services, DI)",
+  "styling": "Tailwind CSS + shadcn/ui (customized)",
+  "routing": "TanStack Router (file-based)",
+  "deployment": "Vercel"
+}
+```
+
+### Key Libraries
+```json
+{
+  "effect": "^3.19+",
+  "@effect-atom/atom-react": "Reactive state management",
+  "@effect/platform": "HTTP client",
+  "@effect/schema": "Runtime validation & types",
+  "@tanstack/react-router": "Type-safe file-based routing",
+  "@tanstack/react-virtual": "Virtualized infinite scroll",
+  "framer-motion": "Scroll animations",
+  "date-fns": "Date formatting",
+  "shadcn/ui": "Base component library"
+}
+```
+
+**Philosophy**: Effect-first architecture using **atoms for ALL data fetching** (no React Query). TanStack Router handles routing only.
+
+---
+
+## Backend API Reference
+
+### Base URL
+```
+Production: https://api.kxp-crate.com
+Development: http://localhost:8000
+```
+
+### Available Endpoints
+
+#### 1. Timeline Browse (Primary Endpoint)
+```http
+GET /api/plays/timeline
+```
+
+**Query Parameters:**
+- `limit`: Number of results (1-200, default 50)
+- `cursor`: Base64 cursor for pagination
+- `since`: ISO 8601 datetime (time-based jump)
+- `until`: ISO 8601 datetime (time range end)
+- `percentage`: Float 0.0-1.0 (percentage-based jump)
+- `anchor_id`: Play ID to center around
+
+**Response:**
+```typescript
+interface TimelineResponse {
+  results: PlayResult[]
+  next_cursor: string | null
+  has_more: boolean
+  query_time_ms: number
+  total_count?: number
+  anchor_position?: number
+}
+```
+
+**Performance:**
+- Cursor pagination: <5ms
+- Time-based jump: <1ms
+- Percentage jump: ~50ms
+- Anchor jump: ~100ms
+
+#### 2. Semantic Search
+```http
+POST /api/search
+```
+
+**Performance:** <20ms with FAISS
+
+---
+
+## Data Models (Effect Schema)
+
+### PlayResult Schema
+
+```typescript
+// src/Domain/Play.ts
+import { Schema } from "@effect/schema"
+
+export class PlayResult extends Schema.Class<PlayResult>("PlayResult")({
+  id: Schema.Number,
+  artist: Schema.String,
+  song: Schema.String,
+  similarity: Schema.Number,
+
+  // Metadata
+  album: Schema.NullOr(Schema.String),
+  airdate: Schema.DateFromString,  // Automatically transforms ISO 8601 strings to Date objects
+  labels: Schema.Array(Schema.String),
+  rotation_status: Schema.NullOr(Schema.String),
+  is_local: Schema.Boolean,
+  is_live: Schema.Boolean,
+  is_request: Schema.Boolean,
+  comment: Schema.NullOr(Schema.String),
+  show: Schema.Number,
+
+  // Album artwork
+  image_uri: Schema.NullOr(Schema.String),
+  thumbnail_uri: Schema.NullOr(Schema.String),
+
+  // MusicBrainz IDs
+  artist_mbid: Schema.NullOr(Schema.Array(Schema.String)),
+  recording_mbid: Schema.NullOr(Schema.String),
+  release_mbid: Schema.NullOr(Schema.String),
+  release_group_mbid: Schema.NullOr(Schema.String)
+}) {}
+
+export class TimelineResponse extends Schema.Class<TimelineResponse>("TimelineResponse")({
+  results: Schema.Array(PlayResult),
+  next_cursor: Schema.NullOr(Schema.String),
+  has_more: Schema.Boolean,
+  query_time_ms: Schema.Number,
+  total_count: Schema.optional(Schema.Number),
+  anchor_position: Schema.optional(Schema.Number)
+}) {}
+
+export class SearchResponse extends Schema.Class<SearchResponse>("SearchResponse")({
+  results: Schema.Array(PlayResult),
+  total: Schema.Number,
+  query_time_ms: Schema.Number,
+  query: Schema.String
+}) {}
+```
+
+---
+
+## Architecture
+
+### High-Level Component Tree
+
+```
+App
+├── Providers
+│   ├── AtomProvider (@effect-atom/atom-react)
+│   └── RouterProvider (TanStack Router)
+│
+├── Authenticated (atom-gated)
+│   ├── useAtomMount(timelineAtom)
+│   ├── useAtomMount(searchAtom)
+│   │
+│   └── RouterProvider
+│       └── Routes
+│           ├── / (index)
+│           │   └── InfiniteTimeline
+│           ├── /play/$playId
+│           │   └── InfiniteTimeline (anchored)
+│           ├── /search
+│           │   └── SearchResults
+│           └── /timeline
+│               └── InfiniteTimeline (jumped)
+│
+└── ErrorBoundary
+```
+
+---
+
+## Effect Atom Architecture
+
+### Atom Setup (No Runtime Layers Needed)
+
+```typescript
+// src/main.tsx
+import { createRoot } from "react-dom/client"
+import { StrictMode } from "react"
+import { App } from "./App"
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+)
+```
+
+**Note**: Unlike server-side Effect, frontend atoms don't need `Atom.runtime.addGlobalLayer`. Services are provided through atoms themselves.
+
+---
+
+## HttpClient Runtime Setup
+
+Effect Atom requires a runtime to provide services like HttpClient. Create a shared runtime with the FetchHttpClient layer:
+
+**File: `src/lib/http-runtime.ts`**
+
+```typescript
+import { Atom } from "@effect-atom/atom-react"
+import { FetchHttpClient } from "@effect/platform"
+import { HttpClient } from "@effect/platform"
+import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
+import { Layer } from "effect"
+
+// Create runtime with HTTP client for browser
+export const httpRuntime = Atom.runtime(
+  FetchHttpClient.layer
+)
+
+// For configuration (base URL, headers)
+const httpConfig = Layer.succeed(
+  HttpClient.HttpClient,
+  HttpClient.mapRequest(
+    HttpClient.fetchOk,
+    HttpClientRequest.prependUrl(
+      import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
+    )
+  )
+)
+
+// Runtime with configured client
+export const configuredHttpRuntime = Atom.runtime(
+  Layer.provide(FetchHttpClient.layer, httpConfig)
+)
+```
+
+**Usage Pattern:**
+
+All atoms that make HTTP requests must use `httpRuntime.atom()`:
+
+```typescript
+import { httpRuntime } from "@/lib/http-runtime"
+import { HttpClient } from "@effect/platform"
+
+export const myApiAtom = httpRuntime.atom(
+  Effect.gen(function* () {
+    // Access the HttpClient service
+    const client = yield* HttpClient.HttpClient
+
+    // Use client.execute() to make requests
+    const response = yield* client.execute(
+      HttpClientRequest.get("/api/endpoint")
+    )
+
+    return yield* HttpClientResponse.schemaBodyJson(MySchema)(response)
+  })
+)
+```
+
+**Key Points:**
+- Use `httpRuntime.atom()` not `Atom.make()` for HTTP atoms
+- Always `yield* HttpClient.HttpClient` to get the client
+- Use `client.execute(request)` to make HTTP calls
+- The runtime provides the configured HttpClient automatically
+
+---
+
+## Core Atoms
+
+### 1. Timeline Atom (Data Fetching)
+
+```typescript
+// src/Timeline.ts
+import { Atom } from "@effect-atom/atom-react"
+import { httpRuntime } from "@/lib/http-runtime"
+import { HttpClient } from "@effect/platform"
+import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
+import * as HttpClientResponse from "@effect/platform/HttpClientResponse"
+import { Effect } from "effect"
+import { Schema } from "@effect/schema"
+
+export interface TimelineState {
+  plays: PlayResult[]
+  cursor: string | null
+  hasMore: boolean
+  isLoading: boolean
+  error: string | null
+}
+
+// Define response schema
+const TimelineResponse = Schema.Struct({
+  results: Schema.Array(PlayResult),
+  next_cursor: Schema.NullOr(Schema.String),
+  has_more: Schema.Boolean,
+  total_count: Schema.Number,
+  anchor_position: Schema.optional(Schema.Number)
+})
+
+// Timeline atom with proper HttpClient service access and error handling
+export const timelineAtom = httpRuntime.atom(
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+
+    const request = HttpClientRequest.get("/api/plays/timeline").pipe(
+      HttpClientRequest.setUrlParams({ limit: "50" })
+    )
+
+    const response = yield* client.execute(request).pipe(
+      Effect.mapError(cause => new NetworkError({
+        cause,
+        url: "/api/plays/timeline"
+      }))
+    )
+
+    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response).pipe(
+      Effect.mapError(cause => new TimelineApiError({
+        cause,
+        context: "Failed to parse timeline response"
+      }))
+    )
+
+    return {
+      plays: data.results,
+      cursor: data.next_cursor,
+      hasMore: data.has_more,
+      isLoading: false,
+      error: null
+    } satisfies TimelineState
+  }).pipe(
+    Effect.catchTags({
+      NetworkError: (error) => Effect.succeed({
+        plays: [],
+        cursor: null,
+        hasMore: false,
+        isLoading: false,
+        error: `Network error: ${error.url}`
+      }),
+      TimelineApiError: (error) => Effect.succeed({
+        plays: [],
+        cursor: null,
+        hasMore: false,
+        isLoading: false,
+        error: `API error: ${error.context}`
+      })
+    })
+  )
+).pipe(Atom.keepAlive)
+
+// Computed atom for current plays
+export const currentPlaysAtom = Atom.map(timelineAtom, (state) => state.plays)
+
+// Append more plays (infinite scroll action)
+export const appendPlaysAtom = Atom.make(
+  Effect.fn(function* (get: Atom.Context, cursor: string) {
+    const client = yield* HttpClient.HttpClient
+    const currentState = yield* get(timelineAtom)
+
+    const request = HttpClientRequest.get("/api/plays/timeline").pipe(
+      HttpClientRequest.setUrlParams({
+        cursor,
+        limit: "50"
+      })
+    )
+
+    const response = yield* client.execute(request)
+    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response)
+
+    return {
+      ...currentState,
+      plays: [...currentState.plays, ...data.results],
+      cursor: data.next_cursor,
+      hasMore: data.has_more
+    }
+  })
+)
+
+// Jump to position (anchor, date, percentage)
+export const jumpToPositionAtom = Atom.make(
+  Effect.fn(function* (get: Atom.Context, params: {
+    anchor_id?: number
+    since?: string
+    percentage?: number
+  }) {
+    const client = yield* HttpClient.HttpClient
+
+    const request = HttpClientRequest.get("/api/plays/timeline").pipe(
+      HttpClientRequest.setUrlParams({
+        limit: "50",
+        ...(params.anchor_id && { anchor_id: String(params.anchor_id) }),
+        ...(params.since && { since: params.since }),
+        ...(params.percentage !== undefined && { percentage: String(params.percentage) })
+      })
+    )
+
+    const response = yield* client.execute(request)
+    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response)
+
+    return {
+      plays: data.results,
+      cursor: data.next_cursor,
+      hasMore: data.has_more,
+      anchorPosition: data.anchor_position
+    }
+  })
+)
+```
+
+### 2. Search Atom
+
+```typescript
+// src/Search.ts
+import { Atom } from "@effect-atom/atom-react"
+import { HttpClient } from "@effect/platform"
+import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
+import * as HttpClientResponse from "@effect/platform/HttpClientResponse"
+import { Effect, pipe, Stream, Schedule, Duration } from "effect"
+import { SearchResponse } from "./Domain/Play"
+
+// Search response schema
+const SearchResponse = Schema.Struct({
+  results: Schema.Array(PlayResult),
+  total: Schema.Number,
+  query_time_ms: Schema.Number,
+  query: Schema.String
+})
+
+// Search query atom (user input)
+export const searchQueryAtom = Atom.make("")
+
+// Search results atom (derived from query) with error handling
+export const searchResultsAtom = httpRuntime.atom(
+  Effect.gen(function* (get) {
+    const query = yield* get(searchQueryAtom)
+    const client = yield* HttpClient.HttpClient
+
+    if (!query.trim() || query.length < 3) {
+      return { results: [], total: 0, query_time_ms: 0, query: "", error: null }
+    }
+
+    const request = HttpClientRequest.post("/api/plays/search").pipe(
+      HttpClientRequest.jsonBody({ query, limit: 20 })
+    )
+
+    const response = yield* client.execute(request).pipe(
+      Effect.mapError(cause => new NetworkError({
+        cause,
+        url: "/api/plays/search"
+      }))
+    )
+
+    const data = yield* HttpClientResponse.schemaBodyJson(SearchResponse)(response).pipe(
+      Effect.mapError(cause => new SearchApiError({
+        cause,
+        query
+      }))
+    )
+
+    return {
+      results: data.results,
+      total: data.total,
+      query_time_ms: data.query_time_ms,
+      query: data.query,
+      error: null
+    }
+  }).pipe(
+    Effect.catchTags({
+      NetworkError: () => Effect.succeed({
+        results: [],
+        total: 0,
+        query_time_ms: 0,
+        query: "",
+        error: "Network connection failed"
+      }),
+      SearchApiError: (error) => Effect.succeed({
+        results: [],
+        total: 0,
+        query_time_ms: 0,
+        query: error.query,
+        error: `Search failed for "${error.query}"`
+      })
+    })
+  )
+)
+
+// Debounced search (300ms delay)
+export const debouncedSearchAtom = Atom.stream(
+  pipe(
+    Stream.fromSchedule(Schedule.spaced(Duration.millis(300))),
+    Stream.flatMap(() => searchResultsAtom)
+  )
+)
+```
+
+### 3. Navigation Atoms
+
+```typescript
+// src/Navigation.ts
+import { Atom } from "@effect-atom/atom-react"
+
+export const selectedDateAtom = Atom.make<Date | null>(null)
+export const percentageAtom = Atom.make(0)
+
+// Derived atom for URL query params
+export const navigationParamsAtom = Atom.make((get) => {
+  const date = get(selectedDateAtom)
+  const percentage = get(percentageAtom)
+
+  if (date) {
+    return { since: date.toISOString().split('T')[0] + 'T00:00:00' }
+  }
+
+  if (percentage > 0) {
+    return { percentage: percentage / 100 }
+  }
+
+  return {}
+})
+```
+
+---
+
+## Component Patterns
+
+### Pattern 1: Reading Atom State
+
+```typescript
+// src/components/PlayList.tsx
+import { useAtomValue } from "@effect-atom/atom-react"
+import { currentPlaysAtom } from "@/Timeline"
+
+export const PlayList = () => {
+  const plays = useAtomValue(currentPlaysAtom)
+
+  return (
+    <div>
+      {plays.map(play => (
+        <PlayCard key={play.id} play={play} />
+      ))}
+    </div>
+  )
+}
+```
+
+### Pattern 2: Reading with Suspense
+
+```typescript
+// src/routes/index.tsx
+import { useAtomSuspense } from "@effect-atom/atom-react"
+import { timelineAtom } from "@/Timeline"
+import { Suspense } from "react"
+
+export const Route = createFileRoute('/')({
+  component: () => (
+    <Suspense fallback={<LoadingSpinner />}>
+      <HomePage />
+    </Suspense>
+  )
+})
+
+function HomePage() {
+  const timeline = useAtomSuspense(timelineAtom)
+
+  return (
+    <InfiniteTimeline plays={timeline.plays} hasMore={timeline.hasMore} />
+  )
+}
+```
+
+### Pattern 3: Atom Mutations
+
+```typescript
+// src/components/InfiniteScroll.tsx
+import { useAtomSet } from "@effect-atom/atom-react"
+import { appendPlaysAtom } from "@/Timeline"
+
+export const InfiniteScroll = ({ children }: { children: React.ReactNode }) => {
+  const appendPlays = useAtomSet(appendPlaysAtom)
+  const lastItemRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          appendPlays()  // Atom handles the async Effect
+        }
+      },
+      { rootMargin: '400px' }
+    )
+
+    if (lastItemRef.current) {
+      observer.observe(lastItemRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [appendPlays])
+
+  return (
+    <div>
+      {children}
+      <div ref={lastItemRef} />
+    </div>
+  )
+}
+```
+
+### Pattern 4: Bidirectional State
+
+```typescript
+// src/components/SearchBar.tsx
+import { useAtom } from "@effect-atom/atom-react"
+import { searchQueryAtom } from "@/Search"
+
+export const SearchBar = () => {
+  const [query, setQuery] = useAtom(searchQueryAtom)
+
+  return (
+    <Input
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+      placeholder="Search plays... (⌘K)"
+    />
+  )
+}
+```
+
+### Pattern 5: Atom Mounting (Initialization)
+
+```typescript
+// src/App.tsx
+import { useAtomMount } from "@effect-atom/atom-react"
+import { timelineAtom, searchAtom } from "@/atoms"
+import { RouterProvider } from '@tanstack/react-router'
+import { router } from './router'
+
+function App() {
+  // Initialize atoms before routing
+  useAtomMount(timelineAtom)
+  useAtomMount(searchAtom)
+
+  return <RouterProvider router={router} />
+}
+```
+
+---
+
+## Routing Strategy (TanStack Router)
+
+### Router Setup
+
+```typescript
+// src/router.ts
+import { createRouter } from '@tanstack/react-router'
+import { routeTree } from './routeTree.gen'
+
+export const router = createRouter({ routeTree })
+```
+
+### Route Definitions
+
+```typescript
+// src/routes/__root.tsx
+import { createRootRoute, Outlet } from '@tanstack/react-router'
+import { Layout } from '@/components/Layout'
+
+export const Route = createRootRoute({
+  component: () => (
+    <Layout>
+      <Outlet />
+    </Layout>
+  )
+})
+```
+
+```typescript
+// src/routes/index.tsx
+import { createFileRoute } from '@tanstack/react-router'
+import { HomePage } from '@/pages/HomePage'
+
+export const Route = createFileRoute('/')({
+  component: HomePage
+})
+```
+
+```typescript
+// src/routes/play/$playId.tsx
+import { createFileRoute } from '@tanstack/react-router'
+import { PlayDetailPage } from '@/pages/PlayDetailPage'
+
+export const Route = createFileRoute('/play/$playId')({
+  component: PlayDetailPage
+})
+```
+
+```typescript
+// src/routes/search.tsx
+import { createFileRoute } from '@tanstack/react-router'
+import { SearchResultsPage } from '@/pages/SearchResultsPage'
+
+export const Route = createFileRoute('/search')({
+  component: SearchResultsPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    q: (search.q as string) || ''
+  })
+})
+```
+
+```typescript
+// src/routes/timeline.tsx
+import { createFileRoute } from '@tanstack/react-router'
+import { TimelineJumpPage } from '@/pages/TimelineJumpPage'
+
+export const Route = createFileRoute('/timeline')({
+  component: TimelineJumpPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    since: search.since as string | undefined,
+    until: search.until as string | undefined,
+    percentage: search.percentage ? Number(search.percentage) : undefined
+  })
+})
+```
+
+---
+
+## Performance Optimizations
+
+### 1. Virtual Scrolling
+
+```typescript
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { useAtomValue } from '@effect-atom/atom-react'
+import { currentPlaysAtom } from '@/Timeline'
+
+export const VirtualTimeline = () => {
+  const plays = useAtomValue(currentPlaysAtom)
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: plays.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 140,
+    overscan: 10
+  })
+
+  return (
+    <div ref={parentRef} className="h-screen overflow-auto">
+      {/* Virtual items */}
+    </div>
+  )
+}
+```
+
+### 2. Atom Families for Dynamic State
+
+```typescript
+// src/PlayDetails.ts
+export const playDetailsFamily = Atom.family((playId: number) =>
+  httpRuntime.atom(
+    Effect.gen(function* () {
+      const client = yield* HttpClient.HttpClient
+
+      const request = HttpClientRequest.get(`/api/plays/${playId}`)
+      const response = yield* client.execute(request)
+      const data = yield* HttpClientResponse.schemaBodyJson(PlayResult)(response)
+
+      return data
+    })
+  )
+)
+
+// Usage in component
+const playDetails = useAtomValue(playDetailsFamily(playId))
+```
+
+### 3. Optimistic Updates
+
+```typescript
+// src/Favorites.ts
+export const favoritesAtom = Atom.make<Set<number>>(new Set())
+
+export const toggleFavoriteAtom = Atom.make(
+  Effect.fn(function* (get: Atom.Context, playId: number) {
+    const client = yield* HttpClient.HttpClient
+    const favorites = yield* get(favoritesAtom)
+    const newFavorites = new Set(favorites)
+
+    if (newFavorites.has(playId)) {
+      newFavorites.delete(playId)
+    } else {
+      newFavorites.add(playId)
+    }
+
+    // Optimistically update
+    yield* Atom.set(favoritesAtom, newFavorites)
+
+    // Persist to backend
+    const request = HttpClientRequest.post("/api/favorites/toggle").pipe(
+      HttpClientRequest.jsonBody({ playId })
+    )
+    yield* client.execute(request)
+
+    return newFavorites
+  })
+)
+```
+
+---
+
+## Error Handling
+
+### Tagged Errors
+
+```typescript
+// src/Domain/errors.ts
+import { Data } from "effect"
+
+// API Errors
+export class TimelineApiError extends Data.TaggedError("TimelineApiError")<{
+  readonly cause: unknown
+  readonly context?: string
+}> {}
+
+export class SearchApiError extends Data.TaggedError("SearchApiError")<{
+  readonly cause: unknown
+  readonly query: string
+}> {}
+
+export class PlayNotFoundError extends Data.TaggedError("PlayNotFoundError")<{
+  readonly playId: number
+}> {}
+
+export class NetworkError extends Data.TaggedError("NetworkError")<{
+  readonly cause: unknown
+  readonly url: string
+}> {}
+
+// Validation Errors
+export class InvalidCursorError extends Data.TaggedError("InvalidCursorError")<{
+  readonly cursor: string
+}> {}
+
+export class InvalidPercentageError extends Data.TaggedError("InvalidPercentageError")<{
+  readonly percentage: number
+}> {}
+
+export class ValidationError extends Data.TaggedError("ValidationError")<{
+  readonly errors: string[]
+}> {}
+```
+
+### Error Handling Patterns
+
+All HTTP-calling atoms follow this pattern:
+
+1. **Define domain errors** with TaggedError
+2. **Map HTTP errors** to domain errors with `mapError`
+3. **Handle errors by tag** with `catchTags`
+4. **Return user-friendly state** with error messages
+
+Example:
+
+```typescript
+const myAtom = httpRuntime.atom(
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+
+    const request = HttpClientRequest.get("/api/endpoint")
+
+    const response = yield* client.execute(request).pipe(
+      Effect.mapError(cause => new NetworkError({ cause, url: "/api/endpoint" }))
+    )
+
+    const data = yield* HttpClientResponse.schemaBodyJson(MySchema)(response).pipe(
+      Effect.mapError(cause => new MyDomainError({ cause }))
+    )
+
+    return data
+  }).pipe(
+    Effect.catchTags({
+      NetworkError: (error) => Effect.succeed({ /* fallback state */ }),
+      MyDomainError: (error) => Effect.succeed({ /* fallback state */ })
+    })
+  )
+)
+```
+
+### Error Boundaries
+
+```typescript
+// src/components/ErrorBoundary.tsx
+import { Component, ErrorInfo, ReactNode } from 'react'
+
+export class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('ErrorBoundary caught:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <ErrorMessage />
+    }
+
+    return this.props.children
+  }
+}
+```
+
+---
+
+## Implementation Checklist
+
+### Week 1: Foundation
+- [ ] Set up Vite + React + TypeScript
+- [ ] Install @effect-atom/atom-react, effect, @effect/platform
+- [ ] Set up TanStack Router (file-based)
+- [ ] Create basic Layout + Header
+- [ ] Configure shadcn/ui + Tailwind
+
+### Week 2: Core Atoms
+- [ ] Define PlayResult, TimelineResponse schemas
+- [ ] Create timeline atoms (base, append, jump)
+- [ ] Create search atoms with debouncing
+- [ ] Build navigation atoms
+
+### Week 3: Components
+- [ ] Build PlayCard component
+- [ ] Implement InfiniteTimeline with virtual scrolling
+- [ ] Add DateDivider component
+- [ ] Build SearchBar with atom integration
+- [ ] Create NavigationControls
+
+### Week 4: Polish & Optimize
+- [ ] Add atom families for play details
+- [ ] Implement optimistic updates
+- [ ] Mobile responsive design
+- [ ] Error handling + boundaries
+- [ ] Loading states + Suspense
+
+### Week 5: Deploy & Monitor
+- [ ] Deploy to Vercel
+- [ ] Configure CORS on FastAPI backend
+- [ ] Performance testing (Lighthouse)
+- [ ] Add analytics (optional)
+
+---
+
+## Key Differences from React Query Approach
+
+| Aspect | Effect Atom | React Query |
+|--------|-------------|-------------|
+| **Philosophy** | Effect-first, functional | React-first, imperative |
+| **Data Fetching** | Atoms with Effect operators | useQuery hooks |
+| **Type Safety** | Effect Schema validation | TypeScript only |
+| **Error Handling** | Tagged errors, Effect channel | try/catch, error states |
+| **Async State** | Suspense + atoms | { isLoading, error, data } |
+| **Composability** | Atoms compose with pipe | Hooks compose with hooks |
+| **Caching** | Atom-level automatic | Query-level manual |
+
+---
+
+## Next Steps
+
+1. **Create `packages/web` directory** with Vite + React setup
+2. **Install dependencies**: effect, @effect-atom/atom-react, @effect/schema, @effect/platform
+3. **Set up TanStack Router** with file-based routes
+4. **Build first atom** (timelineAtom) with HTTP fetching
+5. **Create PlayCard component** with useAtomValue
+6. **Deploy MVP to Vercel**
+
+This design leverages **Effect Atom for ALL data management** (no React Query), with TanStack Router handling routing, and idiomatic Effect patterns throughout.
+
+---
+
+## References and Resources
+
+### Effect-TS Documentation
+- **Effect Atom**: https://github.com/tim-smart/effect-atom
+  - Reactive atoms for Effect
+  - Packages: `@effect-atom/atom`, `@effect-atom/atom-react`
+
+- **Effect Platform HTTP**: https://effect.website/docs/guides/platform/http-client
+  - HttpClient service
+  - HttpClientRequest/Response APIs
+
+- **Effect Schema**: https://effect.website/docs/guides/schema/introduction
+  - Runtime type validation
+  - Schema definition and transformation
+
+### Package Versions Used
+```json
+{
+  "effect": "^3.x",
+  "@effect/platform": "^0.x",
+  "@effect/schema": "^0.x",
+  "@effect-atom/atom": "^0.x",
+  "@effect-atom/atom-react": "^0.x"
+}
+```
+
+### Related Examples
+- Effect Atom RxJS Demo: https://github.com/tim-smart/effect-atom/tree/main/examples/rx-optimistic-update-demo
+- Cheffect (Effect in React): https://github.com/tim-smart/cheffect
+
+---
+
+## Verification Checklist
+
+Before implementation, verify:
+
+- [ ] All imports use correct package names
+- [ ] All HTTP atoms use `httpRuntime.atom()`
+- [ ] All HTTP calls properly `yield* HttpClient.HttpClient`
+- [ ] All errors use TaggedError classes
+- [ ] All errors are caught with `catchTags`
+- [ ] Schema uses `DateFromString` not `dateFromString`
+- [ ] All examples use `jsonBody` not `bodyJson`
+- [ ] No references to `HttpClient.client`
+- [ ] Runtime setup is documented
+- [ ] Examples are self-contained and runnable
