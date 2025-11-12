@@ -181,7 +181,8 @@ class FAISSSearchService:
             k: Number of results to return
 
         Returns:
-            Tuple of (indices, distances) where indices are FAISS indices
+            Tuple of (indices, distances) where indices are FAISS indices.
+            Filters out -1 indices (FAISS returns -1 when probe can't supply k hits).
         """
         # Encode query
         query_vector = self.encode_query(query)
@@ -192,7 +193,12 @@ class FAISSSearchService:
         # Search
         distances, indices = self.index.search(query_vector, k)
 
-        return indices[0], distances[0]
+        # Filter out -1 indices (invalid results)
+        indices_1d = indices[0]
+        distances_1d = distances[0]
+        valid_mask = indices_1d >= 0
+
+        return indices_1d[valid_mask], distances_1d[valid_mask]
 
     def get_play_ids(self, faiss_indices: np.ndarray) -> np.ndarray:
         """

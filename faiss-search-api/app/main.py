@@ -6,10 +6,11 @@ from contextlib import asynccontextmanager
 import time
 import logging
 from typing import Optional
+import anyio
 
 from .services.search_service import FAISSSearchService
 from .services.db_service import DatabaseService
-from .models import SearchRequest, SearchResponse, HealthResponse, PlayResult
+from .models import SearchRequest, SearchResponse, HealthResponse, PlayResult, TimelineResponse
 from .config import settings
 
 # Logging
@@ -116,7 +117,8 @@ def get_db_service() -> DatabaseService:
     description="Check service health and readiness"
 )
 async def health_check(
-    search: FAISSSearchService = Depends(get_search_service)
+    search: FAISSSearchService = Depends(get_search_service),
+    db: DatabaseService = Depends(get_db_service)
 ) -> HealthResponse:
     """Health check endpoint."""
     try:
@@ -126,9 +128,21 @@ async def health_check(
     except ImportError:
         memory_mb = 0.0
 
+    # Check database connectivity with lightweight query
+    db_connected = False
+    try:
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchone()
+        db_connected = True
+    except Exception as e:
+        logger.warning(f"Database health check failed: {e}")
+        db_connected = False
+
     return HealthResponse(
-        status="ok",
+        status="ok" if (search.index is not None and db_connected) else "degraded",
         index_loaded=search.index is not None,
+        database_connected=db_connected,
         total_vectors=len(search.embeddings) if search.embeddings is not None else 0,
         embedding_dimension=search.embeddings.shape[1] if search.embeddings is not None else 0,
         memory_usage_mb=memory_mb,
@@ -191,6 +205,166 @@ async def search(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Search failed: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/plays/timeline",
+    response_model=TimelineResponse,
+    tags=["plays"],
+    summary="Get plays chronologically with flexible navigation",
+    description="""
+    Browse plays in chronological order (newest first) with multiple navigation methods:
+    - **Cursor pagination**: Standard forward/backward navigation
+    - **Time-based jump**: Jump to a specific date/time range
+    - **Percentage jump**: Jump to a percentage position in the timeline
+    - **Anchor jump**: Show plays centered around a specific play ID
+
+    All methods return the same chronological list with pagination cursor.
+    """,
+    responses={
+        200: {"description": "Timeline page retrieved successfully"},
+        400: {"description": "Invalid cursor, parameters, or multiple jump methods"},
+        500: {"description": "Query failed"}
+    }
+)
+async def get_timeline(
+    limit: int = 50,
+    cursor: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    percentage: Optional[float] = None,
+    anchor_id: Optional[int] = None,
+    db_svc: DatabaseService = Depends(get_db_service)
+) -> TimelineResponse:
+    """
+    Get plays in chronological timeline (newest first) with unified navigation.
+
+    Supports multiple navigation methods (only one at a time):
+
+    **Standard Pagination:**
+    - `cursor`: Base64-encoded cursor from previous response
+    - `limit`: Number of results (1-200, default 50)
+
+    **Time-Based Jump:**
+    - `since`: ISO 8601 datetime (e.g., "2015-03-15T00:00:00")
+    - `until`: ISO 8601 datetime (optional, for date range)
+    - Example: `/api/plays/timeline?since=2015-03-15T00:00:00&limit=20`
+
+    **Percentage Jump:**
+    - `percentage`: Float 0.0-1.0 (0.0 = newest, 1.0 = oldest)
+    - Example: `/api/plays/timeline?percentage=0.5&limit=20`
+
+    **Anchor Jump:**
+    - `anchor_id`: Play ID to center results around
+    - Example: `/api/plays/timeline?anchor_id=3576848&limit=50`
+
+    Args:
+        limit: Number of results per page (default 50, max 200)
+        cursor: Optional cursor from previous page for pagination
+        since: Optional ISO 8601 datetime for time-based filtering (start)
+        until: Optional ISO 8601 datetime for time-based filtering (end)
+        percentage: Optional float 0.0-1.0 for percentage-based jump
+        anchor_id: Optional play ID to center results around
+        db_svc: Database service dependency
+
+    Returns:
+        TimelineResponse with results, next_cursor, has_more, and optional metadata
+    """
+    # Validate limit
+    if limit < 1 or limit > 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Limit must be between 1 and 200"
+        )
+
+    # Count how many jump methods are being used
+    jump_methods = sum([
+        cursor is not None,
+        since is not None or until is not None,
+        percentage is not None,
+        anchor_id is not None
+    ])
+
+    if jump_methods > 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only one navigation method allowed: cursor, time range (since/until), percentage, or anchor_id"
+        )
+
+    try:
+        start_time = time.time()
+        result = None
+
+        # Route to appropriate method based on parameters
+        if percentage is not None:
+            # Percentage-based jump (uses OFFSET - run in thread to avoid blocking)
+            if not 0.0 <= percentage <= 1.0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Percentage must be between 0.0 and 1.0"
+                )
+            result = await anyio.to_thread.run_sync(
+                db_svc.get_plays_by_percentage,
+                percentage,
+                limit
+            )
+
+        elif anchor_id is not None:
+            # Anchor-based jump (multiple queries - run in thread)
+            result = await anyio.to_thread.run_sync(
+                db_svc.get_plays_around_id,
+                anchor_id,
+                limit
+            )
+
+        elif since is not None or until is not None:
+            # Time-based jump
+            from datetime import datetime
+            since_dt = datetime.fromisoformat(since) if since else None
+            until_dt = datetime.fromisoformat(until) if until else None
+            result = await anyio.to_thread.run_sync(
+                db_svc.get_plays_by_time_range,
+                since_dt,
+                until_dt,
+                limit
+            )
+
+        else:
+            # Standard cursor pagination (fast indexed query - can run directly)
+            result = db_svc.get_plays_by_cursor(limit=limit, cursor=cursor)
+
+        # Convert to PlayResult models (similarity=0 for timeline browsing)
+        play_results = [
+            PlayResult(**play_data, similarity=0.0)
+            for play_data in result['results']
+        ]
+
+        query_time = (time.time() - start_time) * 1000
+
+        return TimelineResponse(
+            results=play_results,
+            next_cursor=result['next_cursor'],
+            has_more=result['has_more'],
+            query_time_ms=query_time,
+            total_count=result.get('total_count'),
+            anchor_position=result.get('anchor_position')
+        )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions (from validation)
+        raise
+    except ValueError as e:
+        # Invalid cursor, datetime, or parameters
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Timeline query failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Timeline query failed: {str(e)}"
         )
 
 
