@@ -1134,4 +1134,53 @@ VITE_API_BASE_URL=https://api.kxp-crate.com
 
 ---
 
+## References and Resources
+
+### Effect-TS Documentation
+- **Effect Atom**: https://github.com/tim-smart/effect-atom
+  - Reactive atoms for Effect
+  - Packages: `@effect-atom/atom`, `@effect-atom/atom-react`
+
+- **Effect Platform HTTP**: https://effect.website/docs/guides/platform/http-client
+  - HttpClient service
+  - HttpClientRequest/Response APIs
+
+- **Effect Schema**: https://effect.website/docs/guides/schema/introduction
+  - Runtime type validation
+  - Schema definition and transformation
+
+### Package Versions Used
+```json
+{
+  "effect": "^3.x",
+  "@effect/platform": "^0.x",
+  "@effect/schema": "^0.x",
+  "@effect-atom/atom": "^0.x",
+  "@effect-atom/atom-react": "^0.x"
+}
+```
+
+### Related Examples
+- Effect Atom RxJS Demo: https://github.com/tim-smart/effect-atom/tree/main/examples/rx-optimistic-update-demo
+- Cheffect (Effect in React): https://github.com/tim-smart/cheffect
+
+---
+
+## Verification Checklist
+
+Before implementation, verify:
+
+- [ ] All imports use correct package names
+- [ ] All HTTP atoms use `httpRuntime.atom()`
+- [ ] All HTTP calls properly `yield* HttpClient.HttpClient`
+- [ ] All errors use TaggedError classes
+- [ ] All errors are caught with `catchTags`
+- [ ] Schema uses `DateFromString` not `dateFromString`
+- [ ] All examples use `jsonBody` not `bodyJson`
+- [ ] No references to `HttpClient.client`
+- [ ] Runtime setup is documented
+- [ ] Examples are self-contained and runnable
+
+---
+
 This specification provides production-ready React components optimized for the FastAPI backend with FAISS semantic search and cursor-based timeline pagination.
