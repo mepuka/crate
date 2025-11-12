@@ -60,6 +60,10 @@ class PlayResult(BaseModel):
     comment: Optional[str] = None
     show: int  # Always present in database
 
+    # Album artwork URLs
+    image_uri: Optional[str] = None
+    thumbnail_uri: Optional[str] = None
+
     # MusicBrainz IDs (artist_mbid is a JSON array of UUIDs)
     artist_mbid: Optional[List[str]] = None
     recording_mbid: Optional[str] = None
