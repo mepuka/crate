@@ -33,3 +33,6 @@ logs/
 
 # Docker
 # .dockerignore should be committed
+
+# SSL certificates and certbot data
+certbot/
