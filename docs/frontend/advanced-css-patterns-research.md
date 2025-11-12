@@ -3,6 +3,10 @@
 **Date:** 2025-11-12
 **Context:** Research on modern CSS patterns for subtle, interactive, beautiful UI enhancements that integrate with Effect atoms and the Crate philosophy
 
+> **Note**: This document focuses on CSS patterns and UI design. For state management architecture using effect-atom, see:
+> - [Effect-Atom State Architecture](./effect-atom-state-architecture.md) (comprehensive guide)
+> - [State Architecture Summary](./state-architecture-summary.md) (quick reference)
+
 ---
 
 ## Table of Contents
