@@ -54,10 +54,10 @@ class PlayResult(BaseModel):
     is_live: bool = False
     is_request: bool = False
     comment: Optional[str] = None
-    show: Optional[int] = None
+    show: int  # Always present in database
 
-    # MusicBrainz IDs
-    artist_mbid: Optional[str] = None
+    # MusicBrainz IDs (artist_mbid is a JSON array of UUIDs)
+    artist_mbid: Optional[List[str]] = None
     recording_mbid: Optional[str] = None
     release_mbid: Optional[str] = None
     release_group_mbid: Optional[str] = None

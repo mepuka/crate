@@ -99,6 +99,15 @@ class DatabaseService:
         else:
             data['labels'] = []
 
+        # Parse artist_mbid as JSON array (stored as ["uuid"] format)
+        if 'artist_mbid' in data and data['artist_mbid']:
+            try:
+                data['artist_mbid'] = json.loads(data['artist_mbid'])
+            except json.JSONDecodeError:
+                data['artist_mbid'] = []
+        else:
+            data['artist_mbid'] = []
+
         # Convert integer booleans
         for bool_field in ['is_local', 'is_live', 'is_request']:
             if bool_field in data:
