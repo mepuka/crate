@@ -6,7 +6,7 @@ This document provides detailed implementation specifications for all React comp
 
 **Tech Stack**:
 - **Backend**: FastAPI (Python) with FAISS semantic search
-- **Frontend**: React 18 + TypeScript + TanStack Query
+- **Frontend**: React 18 + TypeScript + Effect Atom (@effect-atom/atom-react)
 - **Styling**: Tailwind CSS + shadcn/ui
 - **Deployment**: Vercel
 
@@ -328,11 +328,12 @@ The core component that renders the chronological stream of plays with virtual s
 ```typescript
 // src/components/InfiniteTimeline.tsx
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, Suspense } from 'react'
+import { useAtomSuspense, useAtomSet } from '@effect-atom/atom-react'
 import { PlayCard } from './PlayCard'
 import { DateDivider } from './DateDivider'
 import { LoadingSpinner } from './LoadingSpinner'
-import { useInfiniteTimeline } from '@/hooks/useInfiniteTimeline'
+import { timelineAtom, appendPlaysAtom } from '@/atoms/timeline'
 import { isSameDay, parseISO } from 'date-fns'
 
 interface InfiniteTimelineProps {
@@ -342,7 +343,7 @@ interface InfiniteTimelineProps {
   percentage?: number
 }
 
-export const InfiniteTimeline = ({
+const TimelineContent = ({
   anchorId,
   since,
   until,
@@ -351,27 +352,12 @@ export const InfiniteTimeline = ({
   const parentRef = useRef<HTMLDivElement>(null)
   const lastItemRef = useRef<HTMLDivElement>(null)
 
-  // Fetch data with TanStack Query infinite query
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    error
-  } = useInfiniteTimeline({
-    anchor_id: anchorId,
-    since,
-    until,
-    percentage,
-    limit: 50
-  })
-
-  // Flatten all pages into single array
-  const plays = data?.pages.flatMap(page => page.results) ?? []
+  // Fetch data using Effect Atoms
+  const { plays, hasMore, isLoading, error } = useAtomSuspense(timelineAtom)
+  const appendPlays = useAtomSet(appendPlaysAtom)
 
   // Find anchor position if present
-  const anchorPosition = data?.pages[0]?.anchor_position
+  const anchorPosition = plays.findIndex(play => play.id === anchorId)
 
   // Virtual scroller
   const virtualizer = useVirtualizer({
@@ -390,19 +376,19 @@ export const InfiniteTimeline = ({
 
   // Scroll to anchor on mount
   useEffect(() => {
-    if (anchorPosition !== undefined && plays.length > 0) {
+    if (anchorPosition >= 0 && plays.length > 0) {
       virtualizer.scrollToIndex(anchorPosition, { align: 'center', behavior: 'smooth' })
     }
   }, [anchorPosition])
 
   // Intersection observer for infinite scroll
   useEffect(() => {
-    if (!lastItemRef.current || !hasNextPage || isFetchingNextPage) return
+    if (!lastItemRef.current || !hasMore || isLoading) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          fetchNextPage()
+          appendPlays()
         }
       },
       { rootMargin: '400px' }
@@ -411,20 +397,12 @@ export const InfiniteTimeline = ({
     observer.observe(lastItemRef.current)
 
     return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <LoadingSpinner />
-      </div>
-    )
-  }
+  }, [hasMore, isLoading, appendPlays])
 
   if (error) {
     return (
       <div className="flex items-center justify-center h-screen text-destructive">
-        Error loading plays: {error.message}
+        Error loading plays: {error}
       </div>
     )
   }
@@ -479,19 +457,33 @@ export const InfiniteTimeline = ({
       </div>
 
       {/* Loading more indicator */}
-      {isFetchingNextPage && (
+      {isLoading && (
         <div className="flex justify-center py-4">
           <LoadingSpinner />
         </div>
       )}
 
       {/* End of results */}
-      {!hasNextPage && plays.length > 0 && (
+      {!hasMore && plays.length > 0 && (
         <div className="text-center text-muted-foreground py-8">
           You've reached the end of the timeline
         </div>
       )}
     </div>
+  )
+}
+
+export const InfiniteTimeline = (props: InfiniteTimelineProps) => {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-screen">
+          <LoadingSpinner />
+        </div>
+      }
+    >
+      <TimelineContent {...props} />
+    </Suspense>
   )
 }
 ```
@@ -750,52 +742,139 @@ export const NavigationControls = () => {
 
 ---
 
-## 6. API Hooks
+## 6. Atoms and State Management
 
-### useInfiniteTimeline Hook
+### Timeline Atoms
 
 ```typescript
-// src/hooks/useInfiniteTimeline.ts
-import { useInfiniteQuery } from '@tanstack/react-query'
-import { fetchTimeline } from '@/api/client'
+// src/atoms/timeline.ts
+import { Atom } from "@effect-atom/atom"
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "@effect/platform"
+import * as S from "@effect/schema/Schema"
+import { Effect, pipe } from "effect"
 
-interface TimelineParams {
-  anchor_id?: number
-  since?: string
-  until?: string
-  percentage?: number
-  limit?: number
-}
+// Schema definitions (matching FastAPI Pydantic models)
+export class PlayResult extends S.Class<PlayResult>("PlayResult")({
+  id: S.Number,
+  artist: S.String,
+  song: S.String,
+  similarity: S.Number,
+  album: S.NullOr(S.String),
+  airdate: S.DateTimeUtc,
+  labels: S.Array(S.String),
+  rotation_status: S.NullOr(S.String),
+  is_local: S.Boolean,
+  is_live: S.Boolean,
+  is_request: S.Boolean,
+  comment: S.NullOr(S.String),
+  show: S.Number,
+  artist_mbid: S.NullOr(S.Array(S.String)),
+  recording_mbid: S.NullOr(S.String),
+  release_mbid: S.NullOr(S.String),
+  release_group_mbid: S.NullOr(S.String),
+  thumbnail_uri: S.NullOr(S.String),
+  image_uri: S.NullOr(S.String),
+}) {}
 
-export const useInfiniteTimeline = (params: TimelineParams) => {
-  return useInfiniteQuery({
-    queryKey: ['timeline', params],
-    queryFn: ({ pageParam }) =>
-      fetchTimeline({ ...params, cursor: pageParam as string | undefined }),
-    getNextPageParam: (lastPage) =>
-      lastPage.has_more ? lastPage.next_cursor : undefined,
-    staleTime: 5 * 60 * 1000,     // Cache for 5 minutes
-    gcTime: 30 * 60 * 1000,       // Keep in cache for 30 minutes
-    refetchOnWindowFocus: false,
+export class TimelineResponse extends S.Class<TimelineResponse>("TimelineResponse")({
+  results: S.Array(PlayResult),
+  next_cursor: S.NullOr(S.String),
+  has_more: S.Boolean,
+  query_time_ms: S.Number,
+  total_count: S.optional(S.Number),
+  anchor_position: S.optional(S.Number),
+}) {}
+
+// Timeline atom
+export const timelineAtom = Atom.make(
+  pipe(
+    HttpClientRequest.get("/api/plays/timeline"),
+    HttpClientRequest.setUrlParam("limit", "50"),
+    HttpClient.fetchOk,
+    Effect.flatMap(HttpClientResponse.schemaBodyJson(TimelineResponse)),
+    Effect.map((response) => ({
+      plays: response.results,
+      cursor: response.next_cursor,
+      hasMore: response.has_more,
+      isLoading: false,
+      error: null
+    })),
+    Effect.catchAll((error) =>
+      Effect.succeed({
+        plays: [],
+        cursor: null,
+        hasMore: false,
+        isLoading: false,
+        error: String(error)
+      })
+    )
+  )
+)
+
+// Append plays for infinite scroll
+export const appendPlaysAtom = Atom.fnEffect((get) =>
+  Effect.gen(function* () {
+    const state = yield* get(timelineAtom)
+    if (!state.hasMore || state.isLoading) return state
+
+    const response = yield* pipe(
+      HttpClientRequest.get("/api/plays/timeline"),
+      HttpClientRequest.setUrlParams({
+        cursor: state.cursor ?? "",
+        limit: "50"
+      }),
+      HttpClient.fetchOk,
+      Effect.flatMap(HttpClientResponse.schemaBodyJson(TimelineResponse))
+    )
+
+    return {
+      plays: [...state.plays, ...response.results],
+      cursor: response.next_cursor,
+      hasMore: response.has_more,
+      isLoading: false,
+      error: null
+    }
   })
-}
+)
 ```
 
-### useSemanticSearch Hook
+### Search Atoms
 
 ```typescript
-// src/hooks/useSemanticSearch.ts
-import { useQuery } from '@tanstack/react-query'
-import { semanticSearch } from '@/api/client'
+// src/atoms/search.ts
+import { Atom } from "@effect-atom/atom"
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "@effect/platform"
+import * as S from "@effect/schema/Schema"
+import { Effect, pipe } from "effect"
+import { PlayResult } from "./timeline"
 
-export const useSemanticSearch = (query: string, enabled: boolean = true) => {
-  return useQuery({
-    queryKey: ['search', query],
-    queryFn: () => semanticSearch(query, 20, 0),
-    enabled: enabled && query.length > 2,
-    staleTime: 10 * 60 * 1000,  // Cache for 10 minutes
-  })
-}
+export class SearchResponse extends S.Class<SearchResponse>("SearchResponse")({
+  results: S.Array(PlayResult),
+  total: S.Number,
+  query_time_ms: S.Number,
+  query: S.String,
+}) {}
+
+// Search atom family (one atom per query string)
+export const searchAtom = Atom.family((query: string) =>
+  Atom.make(
+    pipe(
+      HttpClientRequest.post("/api/search"),
+      HttpClientRequest.jsonBody({
+        query,
+        limit: 20,
+        offset: 0
+      }),
+      HttpClient.fetchOk,
+      Effect.flatMap(HttpClientResponse.schemaBodyJson(SearchResponse)),
+      Effect.map((response) => ({
+        results: response.results,
+        total: response.total,
+        queryTimeMs: response.query_time_ms
+      }))
+    )
+  )
+)
 ```
 
 ### useDebounce Hook
@@ -823,91 +902,48 @@ export function useDebounce<T>(value: T, delay: number): T {
 
 ---
 
-## 7. API Client
+## 7. HTTP Client Configuration
+
+All HTTP requests are handled through Effect's HttpClient within atoms. Configure the base URL using environment variables:
 
 ```typescript
-// src/api/client.ts
-import axios from 'axios'
-import { TimelineResponse, SearchResponse, PlayResult } from '@/types/api'
+// src/lib/http.ts
+import { HttpClient } from "@effect/platform"
+import { Effect } from "effect"
 
-const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-export const fetchTimeline = async (params: {
-  cursor?: string | null
-  limit?: number
-  since?: string
-  until?: string
-  percentage?: number
-  anchor_id?: number
-}): Promise<TimelineResponse> => {
-  const { data } = await apiClient.get('/api/plays/timeline', { params })
-  return data
-}
-
-export const semanticSearch = async (
-  query: string,
-  limit = 20,
-  offset = 0
-): Promise<SearchResponse> => {
-  const { data } = await apiClient.post('/api/search', { query, limit, offset })
-  return data
-}
-
-export const fetchPlay = async (playId: number): Promise<PlayResult> => {
-  const { data } = await apiClient.get(`/api/plays/${playId}`)
-  return data
-}
+export const baseHttpClient = HttpClient.mapRequest(
+  HttpClient.client,
+  HttpClientRequest.prependUrl(
+    import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
+  )
+)
 ```
+
+**Note**: Unlike React Query or Axios, Effect's HttpClient is used directly within atoms. This provides:
+- Type-safe request/response handling with Effect Schema
+- Built-in error handling and retry capabilities
+- Composable HTTP operations using pipe
+- No need for separate API client layer
 
 ---
 
 ## 8. Type Definitions
 
+All types are defined using Effect Schema (see atoms section above). Effect Schema provides:
+- Runtime validation matching Pydantic models
+- Type inference for TypeScript
+- Automatic JSON encoding/decoding
+- Branded types for safety
+
+Example type usage:
+
 ```typescript
-// src/types/api.ts
-export interface PlayResult {
-  id: number
-  artist: string
-  song: string
-  similarity: number
-  album: string | null
-  airdate: string
-  labels: string[]
-  rotation_status: string | null
-  is_local: boolean
-  is_live: boolean
-  is_request: boolean
-  comment: string | null
-  show: number
-  artist_mbid: string[] | null
-  recording_mbid: string | null
-  release_mbid: string | null
-  release_group_mbid: string | null
-  thumbnail_uri?: string | null
-  image_uri?: string | null
-}
+// Import schemas from atoms
+import { PlayResult, TimelineResponse } from '@/atoms/timeline'
 
-export interface TimelineResponse {
-  results: PlayResult[]
-  next_cursor: string | null
-  has_more: boolean
-  query_time_ms: number
-  total_count?: number
-  anchor_position?: number
-}
-
-export interface SearchResponse {
-  results: PlayResult[]
-  total: number
-  query_time_ms: number
-  query: string
-}
+// Types are automatically inferred
+type Play = typeof PlayResult.Type
+// { id: number, artist: string, ... }
 ```
 
 ---
@@ -917,7 +953,8 @@ export interface SearchResponse {
 - [ ] **Virtual scrolling**: Only render visible items (~100 DOM nodes)
 - [ ] **Image lazy loading**: Load album art on demand with `loading="lazy"`
 - [ ] **Debounced search**: 300ms delay to reduce API calls
-- [ ] **TanStack Query caching**: 5min stale time for timeline, 10min for search
+- [ ] **Effect Atom caching**: Atoms memoize results automatically, reducing re-fetches
+- [ ] **Suspense boundaries**: Strategic placement for optimal loading states
 - [ ] **Code splitting**: Lazy load routes with React.lazy()
 - [ ] **Bundle optimization**: Tree-shaking, minification in production
 - [ ] **Vercel Image Optimization**: Automatic WebP/AVIF conversion
