@@ -24,18 +24,11 @@
     "coverage": "vitest --coverage"
   },
   "dependencies": {
-    "@effect/cli": "latest",
-    "@effect/platform": "latest",
-    "@effect/platform-node": "latest",
+    "@effect/cli": "^0.72.1",
+    "@effect/platform": "^0.93.0",
+    "@effect/platform-node": "^0.100.0",
     "@crate/domain": "workspace:^",
-    "effect": "latest"
-  },
-  "devDependencies": {
-    "@effect/cli": "latest",
-    "@effect/platform": "latest",
-    "@effect/platform-node": "latest",
-    "@crate/domain": "workspace:^",
-    "effect": "latest"
+    "effect": "^3.19.3"
   },
   "effect": {
     "generateExports": {

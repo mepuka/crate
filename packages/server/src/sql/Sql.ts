@@ -38,10 +38,11 @@ export const MusicKBMigratorLive = Effect.gen(function*() {
   Layer.unwrapEffect,
   Layer.provide(BunContext.layer),
   Layer.provide(MusicKBClientLive),
-  Layer.provide(DomainConfigLive)
+  Layer.provide(DomainConfigLive),
+  Layer.provide(Reactivity.layer)
 )
 
 export const MusicKBSqlLive = MusicKBClientLive.pipe(
-  Layer.provideMerge(Reactivity.layer),
-  Layer.provideMerge(DomainConfigLive)
+  Layer.provide(DomainConfigLive),
+  Layer.provide(Reactivity.layer)
 )

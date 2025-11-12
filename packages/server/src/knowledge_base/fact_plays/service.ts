@@ -91,7 +91,7 @@ class FactPlaysQueryError extends Data.TaggedError("FactPlaysQueryError")<{
   readonly queryType: string
 }> {}
 
-interface InsertPlaysRequest extends Request.Request<void, FactPlaysQueryError> {
+interface InsertPlaysRequest extends Request.Request<{ num_inserted: number }, FactPlaysQueryError> {
   readonly _tag: "InsertPlaysRequest"
   readonly plays: InsertPlaysQuery
 }
@@ -466,11 +466,11 @@ export class FactPlaysService extends Effect.Service<FactPlaysService>()("FactPl
               const chunkArray = Chunk.toReadonlyArray(chunk)
               const decodedPlays = yield* Schema.decodeUnknown(Schema.Array(factPlayFromKexpPlay))(chunkArray)
               const encodedPlays = yield* Schema.encode(Schema.Array(FactPlay.insert))(decodedPlays)
-              yield* insertPlays(encodedPlays)
-              return chunk.length
+              const result = yield* insertPlays(encodedPlays)
+              return result.num_inserted
             })
           ),
-          Stream.runCount
+          Stream.runSum
         )
     })
 

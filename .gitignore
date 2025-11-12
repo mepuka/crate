@@ -30,6 +30,11 @@ packages/domain/src/data/kexp_kb.db-wal
 packages/domain/src/data/music_kb.sqlite
 data/*
 
+# Python analysis project
+analysis/.venv/
+analysis/__pycache__/
+analysis/.ipynb_checkpoints/
+
 # Ignore build artifacts in source directories
 packages/*/src/**/*.js
 packages/*/src/**/*.js.map

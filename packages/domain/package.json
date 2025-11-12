@@ -24,9 +24,8 @@
     "coverage": "vitest --coverage"
   },
   "dependencies": {
-    "@effect/experimental": "latest",
-    "@effect/platform": "latest",
-    "effect": "latest",
+    "@effect/platform": "^0.93.0",
+    "effect": "^3.19.3",
     "fast-csv": "^5.0.2"
   },
   "effect": {
@@ -40,5 +39,12 @@
         "**/*.ts"
       ]
     }
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.28.3",
+    "@babel/core": "^7.28.5",
+    "@babel/plugin-transform-export-namespace-from": "^7.27.1",
+    "@babel/plugin-transform-modules-commonjs": "^7.27.1",
+    "babel-plugin-annotate-pure-calls": "^0.5.0"
   }
 }

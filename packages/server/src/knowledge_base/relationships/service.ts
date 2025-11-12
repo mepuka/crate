@@ -1,15 +1,14 @@
-import { EntityResolution } from "@crate/domain"
 import { SqlClient, SqlSchema } from "@effect/sql"
 import { Data, Duration, Effect, Layer, Request, RequestResolver, Schema } from "effect"
 import { MusicKBSqlLive } from "../../sql/Sql.js"
-import { NonArtistEntityFromPersistedRel, PersistedRelationship } from "./schemas.js"
+import { EntityType, NonArtistEntityFromPersistedRel, PersistedRelationship, PredicateType } from "./schemas.js"
 
 // Forward query: Find objects related to a subject via a predicate
 export const SubjectPredicateQuerySchema = Schema.TemplateLiteralParser(
   "subject:",
   Schema.String,
   " predicate:",
-  EntityResolution.PredicateType
+  PredicateType
 )
 export type SubjectPredicateQuery = Schema.Schema.Encoded<typeof SubjectPredicateQuerySchema>
 
@@ -18,7 +17,7 @@ export const ObjectPredicateQuerySchema = Schema.TemplateLiteralParser(
   "object:",
   Schema.String,
   " predicate:",
-  EntityResolution.PredicateType
+  PredicateType
 )
 export type ObjectPredicateQuery = Schema.Schema.Encoded<typeof ObjectPredicateQuerySchema>
 
@@ -27,7 +26,7 @@ export const SubjectTypeQuerySchema = Schema.TemplateLiteralParser(
   "subject:",
   Schema.String,
   " type:",
-  EntityResolution.EntityType
+  EntityType
 )
 export type SubjectTypeQuery = Schema.Schema.Encoded<typeof SubjectTypeQuerySchema>
 
@@ -113,7 +112,7 @@ export class RelationshipService extends Effect.Service<RelationshipService>()("
           )
 
           const query = SqlSchema.findAll({
-            Request: Schema.Struct({ subject_id: Schema.String, predicate: EntityResolution.PredicateType }),
+            Request: Schema.Struct({ subject_id: Schema.String, predicate: PredicateType }),
             Result: PersistedRelationship,
             execute: (params) =>
               sql`
@@ -157,7 +156,7 @@ export class RelationshipService extends Effect.Service<RelationshipService>()("
           )
 
           const query = SqlSchema.findAll({
-            Request: Schema.Struct({ object_id: Schema.String, predicate: EntityResolution.PredicateType }),
+            Request: Schema.Struct({ object_id: Schema.String, predicate: PredicateType }),
             Result: PersistedRelationship,
             execute: (params) =>
               sql`
@@ -201,7 +200,7 @@ export class RelationshipService extends Effect.Service<RelationshipService>()("
           )
 
           const query = SqlSchema.findAll({
-            Request: Schema.Struct({ subject_id: Schema.String, object_type: EntityResolution.EntityType }),
+            Request: Schema.Struct({ subject_id: Schema.String, object_type: EntityType }),
             Result: NonArtistEntityFromPersistedRel,
             execute: (params) =>
               sql`

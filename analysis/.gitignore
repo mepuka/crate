@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files (if you export any)
+*.csv
+*.xlsx
+*.parquet
+
+# Plots/exports
+*.png
+*.jpg
+*.pdf
+*.svg
+
+# Don't ignore example data
+!examples/*.csv
