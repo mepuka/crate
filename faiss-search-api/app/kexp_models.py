@@ -13,10 +13,10 @@ All models use Pydantic V2 with modern Python 3.12+ type hints.
 """
 
 from datetime import datetime, date, time
-from typing import Literal, Any
+from typing import Literal, Any, Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator, HttpUrl
+from pydantic import BaseModel, Field, ConfigDict, field_validator, HttpUrl, Discriminator
 
 
 # ============================================================================
@@ -474,10 +474,10 @@ class TrackPlay(BasePlay):
         description="MusicBrainz release group ID (UUID), groups all versions of an album",
         examples=["e5f6a7b8-c9d0-1234-ef12-345678901234"]
     )
-    release_date: str = Field(
-        default="",
-        description="Release date in YYYY-MM-DD format, may be partial (YYYY or YYYY-MM)",
-        examples=["2003-02-19", "2003-02", "2003"]
+    release_date: str | None = Field(
+        default=None,
+        description="Release date in YYYY-MM-DD format, may be partial (YYYY or YYYY-MM), or null if unavailable",
+        examples=["2003-02-19", "2003-02", "2003", None]
     )
 
     # Label information
@@ -521,6 +521,14 @@ class TrackPlay(BasePlay):
         examples=["Live from KEXP", "New release!", "Listener request"]
     )
 
+    @field_validator("album", mode="before")
+    @classmethod
+    def validate_album(cls, v: Any) -> str:
+        """Convert None to empty string for album field."""
+        if v is None:
+            return ""
+        return v
+
     @field_validator("artist_ids", "label_ids", mode="before")
     @classmethod
     def validate_uuid_lists(cls, v: Any) -> list[UUID]:
@@ -550,8 +558,8 @@ class TrackPlay(BasePlay):
         return None
 
 
-# Union type for all play types
-Play = TrackPlay | Airbreak
+# Union type for all play types with discriminator
+Play = Annotated[TrackPlay | Airbreak, Discriminator("play_type")]
 
 
 class PlayResponse(PaginatedResponse[Play]):

@@ -129,7 +129,7 @@ class PlaySyncService:
 
     def fetch_new_plays(self, last_id: int | None) -> list[TrackPlay]:
         """
-        Fetch new plays from KEXP API with exponential backoff retry.
+        Fetch all new plays from KEXP API with continuous pagination and exponential backoff retry.
 
         Args:
             last_id: Last synced play ID, or None to fetch from scratch
@@ -137,40 +137,66 @@ class PlaySyncService:
         Returns:
             List of new TrackPlay objects (airbreaks filtered out)
         """
+        all_new_plays = []
         url = f"{self.KEXP_API_BASE}/plays/?limit=100"
+        pages_fetched = 0
+        max_pages = 1000  # Safety limit to prevent infinite loops
 
-        for attempt in range(self.MAX_RETRIES):
-            try:
-                response = httpx.get(url, timeout=10.0)
-                response.raise_for_status()
+        while url and pages_fetched < max_pages:
+            for attempt in range(self.MAX_RETRIES):
+                try:
+                    response = httpx.get(url, timeout=10.0)
+                    response.raise_for_status()
 
-                # Parse response using Pydantic models
-                play_response = PlayResponse.model_validate_json(response.text)
+                    # Parse response using Pydantic models
+                    play_response = PlayResponse.model_validate_json(response.text)
 
-                # Filter to trackplays only and filter by ID
-                new_plays = []
-                for play in play_response.results:
-                    # Skip airbreaks (only process trackplays)
-                    if not isinstance(play, TrackPlay):
-                        continue
+                    # Filter to trackplays only and filter by ID
+                    page_new_plays = []
+                    has_old_play = False
 
-                    # Filter by ID (only plays newer than last_id)
-                    if last_id is None or play.id > last_id:
-                        new_plays.append(play)
+                    for play in play_response.results:
+                        # Skip airbreaks (only process trackplays)
+                        if not isinstance(play, TrackPlay):
+                            continue
 
-                return new_plays
+                        # Check if we've reached plays we already have
+                        if last_id is not None and play.id <= last_id:
+                            has_old_play = True
+                            continue
 
-            except (httpx.HTTPError, httpx.TimeoutException) as e:
-                if attempt < self.MAX_RETRIES - 1:
-                    delay = self.BASE_DELAY * (2 ** attempt)  # 2s, 4s, 8s
-                    self._log_info(f"API request failed (attempt {attempt + 1}/{self.MAX_RETRIES}), retrying in {delay}s: {e}")
-                    time.sleep(delay)
-                else:
-                    self._log_error(f"Failed to fetch plays after {self.MAX_RETRIES} attempts: {e}")
+                        page_new_plays.append(play)
+
+                    all_new_plays.extend(page_new_plays)
+                    pages_fetched += 1
+
+                    self._log_info(f"Fetched page {pages_fetched}: {len(page_new_plays)} new plays, total: {len(all_new_plays)}")
+
+                    # Stop if we've reached plays we already have or no next page
+                    if has_old_play or not play_response.next:
+                        self._log_info(f"Reached end of new plays after {pages_fetched} pages")
+                        return all_new_plays
+
+                    # Continue to next page
+                    url = play_response.next
+                    break  # Break retry loop on success
+
+                except (httpx.HTTPError, httpx.TimeoutException) as e:
+                    if attempt < self.MAX_RETRIES - 1:
+                        delay = self.BASE_DELAY * (2 ** attempt)  # 2s, 4s, 8s
+                        self._log_info(f"API request failed (attempt {attempt + 1}/{self.MAX_RETRIES}), retrying in {delay}s: {e}")
+                        time.sleep(delay)
+                    else:
+                        self._log_error(f"Failed to fetch plays after {self.MAX_RETRIES} attempts: {e}")
+                        raise
+                except Exception as e:
+                    self._log_error(f"Unexpected error fetching plays: {e}")
                     raise
-            except Exception as e:
-                self._log_error(f"Unexpected error fetching plays: {e}")
-                raise
+
+        if pages_fetched >= max_pages:
+            self._log_error(f"Reached max pages limit ({max_pages}), stopping pagination")
+
+        return all_new_plays
 
     def insert_plays(self, plays: list[TrackPlay]) -> list[int]:
         """
