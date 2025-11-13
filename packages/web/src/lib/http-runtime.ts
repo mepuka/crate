@@ -28,8 +28,7 @@ const configuredHttpLayer = Layer.effect(
 
 // Combined runtime with configured HTTP client and Reactivity support
 export const httpRuntime = Atom.runtime(
-  configuredHttpLayer.pipe(Layer.provide(Reactivity.layer))
+  configuredHttpLayer.pipe(Layer.provideMerge(Reactivity.layer), Layer.provideMerge(BrowserKeyValueStore.layerLocalStorage) )
 )
 
 // localStorage runtime for persisting state
-export const localStorageRuntime = Atom.runtime(BrowserKeyValueStore.layerLocalStorage)

@@ -1,9 +1,9 @@
-import { Atom } from "@effect-atom/atom-react"
+import { Atom, Result } from "@effect-atom/atom-react"
 import { HttpClient } from "@effect/platform"
 import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
 import * as HttpClientResponse from "@effect/platform/HttpClientResponse"
 import { Effect, Schema, Schedule, Stream } from "effect"
-import { httpRuntime, localStorageRuntime } from "@/lib/http-runtime"
+import { httpRuntime } from "@/lib/http-runtime"
 import { PlayResult, TimelineResponse } from "@/domain/Play"
 import { NetworkError, TimelineApiError } from "@/domain/errors"
 
@@ -72,45 +72,6 @@ const fetchTimelineEffect = Effect.gen(function* () {
     isLoading: false,
     error: null
   })
-}).pipe(
-  Effect.catchTags({
-    NetworkError: (error) => Effect.succeed(new TimelineState({
-      plays: [],
-      cursor: null,
-      hasMore: false,
-      isLoading: false,
-      error: `Network error: ${error.url}`
-    })),
-    TimelineApiError: (error) => Effect.succeed(new TimelineState({
-      plays: [],
-      cursor: null,
-      hasMore: false,
-      isLoading: false,
-      error: `API error: ${error.context}`
-    }))
-  })
-)
-
-// Default timeline state for initialization
-const defaultTimelineState = (): TimelineState => new TimelineState({
-  plays: [],
-  cursor: null,
-  hasMore: false,
-  isLoading: false,
-  error: null
-})
-
-// Persisted timeline atom that reads and writes to localStorage
-// Loads initial state from localStorage, or uses default if not present
-// This atom automatically persists all writes to localStorage
-//
-//        ┌─── Atom.Writable<TimelineState, TimelineState>
-//        ▼
-const persistedTimelineAtom = Atom.kvs({
-  runtime: localStorageRuntime,
-  key: "timeline-state",
-  schema: TimelineState,
-  defaultValue: defaultTimelineState
 })
 
 // Stream that fetches timeline data every 2 minutes
@@ -124,7 +85,14 @@ const timelineFetchStream = Stream.fromSchedule(Schedule.spaced("2 minutes")).pi
 //
 //        ┌─── Atom.Writable<TimelineState, TimelineState>
 //        ▼
-export const timelineAtom = persistedTimelineAtom
+export const timelineAtom = httpRuntime.atom(fetchTimelineEffect).pipe(Atom.keepAlive)
+
+// Initial fetch atom - returns Result for pattern matching with loading/error/success states
+// Use with useAtom and Result.match to handle all states declaratively
+//
+//        ┌─── Atom<Result<TimelineState, NetworkError | TimelineApiError>>
+//        ▼
+export const initialTimelineFetchAtom = httpRuntime.atom(fetchTimelineEffect)
 
 // Internal stream atom for background fetching (Result-based)
 // Used by background sync to fetch new data periodically
@@ -145,14 +113,13 @@ export const syncTimelineToStorage = httpRuntime.fn<void>()(
 
 // Computed atom for current plays
 // Reads from writable timelineAtom directly (not Result)
-export const currentPlaysAtom = Atom.map(timelineAtom, (state) => state.plays)
+export const currentPlaysAtom = Atom.map(timelineAtom, (state) => Result.map(state, (state) => state.plays))
 
 // Append more plays (infinite scroll action)
 // Fetches more plays and returns new state for component to write to timelineAtom
-export const appendPlaysAtom = httpRuntime.fn<string>()(
-  (cursor, get) => Effect.gen(function* () {
-    // Read current state from persisted atom
-    const currentState = get(persistedTimelineAtom)
+export const appendPlaysAtom = httpRuntime.fn<{ cursor: string; currentState: TimelineState }>()(
+  (params) => Effect.gen(function* () {
+    const { cursor, currentState } = params
 
     // Perform HTTP operation
     const client = yield* HttpClient.HttpClient

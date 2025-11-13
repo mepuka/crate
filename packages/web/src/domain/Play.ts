@@ -1,4 +1,4 @@
-import { Schema } from "@effect/schema"
+import { Schema } from "effect"
 
 /**
  * PlayResult schema - matches FastAPI backend PlayResult model exactly.
@@ -15,7 +15,7 @@ export class PlayResult extends Schema.Class<PlayResult>("PlayResult")({
 
   // Metadata
   album: Schema.NullOr(Schema.String),
-  airdate: Schema.NullOr(Schema.DateFromString), // Automatically transforms ISO 8601 strings to Date objects
+  airdate: Schema.DateFromString, // Always present - automatically transforms ISO 8601 strings to Date objects
   labels: Schema.Array(Schema.String),
   rotation_status: Schema.NullOr(Schema.String),
   is_local: Schema.Boolean,
@@ -29,7 +29,7 @@ export class PlayResult extends Schema.Class<PlayResult>("PlayResult")({
   thumbnail_uri: Schema.NullOr(Schema.String),
 
   // MusicBrainz IDs
-  artist_mbid: Schema.NullOr(Schema.Array(Schema.String)),
+  artist_mbid: Schema.Array(Schema.String), // Always an array, never null (can be empty)
   recording_mbid: Schema.NullOr(Schema.String),
   release_mbid: Schema.NullOr(Schema.String),
   release_group_mbid: Schema.NullOr(Schema.String)
@@ -46,8 +46,8 @@ export class TimelineResponse extends Schema.Class<TimelineResponse>("TimelineRe
   next_cursor: Schema.NullOr(Schema.String),
   has_more: Schema.Boolean,
   query_time_ms: Schema.Number,
-  total_count: Schema.optional(Schema.Number),
-  anchor_position: Schema.optional(Schema.Number)
+  total_count: Schema.NullOr(Schema.Number),
+  anchor_position: Schema.NullOr(Schema.Number)
 }) {}
 
 /**
