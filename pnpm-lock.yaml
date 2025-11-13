@@ -64,6 +64,19 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@24.10.0)
 
+  packages/api:
+    dependencies:
+      '@effect/platform':
+        specifier: ^0.93.0
+        version: 0.93.0(effect@3.19.3)
+      effect:
+        specifier: ^3.19.3
+        version: 3.19.3
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
   packages/cli:
     dependencies:
       '@crate/domain':
@@ -154,6 +167,9 @@ importers:
 
   packages/web:
     dependencies:
+      '@crate/api':
+        specifier: workspace:*
+        version: link:../api
       '@effect-atom/atom':
         specifier: ^0.4.0
         version: 0.4.2(@effect/experimental@0.57.0(@effect/platform@0.93.0(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.93.0(effect@3.19.3))(@effect/rpc@0.72.1(@effect/platform@0.93.0(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)

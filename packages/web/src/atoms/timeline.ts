@@ -1,10 +1,7 @@
 import { Atom, Result } from "@effect-atom/atom-react"
-import { HttpClient } from "@effect/platform"
-import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
-import * as HttpClientResponse from "@effect/platform/HttpClientResponse"
 import { Effect, Schema, Schedule, Stream } from "effect"
-import { httpRuntime } from "@/lib/http-runtime"
-import { PlayResult, TimelineResponse } from "@/domain/Play"
+import { httpRuntime, kexpApiClient } from "@/lib/http-runtime"
+import { PlayResult } from "@/domain/Play"
 import { NetworkError, TimelineApiError } from "@/domain/errors"
 
 /**
@@ -43,26 +40,28 @@ export class TimelineState extends Schema.Class<TimelineState>("TimelineState")(
   anchorPosition: Schema.optional(Schema.Number)
 }) {}
 
-// Effect to fetch timeline data
+// Effect to fetch timeline data using HttpApiClient
 const fetchTimelineEffect = Effect.gen(function* () {
-  const client = yield* HttpClient.HttpClient
+  const client = yield* kexpApiClient
 
-  const request = HttpClientRequest.get("/api/plays/timeline").pipe(
-    HttpClientRequest.setUrlParams({ limit: "50" })
-  )
-
-  const response = yield* client.execute(request).pipe(
-    Effect.mapError((cause): NetworkError => new NetworkError({
-      cause,
-      url: "/api/plays/timeline"
-    }))
-  )
-
-  const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response).pipe(
-    Effect.mapError((cause): TimelineApiError => new TimelineApiError({
-      cause,
-      context: "Failed to parse timeline response"
-    }))
+  // Type-safe API call with automatic schema validation
+  const data = yield* client.timeline.getTimeline({
+    urlParams: { limit: 50 }
+  }).pipe(
+    Effect.mapError((cause): NetworkError | TimelineApiError => {
+      // Check if it's a parse error (schema validation)
+      if (cause._tag === "ParseError") {
+        return new TimelineApiError({
+          cause,
+          context: "Failed to parse timeline response"
+        })
+      }
+      // Otherwise it's a network/HTTP error
+      return new NetworkError({
+        cause,
+        url: "/api/plays/timeline"
+      })
+    })
   )
 
   return new TimelineState({
@@ -121,28 +120,23 @@ export const appendPlaysAtom = httpRuntime.fn<{ cursor: string; currentState: Ti
   (params) => Effect.gen(function* () {
     const { cursor, currentState } = params
 
-    // Perform HTTP operation
-    const client = yield* HttpClient.HttpClient
-
-    const request = HttpClientRequest.get("/api/plays/timeline").pipe(
-      HttpClientRequest.setUrlParams({
-        cursor,
-        limit: "50"
+    // Type-safe API call with cursor pagination
+    const client = yield* kexpApiClient
+    const data = yield* client.timeline.getTimeline({
+      urlParams: { cursor, limit: 50 }
+    }).pipe(
+      Effect.mapError((cause): NetworkError | TimelineApiError => {
+        if (cause._tag === "ParseError") {
+          return new TimelineApiError({
+            cause,
+            context: "Failed to append plays"
+          })
+        }
+        return new NetworkError({
+          cause,
+          url: `/api/plays/timeline?cursor=${cursor}`
+        })
       })
-    )
-
-    const response = yield* client.execute(request).pipe(
-      Effect.mapError((cause): NetworkError => new NetworkError({
-        cause,
-        url: `/api/plays/timeline?cursor=${cursor}`
-      }))
-    )
-
-    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response).pipe(
-      Effect.mapError((cause): TimelineApiError => new TimelineApiError({
-        cause,
-        context: "Failed to append plays"
-      }))
     )
 
     // Create new state with appended plays
@@ -165,30 +159,28 @@ export const jumpToPositionAtom = httpRuntime.fn<{
   percentage?: number
 }>()(
   (params) => Effect.gen(function* () {
-    // Perform HTTP operation
-    const client = yield* HttpClient.HttpClient
-
-    const urlParams: Record<string, string> = { limit: "50" }
-    if (params.anchor_id !== undefined) urlParams.anchor_id = String(params.anchor_id)
-    if (params.since !== undefined) urlParams.since = params.since
-    if (params.percentage !== undefined) urlParams.percentage = String(params.percentage)
-
-    const request = HttpClientRequest.get("/api/plays/timeline").pipe(
-      HttpClientRequest.setUrlParams(urlParams)
-    )
-
-    const response = yield* client.execute(request).pipe(
-      Effect.mapError((cause): NetworkError => new NetworkError({
-        cause,
-        url: `/api/plays/timeline with params ${JSON.stringify(params)}`
-      }))
-    )
-
-    const data = yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response).pipe(
-      Effect.mapError((cause): TimelineApiError => new TimelineApiError({
-        cause,
-        context: "Failed to jump to position"
-      }))
+    // Type-safe API call with position params
+    const client = yield* kexpApiClient
+    const data = yield* client.timeline.getTimeline({
+      urlParams: {
+        limit: 50,
+        anchor_id: params.anchor_id,
+        since: params.since,
+        percentage: params.percentage
+      }
+    }).pipe(
+      Effect.mapError((cause): NetworkError | TimelineApiError => {
+        if (cause._tag === "ParseError") {
+          return new TimelineApiError({
+            cause,
+            context: "Failed to jump to position"
+          })
+        }
+        return new NetworkError({
+          cause,
+          url: `/api/plays/timeline with params ${JSON.stringify(params)}`
+        })
+      })
     )
 
     // Create new state with fetched plays
@@ -198,7 +190,7 @@ export const jumpToPositionAtom = httpRuntime.fn<{
       hasMore: data.has_more,
       isLoading: false,
       error: null,
-      anchorPosition: data.anchor_position
+      anchorPosition: data.anchor_position ?? undefined
     })
   })
 )
