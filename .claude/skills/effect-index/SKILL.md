@@ -22,17 +22,29 @@ Use this as a quick router to the right Skill for your task. Each entry links to
 - Time, logging, spans/tracing → [Time/Tracing/Logging](../effect-time-tracing-logging/SKILL.md)
 - Queues, PubSub, background workers → [Queues & Background](../effect-queues-background/SKILL.md)
 - Write tests/mocks for services → [Testing & Mocking](../effect-testing-mocking/SKILL.md)
+- **Looking for specific patterns or examples** → [**Patterns Hub (130+ patterns)**](../effect-patterns-hub/SKILL.md)
 
-## Cross-Skill Patterns (from EffectPatterns)
+## Cross-Skill Patterns
 
-- Retry transient failures with schedules → see [Errors & Retries](../effect-errors-retries/SKILL.md) and [EffectPatterns (Retry Operations Based on Specific Errors)](https://github.com/PaulJPhilp/EffectPatterns)
-- Resource-safe streaming → see [Streams & Pipelines](../effect-streams-pipelines/SKILL.md) and [EffectPatterns (Manage Resources Safely in a Pipeline)](https://github.com/PaulJPhilp/EffectPatterns)
-- Graceful shutdown with runFork → see [Queues & Background](../effect-queues-background/SKILL.md) and [EffectPatterns (Execute Long-Running Apps with Effect.runFork)](https://github.com/PaulJPhilp/EffectPatterns)
+All patterns are now available locally in the [Patterns Hub](../effect-patterns-hub/SKILL.md) (130+ patterns):
+
+- **Retry transient failures** → [Errors & Retries](../effect-errors-retries/SKILL.md) + [retry-based-on-specific-errors.mdx](../effect-patterns-hub/patterns/retry-based-on-specific-errors.mdx)
+- **Resource-safe streaming** → [Streams & Pipelines](../effect-streams-pipelines/SKILL.md) + [stream-manage-resources.mdx](../effect-patterns-hub/patterns/stream-manage-resources.mdx)
+- **Graceful shutdown** → [Queues & Background](../effect-queues-background/SKILL.md) + [execute-long-running-apps-with-runfork.mdx](../effect-patterns-hub/patterns/execute-long-running-apps-with-runfork.mdx)
+- **Service layer design** → [Layers & Services](../effect-layers-services/SKILL.md) + [model-dependencies-as-services.mdx](../effect-patterns-hub/patterns/model-dependencies-as-services.mdx)
+- **HTTP server setup** → [HTTP & Routing](../effect-http-routing/SKILL.md) + [build-a-basic-http-server.mdx](../effect-patterns-hub/patterns/build-a-basic-http-server.mdx)
+- **Schema validation** → [Config & Schema](../effect-config-schema/SKILL.md) + [define-contracts-with-schema.mdx](../effect-patterns-hub/patterns/define-contracts-with-schema.mdx)
+- **Testing with mocks** → [Testing & Mocking](../effect-testing-mocking/SKILL.md) + [mocking-dependencies-in-tests.mdx](../effect-patterns-hub/patterns/mocking-dependencies-in-tests.mdx)
+
+**Tip**: For any "How do I...?" question, check the [Patterns Hub](../effect-patterns-hub/SKILL.md) decision tree first!
 
 ## References
 
 - Agent Skills overview: [Introducing Agent Skills](https://www.anthropic.com/news/skills)
 - Skills guide: [Claude Code Skills Documentation](https://docs.claude.com/en/docs/claude-code/skills)
-- EffectPatterns (patterns index): [PaulJPhilp/EffectPatterns](https://github.com/PaulJPhilp/EffectPatterns)
+- **Local Patterns Hub**: [../effect-patterns-hub/SKILL.md](../effect-patterns-hub/SKILL.md) (130+ patterns)
+- **Pattern Documentation**: [../../docs/effect-patterns/](../../docs/effect-patterns/)
+- **AGENTS.md**: [../../AGENTS.md](../../AGENTS.md) (Effect best practices for AI agents)
+- EffectPatterns (upstream source): [PaulJPhilp/EffectPatterns](https://github.com/PaulJPhilp/EffectPatterns)
 
 

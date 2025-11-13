@@ -120,44 +120,62 @@ yield* mcp__effect-docs__get_effect_doc({
 - "Fiber fork join interrupt lifecycle"
 - "Schedule retry exponential backoff"
 
-## Research Protocol: EffectPatterns Repository (External Patterns Index)
+## Research Protocol: Local Effect Patterns Library
 
-**Primary external reference for idiomatic Effect patterns.**
+**Primary reference for idiomatic Effect patterns - now available locally!**
 
-When implementing or reviewing code, consult the EffectPatterns repository first to see if a pattern already exists that fits your use case:
+All 130+ Effect patterns from the EffectPatterns repository are now available locally in this codebase. Always consult the local patterns first before implementing any Effect code:
 
-- Repo: https://github.com/PaulJPhilp/EffectPatterns  
-- What it is: A community-driven, curated knowledge base of **practical Effect-TS patterns** with short, focused examples (e.g., creation with `Effect.succeed` / `Effect.fail`, Promise interop, resource management with `Scope`, time, tools, streams, etc.).  
-- Why use it: It encodes proven idioms and naming consistent with the Effect community and is frequently updated, making it a reliable source for canonical approaches.
+- **Local Patterns**: `.claude/skills/effect-patterns-hub/patterns/` (130+ MDX files)
+- **Pattern Hub Skill**: `.claude/skills/effect-patterns-hub/SKILL.md` (comprehensive index and decision tree)
+- **Documentation**: `docs/effect-patterns/` (same patterns, accessible to developers)
+- **Best Practices**: `AGENTS.md` (Effect-TS best practices for AI agents)
+- **Upstream Source**: https://github.com/PaulJPhilp/EffectPatterns (for reference only)
 
-### How to search it quickly
+### How to search local patterns
 
-Prefer local search so Grep/Read tools work consistently in this agent:
+Use Read and Grep tools to search the local pattern library:
 
 ```bash
-# one-time clone (choose any cache dir you like)
-mkdir -p .cache && \
-  test -d .cache/EffectPatterns || \
-  git clone --depth=1 https://github.com/PaulJPhilp/EffectPatterns .cache/EffectPatterns
+# Find patterns by keyword
+grep -l "Stream" .claude/skills/effect-patterns-hub/patterns/*.mdx
+grep -l "error" .claude/skills/effect-patterns-hub/patterns/*.mdx
+grep -l "concurrent" .claude/skills/effect-patterns-hub/patterns/*.mdx
 
-# update when needed
-git -C .cache/EffectPatterns pull --ff-only || true
+# Find patterns by use case
+grep -l "useCase: error-handling" .claude/skills/effect-patterns-hub/patterns/*.mdx
+grep -l "useCase: concurrency" .claude/skills/effect-patterns-hub/patterns/*.mdx
+grep -l "useCase: testing" .claude/skills/effect-patterns-hub/patterns/*.mdx
 
-# example: find stream patterns
-grep -R "Stream\\." -n .cache/EffectPatterns | head -n 30
-# example: find scope/resource patterns
-grep -R "Scope" -n .cache/EffectPatterns | head -n 30
-# example: find creation patterns
-grep -R "Effect\\.succeed" -n .cache/EffectPatterns | head -n 30
+# Read a specific pattern
+Read(".claude/skills/effect-patterns-hub/patterns/use-gen-for-business-logic.mdx")
+Read(".claude/skills/effect-patterns-hub/patterns/retry-based-on-specific-errors.mdx")
+```
 
-If you cannot clone, fall back to web lookup (open the repo URL and browse the pattern list).
+### Quick Pattern Lookup
+
+Use the **Pattern Hub decision tree** at `.claude/skills/effect-patterns-hub/SKILL.md` for instant pattern selection:
+
+- Creating Effects? → `constructor-*.mdx` patterns
+- Error handling? → `pattern-catchtag.mdx`, `handle-errors-with-catch.mdx`, `retry-based-on-specific-errors.mdx`
+- Concurrency? → `run-effects-in-parallel-with-all.mdx`, `run-background-tasks-with-fork.mdx`
+- Streaming? → `process-streaming-data-with-stream.mdx`, `stream-manage-resources.mdx`
+- Services? → `model-dependencies-as-services.mdx`, `understand-layers-for-dependency-injection.mdx`
+- Testing? → `mocking-dependencies-in-tests.mdx`, `use-default-layer-for-tests.mdx`
 
 **How to apply patterns during implementation**
-	1.	Identify the intent (creation, error handling, concurrency, streams, scope/resource, scheduling/time, tools, Promise interop).
-	2.	Search EffectPatterns for a matching idiom; prefer examples tagged closest to your intent.
-	3.	Lift the shape: replicate the structure (operators, error tagging, provide/layering, Effect.all concurrency options, Schedule usage) and adapt names/types to our codebase.
-	4.	Cite the source when non-obvious, e.g.:
-  // Pattern adapted from EffectPatterns: "Create Pre-resolved Effects with succeed and fail"
+1. **Check Pattern Hub**: Open `.claude/skills/effect-patterns-hub/SKILL.md` and use decision tree
+2. **Read Pattern**: Use Read tool on the specific pattern file
+3. **Understand Structure**: Each pattern includes Guideline, Rationale, Good Example, Bad Example
+4. **Adapt to Context**: Replicate the structure and adapt names/types to our codebase
+5. **Follow Best Practices**: Cross-reference with `AGENTS.md` for coding standards
+6. **Cite Source**: Reference pattern when non-obvious, e.g.:
+   ```typescript
+   // Pattern: use-gen-for-business-logic.mdx
+   const program = Effect.gen(function* () {
+     // ...
+   })
+   ```
 
   ---
 

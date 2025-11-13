@@ -19,7 +19,7 @@ export const httpRuntime = Atom.runtime(
 
 This enables reactive patterns for all atoms created with `httpRuntime`.
 
-## Pattern 1: Manual State Management (Current Timeline Implementation)
+## Pattern 1: Manual State Management (Legacy Timeline Implementation)
 
 ### When to Use
 
@@ -87,7 +87,7 @@ function Timeline() {
 - ❌ More boilerplate code
 - ❌ No automatic cache invalidation
 
-## Pattern 2: Reactive State Management (Available for Simple Queries)
+## Pattern 2: Reactive State Management (Timeline + Simple Queries)
 
 ### When to Use
 
@@ -250,10 +250,9 @@ const handleRefetch = () => refetch() // Atom auto-updates!
 
 ## Summary
 
-- **Timeline uses Manual State** because it's infinite-scroll with append operations
-- **Reactive State is available** for simpler queries that should auto-refresh
-- **httpRuntime has Reactivity** enabled for when you need it
-- **Choose the right pattern** based on your use case complexity
+- **Timeline now uses the Reactive State pattern** via `timelineAtom`, which auto-refreshes and no longer manages manual persistence.
+- Manual state remains a viable tool for complex flows (pagination, optimistic updates), but prefer the reactive approach when possible.
+- `httpRuntime` includes Reactivity so all atoms can opt-in to automatic invalidation behavior.
 
 ## References
 
