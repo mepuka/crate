@@ -1,6 +1,8 @@
 import { Atom } from "@effect-atom/atom-react"
 import { FetchHttpClient, HttpClient } from "@effect/platform"
 import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
+import { BrowserKeyValueStore } from "@effect/platform-browser"
+import { Reactivity } from "@effect/experimental"
 import { Effect, Layer } from "effect"
 
 // Get base URL from Vite environment variable
@@ -24,5 +26,10 @@ const configuredHttpLayer = Layer.effect(
   })
 ).pipe(Layer.provide(baseHttpLayer))
 
-// Combined runtime with configured HTTP client
-export const httpRuntime = Atom.runtime(configuredHttpLayer)
+// Combined runtime with configured HTTP client and Reactivity support
+export const httpRuntime = Atom.runtime(
+  configuredHttpLayer.pipe(Layer.provide(Reactivity.layer))
+)
+
+// localStorage runtime for persisting state
+export const localStorageRuntime = Atom.runtime(BrowserKeyValueStore.layerLocalStorage)

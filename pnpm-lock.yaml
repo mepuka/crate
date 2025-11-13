@@ -160,6 +160,9 @@ importers:
       '@effect-atom/atom-react':
         specifier: ^0.4.0
         version: 0.4.0(@effect/experimental@0.57.0(@effect/platform@0.93.0(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.93.0(effect@3.19.3))(@effect/rpc@0.72.1(@effect/platform@0.93.0(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)(react@18.3.1)(scheduler@0.23.2)
+      '@effect/experimental':
+        specifier: ^0.57.0
+        version: 0.57.0(@effect/platform@0.93.0(effect@3.19.3))(effect@3.19.3)
       '@effect/platform':
         specifier: ^0.93.0
         version: 0.93.0(effect@3.19.3)
