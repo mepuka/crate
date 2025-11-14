@@ -8,17 +8,15 @@ import { Link } from '@tanstack/react-router'
 
 const playCardVariants = cva(
   [
-    "group relative z-10 border-b border-border/50 bg-card timeline-item",
+    "group relative z-10",
     "transition-colors duration-200 ease-out",
-    "hover:bg-card-foreground/5 hover:border-primary/30",
-    "focus-within:bg-muted/40 focus-within:outline-none focus-within:ring-2 focus-within:ring-ring",
+    "focus-within:outline-none focus-within:ring-1 focus-within:ring-primary/50",
     "cursor-pointer",
-    "isolation-isolate",
   ],
   {
     variants: {
       variant: {
-        default: "bg-card border-border",
+        default: "",
         focused: "bg-primary/5 border-primary shadow-lg ring-2 ring-primary",
         dimmed: "opacity-60"
       },
@@ -42,7 +40,7 @@ interface PlayCardProps extends VariantProps<typeof playCardVariants> {
   className?: string
 }
 
-export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
+export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
   ({ play, variant, size, isFocused, className }, ref) => {
     const imageSize = size === 'compact' ? 80 : size === 'expanded' ? 160 : 120
 
@@ -50,10 +48,7 @@ export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
     const releaseYear = play.airdate ? new Date(play.airdate).getFullYear() : null
 
     return (
-      <Link
-        to="/play/$id"
-        params={{ id: String(play.id) }}
-        search={(prev) => prev}
+      <div
         ref={ref}
         className={cn(
           playCardVariants({
@@ -62,19 +57,26 @@ export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
           }),
           className
         )}
-        tabIndex={0}
         role="article"
         aria-label={`${play.song} by ${play.artist} played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`}
       >
-        <div className="flex gap-3 py-2">
-          {/* Album Art - only render if image exists */}
-          {(play.thumbnail_uri || play.image_uri) && (
-            <AlbumArt
-              src={play.thumbnail_uri || play.image_uri}
-              alt={`${play.album} by ${play.artist}`}
-              size={imageSize}
-            />
-          )}
+        {/* Invisible link overlay for entire card */}
+        <Link
+          to="/play/$id"
+          params={{ id: String(play.id) }}
+          search={(prev) => prev}
+          className="absolute inset-0 z-0"
+          tabIndex={0}
+          aria-label={`View ${play.song} by ${play.artist}`}
+        />
+
+        <div className="relative z-10 flex gap-3 py-2">
+          {/* Album Art */}
+          <AlbumArt
+            src={play.thumbnail_uri || play.image_uri}
+            alt={`${play.album} by ${play.artist}`}
+            size={imageSize}
+          />
 
           {/* Metadata */}
           <div className="flex-1 min-w-0 flex flex-col gap-1 py-0">
@@ -144,8 +146,7 @@ export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
             )}
           </div>
         </div>
-
-      </Link>
+      </div>
     )
   }
 )

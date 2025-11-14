@@ -54,13 +54,18 @@ const AlbumArtworkServiceLive = Layer.succeed(
           `Processing ${plays.length} plays for album artwork (max: ${maxCount})`
         );
 
+        // Sort by airdate (newest first) - moved from main thread
+        const sorted = [...plays].sort(
+          (a, b) => b.airdate.getTime() - a.airdate.getTime()
+        );
+
         // Filter plays with artwork and take max count
-        const withArtwork = plays
+        const withArtwork = sorted
           .filter((play) => play.thumbnail_uri || play.image_uri)
           .slice(0, maxCount);
 
         yield* Effect.logInfo(
-          `Found ${withArtwork.length} plays with album artwork`
+          `Found ${withArtwork.length} plays with album artwork after sorting and filtering`
         );
 
         // Map to AlbumArtworkData structure

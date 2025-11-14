@@ -78,15 +78,47 @@
 }
 
 @layer components {
-  /* Scrolling Album Bar Styles */
-  .scrolling-album-bar {
-    animation: slideInFromTop 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Multi-row Background Album Grid Styles */
+  .album-grid-background {
+    /* GPU acceleration */
+    transform: translateZ(0);
+    will-change: transform;
+    /* Smooth entrance animation */
+    animation: slideInFromTop 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .scrolling-album-bar canvas {
+  .album-grid-background canvas {
+    /* Optimize for photos, not pixel art */
     image-rendering: auto;
-    image-rendering: crisp-edges;
-    image-rendering: -webkit-optimize-contrast;
+    /* GPU acceleration for canvas */
+    will-change: contents;
+    transform: translateZ(0);
+  }
+
+  /* Blur overlay optimization */
+  .album-grid-blur {
+    /* Force GPU layer for blur */
+    transform: translate3d(0, 0, 0);
+    will-change: backdrop-filter;
+    /* Use content containment - less restrictive, prevents clipping */
+    contain: content;
+    /* Ensure it stays behind foreground */
+    isolation: isolate;
+  }
+
+  /* Fallback for browsers without backdrop-filter */
+  @supports not (backdrop-filter: blur(20px)) {
+    .album-grid-blur {
+      background: hsl(var(--background) / 0.95) !important;
+    }
+  }
+
+  /* Safari-specific optimizations */
+  @supports (-webkit-backdrop-filter: blur(20px)) {
+    .album-grid-blur {
+      /* Force compositing layer in Safari */
+      -webkit-transform: translate3d(0, 0, 0);
+    }
   }
 }
 
@@ -117,42 +149,73 @@
     animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
-  /* Timeline visual elements */
-  .timeline-list {
-    position: relative;
-    padding-left: 1rem;
+
+  /* Shimmer/Sheen hover effect */
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%) rotate(-45deg);
+    }
+    100% {
+      transform: translateX(200%) rotate(-45deg);
+    }
   }
 
-  .timeline-list::before {
+  .hover-shimmer {
+    position: relative;
+  }
+
+  .hover-shimmer::before {
     content: '';
     position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 2px;
+    inset: 0;
     background: linear-gradient(
-      to bottom,
+      90deg,
       transparent 0%,
-      hsl(var(--border)) 10%,
-      hsl(var(--border)) 90%,
+      rgba(255, 255, 255, 0.05) 45%,
+      rgba(255, 255, 255, 0.15) 50%,
+      rgba(255, 255, 255, 0.05) 55%,
       transparent 100%
     );
+    transform: translateX(-100%) rotate(-45deg);
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 0;
+    overflow: clip;
   }
 
-  .timeline-item {
-    position: relative;
+  .hover-shimmer:hover::before {
+    opacity: 1;
+    animation: shimmer 1.2s ease-in-out;
   }
 
-  .timeline-item::before {
-    content: '';
-    position: absolute;
-    left: -0.875rem;
-    top: 1.5rem;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: hsl(var(--primary));
-    border: 2px solid hsl(var(--background));
-    z-index: 10;
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .hover-shimmer::before {
+      animation: none;
+    }
+    .hover-shimmer:hover::before {
+      opacity: 0.3;
+      transform: none;
+    }
+  }
+
+  /* Text shadow utilities for WCAG AA compliance over album backgrounds */
+  .text-shadow-album {
+    text-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.8),
+      0 0 8px rgba(0, 0, 0, 0.6);
+  }
+
+  .text-shadow-album-strong {
+    text-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.9),
+      0 0 12px rgba(0, 0, 0, 0.7);
+  }
+
+  .text-shadow-album-subtle {
+    text-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.7),
+      0 0 6px rgba(0, 0, 0, 0.5);
   }
 }

@@ -11,8 +11,9 @@ export type { AlbumArtworkData };
 
 /**
  * Number of recent plays to show in the scrolling album bar
+ * Research recommended 100 minimum to avoid visible repetition in 4-row grid
  */
-export const ALBUM_BAR_PLAY_COUNT = 25;
+export const ALBUM_BAR_PLAY_COUNT = 100;
 
 /**
  * Reactive atom that loads album artwork using the Web Worker.
@@ -34,15 +35,12 @@ export const recentAlbumArtAtom = TimelineRuntime.atom(
     // Get plays chunk from KVS
     const playsChunk = yield* timelineKVS.getPlaysChunk();
 
-    // Sort by airdate (newest first) and take N plays
-    const sortedArray = Chunk.toReadonlyArray(playsChunk);
-    const recentPlays = [...sortedArray]
-      .sort((a, b) => b.airdate.getTime() - a.airdate.getTime())
-      .slice(0, ALBUM_BAR_PLAY_COUNT);
+    // Convert to array - worker will handle sorting and filtering
+    const playsArray = Chunk.toReadonlyArray(playsChunk);
 
-    // Send to worker for processing
+    // Send to worker for sorting, filtering, and processing
     const artwork = yield* workerClient.loadArtwork(
-      recentPlays,
+      playsArray,
       ALBUM_BAR_PLAY_COUNT
     );
 
