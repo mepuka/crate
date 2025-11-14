@@ -4,44 +4,17 @@ import { BrowserKeyValueStore } from "@effect/platform-browser";
 import { Reactivity } from "@effect/experimental";
 import { KeyValueStore } from "@effect/platform";
 import {
+  Chunk,
   Duration,
   Effect,
+  HashSet,
   Layer,
   Option,
   Schedule,
   Schema,
-  Stream,
 } from "effect";
 import { KexpApi, PlayResult } from "@crate/api";
-
-// Get base URL from Vite environment variable
-const getBaseUrl = (): string => {
-  const meta = import.meta as {
-    env?: { DEV?: boolean; VITE_API_BASE_URL?: string };
-  };
-
-  if (meta.env?.VITE_API_BASE_URL) {
-    return meta.env.VITE_API_BASE_URL;
-  }
-
-  if (meta.env?.DEV) {
-    // Use Vite proxy so dev traffic stays same-origin
-    return "/api";
-  }
-
-  if (typeof window !== "undefined") {
-    if (window.location.hostname === "localhost") {
-      return "/api";
-    }
-
-    if (window.location.host.includes("duckdns.org")) {
-      return "/api";
-    }
-  }
-
-  // Fallback to the public API domain for static builds / SSR
-  return "https://cratemusic.duckdns.org";
-};
+import { sortPlaysByAirdateDesc } from "./timeline-utils";
 
 // Combined runtime with configured HTTP client and Reactivity support
 
@@ -58,9 +31,11 @@ class TimelineClient extends AtomHttpApi.Tag<TimelineClient>()(
 /**
  * TimelineKVS Service
  *
- * Provides localStorage operations for timeline state:
- * - Store/retrieve plays by ID
- * - Store/retrieve last seen play ID
+ * Provides localStorage operations for timeline state using proper Effect data structures:
+ * - Chunk<PlayResult> for ordered storage (maintains insertion order, newest first)
+ * - HashSet<number> for O(1) fast lookup of play IDs
+ * - Individual play storage by ID
+ * - Last seen play ID tracking
  * - Reactive streams that update when KVS changes
  */
 export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
@@ -71,12 +46,110 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
     const playStore = kvs.forSchema(PlayResult);
     const lastSeenIdStore = kvs.forSchema(Schema.Number);
 
-    // Store a play by ID
+    // Use Chunk for ordered storage and HashSet for fast lookups
+    const playsChunkStore = kvs.forSchema(Schema.Chunk(PlayResult));
+    const playIdsHashSetStore = kvs.forSchema(Schema.HashSet(Schema.Number));
+
+    // Reconstruct chunk from all individual plays in KVS
+    // This is the single source of truth - loads ALL plays stored individually
+    // Uses the HashSet stored in KVS to get all play IDs (no direct localStorage access)
+    const reconstructChunkFromAllPlays = () =>
+      Effect.gen(function* () {
+        // Get the HashSet of play IDs from KVS (our source of truth for which plays exist)
+        const playIdsHashSetOption = yield* playIdsHashSetStore.get(
+          "timeline:play_ids_set"
+        );
+
+        // Get play IDs from HashSet, or start with empty if HashSet doesn't exist yet
+        const playIds = Option.match(playIdsHashSetOption, {
+          onNone: () => [] as number[],
+          onSome: (hashSet) => HashSet.toValues(hashSet),
+        });
+
+        if (playIds.length === 0) {
+          yield* Effect.log(
+            "No plays found in HashSet, starting with empty chunk"
+          );
+          const emptyChunk = Chunk.empty<PlayResult>();
+          yield* playsChunkStore.set("timeline:plays_chunk", emptyChunk);
+          return emptyChunk;
+        }
+
+        yield* Effect.log(
+          `Reconstructing chunk from ${playIds.length} play IDs in HashSet`
+        );
+
+        // Load all plays in parallel using the play IDs from HashSet
+        const playOptions = yield* Effect.all(
+          playIds.map((id) => playStore.get(`timeline:play:${id}`)),
+          { concurrency: "unbounded" }
+        );
+
+        // Filter out None values and extract plays
+        // (Some plays might have been removed from KVS but still in HashSet)
+        const plays = playOptions
+          .filter((opt): opt is Option.Some<PlayResult> => Option.isSome(opt))
+          .map((opt) => opt.value);
+
+        // Update HashSet to remove any IDs that no longer have plays
+        const validPlayIds = plays.map((play) => play.id);
+        const validPlayIdsSet = HashSet.fromIterable(validPlayIds);
+
+        // Sort by airdate (newest first) using Order utilities
+        const sortedPlays = sortPlaysByAirdateDesc(Chunk.fromIterable(plays));
+
+        // Persist the reconstructed chunk and updated HashSet
+        yield* playsChunkStore.set("timeline:plays_chunk", sortedPlays);
+        yield* playIdsHashSetStore.set(
+          "timeline:play_ids_set",
+          validPlayIdsSet
+        );
+
+        // Don't invalidate reactivity here - atoms aren't created yet during initialization
+        yield* Effect.log(
+          `Reconstructed chunk with ${Chunk.size(sortedPlays)} plays from KVS`
+        );
+
+        return sortedPlays;
+      });
+
+    // Initialize: Reconstruct chunk on service creation (before atoms are created)
+    yield* Effect.log(
+      "Initializing TimelineKVS: Reconstructing chunk from all plays"
+    );
+    yield* reconstructChunkFromAllPlays();
+
+    // Store a play by ID and maintain HashSet for fast lookups
+    // The chunk is always reconstructed from the HashSet, so we only update the HashSet here
     const storePlay = (play: PlayResult) =>
       Effect.gen(function* () {
+        // Store individual play (single source of truth)
         yield* playStore.set(`timeline:play:${play.id}`, play);
         // Invalidate reactivity key so reactive streams refetch
         yield* Reactivity.invalidate([`timeline:play:${play.id}`]);
+
+        // Get current HashSet from KVS
+        const currentHashSetOption = yield* playIdsHashSetStore.get(
+          "timeline:play_ids_set"
+        );
+
+        // Initialize with empty HashSet if not present
+        const currentHashSet = Option.getOrElse(currentHashSetOption, () =>
+          HashSet.empty<number>()
+        );
+
+        // Fast O(1) lookup to check if play already exists
+        if (!HashSet.has(currentHashSet, play.id)) {
+          // Add to HashSet (this is the source of truth for which plays exist)
+          const newHashSet = HashSet.add(currentHashSet, play.id);
+
+          // Persist HashSet - chunk will be reconstructed when needed
+          yield* playIdsHashSetStore.set("timeline:play_ids_set", newHashSet);
+
+          // Invalidate reactivity key for the plays chunk
+          // This triggers atoms to refetch, which will reconstruct the chunk from HashSet
+          yield* Reactivity.invalidate(["timeline:plays_chunk"]);
+        }
       });
 
     // Get a play by ID (for use in atoms - Effect Atom handles reactivity)
@@ -104,12 +177,32 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
         });
       });
 
+    // Get the list of play IDs in order (from Chunk, maintaining insertion order)
+    // Reconstructs from all plays to ensure single source of truth
+    const getPlayIds = () =>
+      Effect.gen(function* () {
+        const chunk = yield* reconstructChunkFromAllPlays();
+        // Extract IDs from Chunk in order (newest first)
+        return Chunk.toReadonlyArray(chunk).map((play) => play.id);
+      });
+
+    // Get the Chunk of plays directly (for advanced use cases)
+    // Reconstructs from all individual plays to ensure single source of truth
+    const getPlaysChunk = () =>
+      Effect.gen(function* () {
+        // Reconstruct from all individual plays to ensure we have the complete set
+        // This is the single source of truth
+        return yield* reconstructChunkFromAllPlays();
+      });
+
     return {
       storePlay,
       getPlay,
       setLastSeenId,
       getLastSeenId,
       getLastSeenPlay,
+      getPlayIds,
+      getPlaysChunk,
     } as const;
   }),
   dependencies: [BrowserKeyValueStore.layerLocalStorage, Reactivity.layer],
@@ -119,100 +212,35 @@ export const FetchLatestLive = Effect.gen(function* () {
   const client = yield* TimelineClient;
   const timelineKVS = yield* TimelineKVS;
 
-  // Get last seen play ID from KVS
-  const lastSeenIdOption = yield* timelineKVS.getLastSeenId();
+  // Fetch latest 50 plays on every request to ensure we don't miss any due to ordering changes
+  // This guarantees we're in sync even if the order of recent plays changes
+  yield* Effect.log("Fetching latest 50 plays to ensure sync");
 
-  // Fetch latest play
   const latestTimeline = yield* client.timeline.getTimeline({
-    urlParams: { limit: 1 },
+    urlParams: { limit: 50 },
   });
 
-  const latestPlay = latestTimeline.results[0];
+  if (latestTimeline.results.length > 0) {
+    // Store all fetched plays (storePlay handles deduplication via HashSet)
+    yield* Effect.all(
+      latestTimeline.results.map((play) => timelineKVS.storePlay(play)),
+      { concurrency: "unbounded" }
+    );
 
-  if (latestPlay) {
-    // Store the latest play
-    yield* timelineKVS.storePlay(latestPlay);
+    // Get the latest play (first in the results, sorted by airdate newest first)
+    const latestPlay = latestTimeline.results[0];
 
-    // Check if we need to fetch plays since last seen
-    yield* Option.match(lastSeenIdOption, {
-      onNone: () =>
-        Effect.gen(function* () {
-          yield* Effect.log(
-            "No last seen play, fetching most recent 200 plays"
-          );
+    // Update last seen to latest play
+    yield* timelineKVS.setLastSeenId(latestPlay.id);
 
-          // Fetch the most recent 200 plays
-          const recentTimeline = yield* client.timeline.getTimeline({
-            urlParams: { limit: 200 },
-          });
-
-          // Store all fetched plays
-          yield* Effect.all(
-            recentTimeline.results.map((play) => timelineKVS.storePlay(play)),
-            { concurrency: "unbounded" }
-          );
-
-          yield* Effect.log(
-            `Stored ${recentTimeline.results.length} recent plays`
-          );
-
-          // Set latest play as last seen
-          yield* timelineKVS.setLastSeenId(latestPlay.id);
-        }),
-      onSome: (lastSeenId) =>
-        Effect.gen(function* () {
-          // Get the last seen play to check its timestamp
-          const lastSeenPlayOption = yield* timelineKVS.getPlay(lastSeenId);
-
-          yield* Option.match(lastSeenPlayOption, {
-            onNone: () =>
-              Effect.gen(function* () {
-                yield* Effect.log(
-                  `Last seen ID ${lastSeenId} not found in KVS, updating to latest play`
-                );
-                yield* timelineKVS.setLastSeenId(latestPlay.id);
-              }),
-            onSome: (lastSeenPlay) =>
-              Effect.gen(function* () {
-                // Check if latest play is newer than last seen
-                if (latestPlay.airdate > lastSeenPlay.airdate) {
-                  // Fetch all plays since last seen timestamp
-                  yield* Effect.log(
-                    `Fetching plays since ${lastSeenPlay.airdate.toISOString()}`
-                  );
-
-                  const sinceTimeline = yield* client.timeline.getTimeline({
-                    urlParams: {
-                      limit: 200,
-                      since: lastSeenPlay.airdate.toISOString(),
-                    },
-                  });
-
-                  // Store all fetched plays
-                  yield* Effect.all(
-                    sinceTimeline.results.map((play) =>
-                      timelineKVS.storePlay(play)
-                    ),
-                    { concurrency: "unbounded" }
-                  );
-
-                  yield* Effect.log(
-                    `Stored ${sinceTimeline.results.length} plays since last seen`
-                  );
-                }
-
-                // Update last seen to latest play
-                yield* timelineKVS.setLastSeenId(latestPlay.id);
-                yield* Effect.log(
-                  `Updated last seen: play ${latestPlay.id} at ${latestPlay.airdate.toISOString()}`
-                );
-              }),
-          });
-        }),
-    });
+    yield* Effect.log(
+      `Stored ${latestTimeline.results.length} plays, latest: play ${latestPlay.id} at ${latestPlay.airdate.toISOString()}`
+    );
+  } else {
+    yield* Effect.log("No plays returned from timeline API");
   }
 }).pipe(
-  Effect.repeat(Schedule.spaced(Duration.millis(3000))),
+  Effect.repeat(Schedule.spaced(Duration.millis(10000))),
   Effect.forever,
   Effect.forkScoped,
   Effect.uninterruptible,

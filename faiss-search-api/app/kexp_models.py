@@ -491,6 +491,14 @@ class TrackPlay(BasePlay):
         examples=["2003-02-19", "2003-02", "2003"]
     )
 
+    @field_validator("release_date", mode="before")
+    @classmethod
+    def validate_release_date(cls, v: Any) -> str:
+        """Convert None to empty string for release_date."""
+        if v is None:
+            return ""
+        return v
+
     # Label information
     labels: list[str] = Field(
         default_factory=list,
