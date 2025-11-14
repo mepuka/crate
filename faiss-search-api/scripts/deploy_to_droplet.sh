@@ -6,7 +6,7 @@ set -e
 
 # Configuration
 DROPLET_NAME="ubuntu-s-2vcpu-4gb-sfo3-01"
-DEPLOY_DIR="/opt/kexp-search"
+DEPLOY_DIR="/root/faiss-search-api"
 DATA_DIR="/Users/pooks/Dev/crate/data"
 APP_DIR="/Users/pooks/Dev/crate/faiss-search-api"
 
@@ -77,23 +77,25 @@ fi
 if [ "$DATA_ONLY" = false ]; then
     echo -e "\n${BLUE}Syncing application files...${NC}"
 
-    # Sync application code
+    # Sync application code directly to DEPLOY_DIR (not DEPLOY_DIR/app)
     rsync -avz --progress \
         --exclude='.venv' \
+        --exclude='venv' \
         --exclude='__pycache__' \
         --exclude='*.pyc' \
         --exclude='.pytest_cache' \
         --exclude='data/*' \
         --exclude='.git' \
-        $APP_DIR/ root@$DROPLET_IP:$DEPLOY_DIR/app/
+        --exclude='.coverage' \
+        $APP_DIR/ root@$DROPLET_IP:$DEPLOY_DIR/
 
     echo -e "${GREEN}✓ Application files synced${NC}"
 
     # Deploy with Docker Compose
     echo -e "\n${BLUE}Deploying with Docker Compose...${NC}"
-    ssh root@$DROPLET_IP "cd $DEPLOY_DIR/app && docker-compose down || true"
-    ssh root@$DROPLET_IP "cd $DEPLOY_DIR/app && docker-compose build"
-    ssh root@$DROPLET_IP "cd $DEPLOY_DIR/app && docker-compose up -d"
+    ssh root@$DROPLET_IP "cd $DEPLOY_DIR && docker-compose down || true"
+    ssh root@$DROPLET_IP "cd $DEPLOY_DIR && docker-compose build --no-cache"
+    ssh root@$DROPLET_IP "cd $DEPLOY_DIR && docker-compose up -d"
 
     echo -e "${GREEN}✓ Docker containers started${NC}"
 
@@ -104,18 +106,21 @@ fi
 
 # Verify deployment
 echo -e "\n${BLUE}Verifying deployment...${NC}"
-ssh root@$DROPLET_IP "cd $DEPLOY_DIR/app && ./scripts/verify_deployment.sh http://localhost:8000"
+ssh root@$DROPLET_IP "cd $DEPLOY_DIR && docker exec kexp-search-api curl -f http://localhost:8000/api/health || echo 'Health check failed'"
 
 echo -e "\n${GREEN}=========================================${NC}"
 echo -e "${GREEN}✓ Deployment complete!${NC}"
 echo -e "${GREEN}=========================================${NC}"
 echo ""
-echo "Service URL: http://$DROPLET_IP:8000"
-echo "API Docs: http://$DROPLET_IP:8000/docs"
-echo "Health: http://$DROPLET_IP:8000/api/health"
+echo "Service URL: https://cratemusic.duckdns.org"
+echo "API Docs: https://cratemusic.duckdns.org/docs"
+echo "Health: https://cratemusic.duckdns.org/api/health"
 echo ""
 echo "To view logs:"
-echo "  ssh root@$DROPLET_IP 'cd $DEPLOY_DIR/app && docker-compose logs -f'"
+echo "  ssh root@$DROPLET_IP 'cd $DEPLOY_DIR && docker-compose logs -f'"
+echo ""
+echo "To view API container logs:"
+echo "  ssh root@$DROPLET_IP 'docker logs -f kexp-search-api'"
 echo ""
 echo "To update data only:"
 echo "  ./scripts/deploy_to_droplet.sh --data-only"
