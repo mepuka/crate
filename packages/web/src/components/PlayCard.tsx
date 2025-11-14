@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { formatPlayTime, formatRelativeTime } from '@/lib/date-utils'
 import { forwardRef } from 'react'
 import { AlbumArt } from './AlbumArt'
-import { toast } from 'sonner'
+import { Link } from '@tanstack/react-router'
 
 const playCardVariants = cva(
   [
@@ -41,21 +41,17 @@ interface PlayCardProps extends VariantProps<typeof playCardVariants> {
   className?: string
 }
 
-export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
+export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
   ({ play, variant, size, isFocused, className }, ref) => {
     const imageSize = size === 'compact' ? 80 : size === 'expanded' ? 160 : 120
-
-    const handleCopyLink = () => {
-      const url = `${window.location.origin}/play/${play.id}`
-      navigator.clipboard.writeText(url)
-      toast.success('Link copied to clipboard!')
-    }
 
     // Parse release year from airdate
     const releaseYear = play.airdate ? new Date(play.airdate).getFullYear() : null
 
     return (
-      <div
+      <Link
+        to="/play/$id"
+        params={{ id: String(play.id) }}
         ref={ref}
         className={cn(
           playCardVariants({
@@ -67,13 +63,6 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
         tabIndex={0}
         role="article"
         aria-label={`${play.song} by ${play.artist} played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`}
-        onClick={handleCopyLink}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            handleCopyLink()
-          }
-        }}
       >
         <div className="flex gap-3 py-3">
           {/* Album Art */}
@@ -152,7 +141,7 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           </div>
         </div>
 
-      </div>
+      </Link>
     )
   }
 )
