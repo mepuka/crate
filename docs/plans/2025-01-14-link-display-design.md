@@ -454,8 +454,8 @@ Atoms provide memoized link extraction per play using `Atom.family`.
 
 ```typescript
 // packages/web/src/atoms/link-atoms.ts
-import { Atom, Option } from "effect"
-import { TimelineRuntime } from "@/lib/http-runtime"
+import { Atom } from "@effect-atom/atom"
+import { Result, Chunk, HashMap, Option } from "effect"
 import { playAtom } from "./timeline"
 import { PlayLinks } from "@/lib/links/models"
 import { extractLinksFromComment } from "@/lib/links/extraction"
@@ -468,17 +468,18 @@ import { extractLinksFromComment } from "@/lib/links/extraction"
  */
 export const playLinksAtom = Atom.family((playId: number) =>
   Atom.make((get) => {
-    const play = get.get(playAtom(playId))
+    const playResult = get(playAtom(playId))
 
-    return Option.match(play, {
-      onNone: () => PlayLinks.make({
+    return Result.matchWithWaiting(playResult, {
+      onWaiting: () => PlayLinks.make({
         playId,
         links: Chunk.empty(),
         byCategory: HashMap.empty(),
         featuredLink: Option.none()
       }),
-      onSome: (p) => {
-        if (!p.comment) {
+      onSuccess: (s) => {
+        const play = s.value
+        if (!play.comment) {
           return PlayLinks.make({
             playId,
             links: Chunk.empty(),
@@ -488,8 +489,20 @@ export const playLinksAtom = Atom.family((playId: number) =>
         }
 
         // Extract links using pure utility function
-        return extractLinksFromComment(playId, p.comment)
-      }
+        return extractLinksFromComment(playId, play.comment)
+      },
+      onError: () => PlayLinks.make({
+        playId,
+        links: Chunk.empty(),
+        byCategory: HashMap.empty(),
+        featuredLink: Option.none()
+      }),
+      onDefect: () => PlayLinks.make({
+        playId,
+        links: Chunk.empty(),
+        byCategory: HashMap.empty(),
+        featuredLink: Option.none()
+      })
     })
   })
 )
@@ -500,7 +513,7 @@ export const playLinksAtom = Atom.family((playId: number) =>
  */
 export const featuredLinkAtom = Atom.family((playId: number) =>
   Atom.make((get) => {
-    const playLinks = get.get(playLinksAtom(playId))
+    const playLinks = get(playLinksAtom(playId))
     return playLinks.featuredLink
   })
 )
@@ -510,13 +523,17 @@ export const featuredLinkAtom = Atom.family((playId: number) =>
  */
 export const linksByCategoryAtom = Atom.family((playId: number) =>
   Atom.make((get) => {
-    const playLinks = get.get(playLinksAtom(playId))
+    const playLinks = get(playLinksAtom(playId))
     return playLinks.byCategory
   })
 )
 ```
 
 **Design decisions:**
+- `Atom` imported from `@effect-atom/atom` (not `effect` core package)
+- `get(atom)` API (not `get.get(atom)`) following effect-atom conventions
+- `Result.matchWithWaiting` to handle `playAtom` Result (not Option)
+- Handles all Result states: onWaiting, onSuccess, onError, onDefect
 - `Atom.family` provides automatic memoization per playId
 - Reuses existing `playAtom` from timeline atoms (no duplication)
 - Derived atoms (`featuredLinkAtom`, `linksByCategoryAtom`) for specific use cases
@@ -533,7 +550,7 @@ Parses comment text and highlights links with hover coordination.
 ```typescript
 // packages/web/src/components/CommentWithLinks.tsx
 import { useState } from "react"
-import { useAtomValue } from "jotai"
+import { useAtomValue } from "@effect-atom/atom-react"
 import { Chunk } from "effect"
 import { playLinksAtom } from "@/atoms/link-atoms"
 import { cn } from "@/lib/utils"
@@ -635,7 +652,7 @@ Minimalist preview for timeline PlayCard.
 
 ```typescript
 // packages/web/src/components/FeaturedLinkPreview.tsx
-import { useAtomValue } from "jotai"
+import { useAtomValue } from "@effect-atom/atom-react"
 import { Option } from "effect"
 import { featuredLinkAtom } from "@/atoms/link-atoms"
 import { ExtractedLink } from "@/lib/links/models"
@@ -678,7 +695,7 @@ Categorized link display with expand/collapse.
 ```typescript
 // packages/web/src/components/LinksByCategory.tsx
 import { useState } from "react"
-import { useAtomValue } from "jotai"
+import { useAtomValue } from "@effect-atom/atom-react"
 import { HashMap, Chunk, pipe } from "effect"
 import { linksByCategoryAtom } from "@/atoms/link-atoms"
 import { ExtractedLink } from "@/lib/links/models"
@@ -827,6 +844,7 @@ function getCategoryIcon(category: string) {
 ```
 
 **Design decisions:**
+- `useAtomValue` from `@effect-atom/atom-react` (not jotai)
 - `data-link-id` attribute enables CSS-based hover coordination
 - Hover state managed locally in each component
 - `Option.match` for safe optional value handling
@@ -1160,16 +1178,119 @@ Current approach (on-the-fly) is recommended until performance issues observed.
 
 ---
 
+## CRITICAL: Implementation Requirements
+
+**⚠️ MANDATORY: Before writing any code, implementors MUST:**
+
+### 1. Reference Effect Documentation Extensively
+
+Use the `mcp__effect-docs` tools to search Effect documentation:
+- **Before using Atom API**: Search "Atom.family", "Atom.make", "@effect-atom/atom"
+- **Before using Result**: Search "Result.matchWithWaiting", "Result patterns"
+- **Before using Schema**: Search "Schema.Union", "Schema.Struct", "Data.TaggedClass"
+- **Before using HashMap/Chunk**: Search collection APIs and patterns
+
+```bash
+# Example searches during implementation
+mcp__effect-docs__effect_docs_search("Atom.family")
+mcp__effect-docs__get_effect_doc("@effect-atom/atom")
+```
+
+### 2. Explore Local Effect Source Code
+
+This repo has the **full Effect source** symlinked at `docs/effect-source/`:
+
+```bash
+# Search for Atom patterns in effect-atom
+grep -r "Atom.family" docs/effect-source/experimental/src/
+
+# Find Result.matchWithWaiting usage
+grep -r "matchWithWaiting" docs/effect-source/effect/src/
+
+# Study Schema.Union examples
+grep -r "Schema.Union" docs/effect-source/schema/src/
+
+# Check HashMap operations
+grep -r "HashMap.modify" docs/effect-source/effect/src/
+```
+
+**ALWAYS search Effect source before implementing patterns** - seeing actual implementations prevents API misuse.
+
+### 3. Critical Import Paths
+
+**WRONG:**
+```typescript
+import { Atom } from "effect" // ❌ Atom not in effect core
+import { useAtomValue } from "jotai" // ❌ Wrong library
+```
+
+**CORRECT:**
+```typescript
+import { Atom } from "@effect-atom/atom" // ✅ Correct package
+import { useAtomValue } from "@effect-atom/atom-react" // ✅ For React hooks
+import { Result, Chunk, HashMap, Option } from "effect" // ✅ Core utilities
+```
+
+### 4. Critical API Patterns
+
+**WRONG:**
+```typescript
+const value = get.get(someAtom) // ❌ Not effect-atom API
+const play = get(playAtom(id)) // ❌ playAtom returns Result, not value
+```
+
+**CORRECT:**
+```typescript
+const value = get(someAtom) // ✅ Callable getter, not .get()
+const playResult = get(playAtom(id)) // ✅ playAtom returns Result
+Result.matchWithWaiting(playResult, { // ✅ Handle Result properly
+  onWaiting: () => /* ... */,
+  onSuccess: (s) => /* s.value has Play */,
+  onError: () => /* ... */,
+  onDefect: () => /* ... */
+})
+```
+
+### 5. Existing Codebase Reference
+
+Study these existing implementations before writing code:
+- `packages/web/src/atoms/timeline.ts` - Atom.family usage, Result patterns
+- `packages/web/src/atoms/kexp-atoms.ts` - Schema, Data.TaggedClass, HashMap
+- `packages/web/src/lib/http-runtime.ts` - TimelineRuntime composition
+- `packages/web/src/components/Timeline.tsx` - useAtomValue from @effect-atom/atom-react
+
+### 6. Type Safety Verification
+
+Run type check frequently during development:
+```bash
+pnpm --filter @crate/web exec tsc --noEmit
+```
+
+**Do not proceed** if types don't compile - Effect patterns are type-driven.
+
+### 7. Effect Skills
+
+Reference effect-* skills during implementation:
+- `effect-foundations` - Core Effect patterns
+- `effect-config-schema` - Schema validation
+- `effect-collections-datastructs` - HashMap, Chunk, Data.TaggedClass
+- `effect-layers-services` - Layer composition (if extending runtime)
+
+**Implementation without following these requirements will result in compile-time errors and runtime failures.**
+
+---
+
 ## References
 
 - **Analysis Report**: `docs/comment-links-implementation-report.md`
 - **Effect Docs**: https://effect.website
 - **effect-atom**: https://github.com/tim-smart/effect-atom
+- **Effect Source (Local)**: `docs/effect-source/` (symlinked to Effect monorepo)
 - **Existing Atoms**: `packages/web/src/atoms/timeline.ts`
 - **Play Schema**: `packages/api/src/schemas/Play.ts`
 
 ---
 
-**Design Status:** Complete and validated
-**Ready for Implementation:** Yes
+**Design Status:** Complete and validated with correct Effect/effect-atom patterns
+**Ready for Implementation:** Yes (with mandatory documentation/source review)
 **Next Step:** Create worktree and implementation plan
