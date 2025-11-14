@@ -18,7 +18,7 @@
 
 import { BrowserWorkerRunner } from "@effect/platform-browser"
 import { WorkerRunner } from "@effect/platform"
-import { Effect, Layer, Context, Schema, Match, HashMap } from "effect"
+import { Effect, Layer, Context, Schema, Match, HashMap, Option } from "effect"
 import {
   type ProgramsData,
   type ShowsData,
@@ -219,7 +219,7 @@ const KexpDataServiceLive = Layer.effect(
 
         // Lookup show in map
         const showOption = HashMap.get(showsMap, showId)
-        if (!showOption._tag || showOption._tag === "None") {
+        if (Option.isNone(showOption)) {
           yield* Effect.logDebug(`Show ${showId} not found in map`)
           return { show: null, program: null }
         }
@@ -228,20 +228,19 @@ const KexpDataServiceLive = Layer.effect(
 
         // Lookup program using show-to-program mapping
         const programIdOption = HashMap.get(showToProgramMap, showId)
-        if (!programIdOption._tag || programIdOption._tag === "None") {
+        if (Option.isNone(programIdOption)) {
           yield* Effect.logDebug(
             `No program mapping found for show ${showId}, using show.program field`
           )
           // Fallback to show.program field
           const programOption = HashMap.get(programsMap, show.program)
-          const program =
-            programOption._tag === "Some" ? programOption.value : null
+          const program = Option.isSome(programOption) ? programOption.value : null
           return { show, program }
         }
 
         const programId = programIdOption.value
         const programOption = HashMap.get(programsMap, programId)
-        const program = programOption._tag === "Some" ? programOption.value : null
+        const program = Option.isSome(programOption) ? programOption.value : null
 
         yield* Effect.logDebug(
           `Found show ${showId} with program ${program?.id ?? "null"}`
