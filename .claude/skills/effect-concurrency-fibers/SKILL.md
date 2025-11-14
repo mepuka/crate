@@ -50,6 +50,42 @@ const withTimeout = yield* Effect.timeout(operation, "5 seconds")
 - Streams & Pipelines: concurrent map over streams
 - EffectPatterns inspiration: https://github.com/PaulJPhilp/EffectPatterns
 
+## Local Source Reference
+
+**CRITICAL: Search local Effect source before implementing**
+
+The full Effect source code is available at `docs/effect-source/`. Always search the actual implementation before writing Effect code.
+
+### Key Source Files
+- Effect: `docs/effect-source/effect/src/Effect.ts`
+- Fiber: `docs/effect-source/effect/src/Fiber.ts`
+- Duration: `docs/effect-source/effect/src/Duration.ts`
+
+### Example Searches
+```bash
+# Find Effect.all and concurrency patterns
+grep -F "Effect.all" docs/effect-source/effect/src/Effect.ts
+
+# Find forEach with concurrency
+grep -rF "forEach" docs/effect-source/effect/src/ | grep -F "concurrency"
+
+# Study Fiber lifecycle operations
+grep -F "export" docs/effect-source/effect/src/Fiber.ts | grep -E "fork|join|interrupt"
+
+# Find race and timeout implementations
+grep -F "race" docs/effect-source/effect/src/Effect.ts
+grep -F "timeout" docs/effect-source/effect/src/Effect.ts
+```
+
+### Workflow
+1. Identify the concurrency API you need (e.g., Effect.all, fork)
+2. Search `docs/effect-source/effect/src/Effect.ts` for the implementation
+3. Study the types and concurrency options
+4. Look at test files for usage examples
+5. Write your code based on real implementations
+
+**Real source code > documentation > assumptions**
+
 ## References
 - Agent Skills overview: https://www.anthropic.com/news/skills
 - Skills guide: https://docs.claude.com/en/docs/claude-code/skills

@@ -106,6 +106,46 @@ const captureErrors = (cause: Cause.Cause<unknown>) => Effect.gen(function* () {
 - Concurrency: race and timeout patterns
 - EffectPatterns inspiration: https://github.com/PaulJPhilp/EffectPatterns
 
+## Local Source Reference
+
+**CRITICAL: Search local Effect source before implementing**
+
+The full Effect source code is available at `docs/effect-source/`. Always search the actual implementation before writing Effect code.
+
+### Key Source Files
+- Effect: `docs/effect-source/effect/src/Effect.ts`
+- Data: `docs/effect-source/effect/src/Data.ts`
+- Schedule: `docs/effect-source/effect/src/Schedule.ts`
+- Cause: `docs/effect-source/effect/src/Cause.ts`
+
+### Example Searches
+```bash
+# Find error handling patterns
+grep -F "catchTag" docs/effect-source/effect/src/Effect.ts
+grep -F "catchAll" docs/effect-source/effect/src/Effect.ts
+grep -F "mapError" docs/effect-source/effect/src/Effect.ts
+
+# Study TaggedError
+grep -F "TaggedError" docs/effect-source/effect/src/Data.ts
+
+# Find retry and schedule patterns
+grep -F "retry" docs/effect-source/effect/src/Schedule.ts
+grep -F "exponential" docs/effect-source/effect/src/Schedule.ts
+grep -F "jittered" docs/effect-source/effect/src/Schedule.ts
+
+# Study Cause operations
+grep -F "isInterruptedOnly" docs/effect-source/effect/src/Cause.ts
+```
+
+### Workflow
+1. Identify the error handling API you need (e.g., catchTag, retry)
+2. Search `docs/effect-source/effect/src/Effect.ts` for the implementation
+3. Study the types and error recovery patterns
+4. Look at test files for usage examples
+5. Write your code based on real implementations
+
+**Real source code > documentation > assumptions**
+
 ## References
 - Agent Skills overview: https://www.anthropic.com/news/skills
 - Skills guide: https://docs.claude.com/en/docs/claude-code/skills

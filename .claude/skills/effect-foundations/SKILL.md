@@ -114,9 +114,49 @@ program.pipe(
  - Consult EffectPatterns for canonical idioms (https://github.com/PaulJPhilp/EffectPatterns)
 
 ## Pitfalls
-- Don’t mix promises and effects—wrap with `Effect.try/tryPromise`
-- Don’t return raw values inside `Effect.gen`—always `yield*` an Effect
+- Don't mix promises and effects—wrap with `Effect.try/tryPromise`
+- Don't return raw values inside `Effect.gen`—always `yield*` an Effect
  - Unsatisfied `R` requirements → provide layers or adjust architecture
+
+## Local Source Reference
+
+**CRITICAL: Search local Effect source before implementing**
+
+The full Effect source code is available at `docs/effect-source/`. Always search the actual implementation before writing Effect code.
+
+### Key Source Files
+- Core Effect: `docs/effect-source/effect/src/Effect.ts`
+- Layer: `docs/effect-source/effect/src/Layer.ts`
+- Data: `docs/effect-source/effect/src/Data.ts`
+- Match: `docs/effect-source/effect/src/Match.ts`
+
+### Example Searches
+```bash
+# Find Effect.gen implementation and patterns
+grep -rF "Effect.gen" docs/effect-source/effect/src/
+
+# Find all map/flatMap/andThen variants
+grep -rF "export" docs/effect-source/effect/src/Effect.ts | grep -F "map"
+grep -rF "export" docs/effect-source/effect/src/Effect.ts | grep -F "flatMap"
+grep -rF "export" docs/effect-source/effect/src/Effect.ts | grep -F "andThen"
+
+# Study error handling patterns
+grep -rF "catchTag" docs/effect-source/effect/src/
+grep -rF "catchAll" docs/effect-source/effect/src/
+grep -rF "TaggedError" docs/effect-source/effect/src/
+
+# Find Effect.all concurrency patterns
+grep -rF "Effect.all" docs/effect-source/effect/src/
+```
+
+### Workflow
+1. Identify the API you need (e.g., Effect.gen, Effect.all)
+2. Search `docs/effect-source/effect/src/Effect.ts` for the implementation
+3. Study the types, overloads, and patterns
+4. Look at test files in `docs/effect-source/effect/test/` for usage examples
+5. Write your code based on real implementations
+
+**Real source code > documentation > assumptions**
 
 ## References
 - Agent Skills overview: https://www.anthropic.com/news/skills

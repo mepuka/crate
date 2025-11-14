@@ -134,6 +134,43 @@ export const DatabaseTest = Layer.succeed(Database, {
 - Errors & Retries for selective retry policies
 - Config & Schema for validated DB configuration
 
+## Local Source Reference
+
+**CRITICAL: Search local Effect source before implementing**
+
+The full Effect source code is available at `docs/effect-source/`. Always search the actual implementation before writing Effect code.
+
+### Key Source Files
+- SqlClient: `docs/effect-source/sql/src/SqlClient.ts`
+- SqlConnection: `docs/effect-source/sql/src/SqlConnection.ts`
+- SqlResolver: `docs/effect-source/sql/src/SqlResolver.ts`
+- Drizzle integration: `docs/effect-source/sql-drizzle/src/`
+- SQLite Node: `docs/effect-source/sql-sqlite-node/src/`
+
+### Example Searches
+```bash
+# Find SqlClient patterns
+grep -F "SqlClient" docs/effect-source/sql/src/SqlClient.ts
+
+# Study transaction patterns
+grep -rF "withTransaction" docs/effect-source/sql/src/
+
+# Find Drizzle integration
+grep -rF "export" docs/effect-source/sql-drizzle/src/
+
+# Look at SQL test examples
+grep -rF "SqlClient." docs/effect-source/sql/test/
+```
+
+### Workflow
+1. Identify the SQL API you need (e.g., SqlClient, transactions)
+2. Search `docs/effect-source/sql/src/` for the implementation
+3. Study the types and transaction patterns
+4. Look at test files for usage examples
+5. Write your code based on real implementations
+
+**Real source code > documentation > assumptions**
+
 ## References
 - Agent Skills overview: https://www.anthropic.com/news/skills
 - Skills guide: https://docs.claude.com/en/docs/claude-code/skills

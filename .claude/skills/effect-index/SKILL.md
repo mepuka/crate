@@ -38,6 +38,37 @@ All patterns are now available locally in the [Patterns Hub](../effect-patterns-
 
 **Tip**: For any "How do I...?" question, check the [Patterns Hub](../effect-patterns-hub/SKILL.md) decision tree first!
 
+## Local Source Reference
+
+**CRITICAL: Always search local Effect source before implementing**
+
+The full Effect source code is available at `docs/effect-source/`. Every Effect skill now includes a "Local Source Reference" section with:
+
+- Key source files for that skill's domain
+- Example grep commands to find implementations
+- Workflow for searching before coding
+
+### Quick Access to Source
+- All Effect packages: `docs/effect-source/`
+- Core library: `docs/effect-source/effect/src/`
+- Platform APIs: `docs/effect-source/platform/src/`
+- SQL: `docs/effect-source/sql/src/`
+- Schema: `docs/effect-source/schema/src/`
+
+### Example: Finding Effect.gen
+```bash
+grep -F "Effect.gen" docs/effect-source/effect/src/Effect.ts
+```
+
+### Workflow Reminder
+1. Read the relevant skill (from decision tree above)
+2. Review the skill's "Local Source Reference" section
+3. Search the Effect source code for the API you need
+4. Study the implementation and types
+5. Write your code based on real implementations
+
+**See CLAUDE.local.md for complete source reference guide**
+
 ## References
 
 - Agent Skills overview: [Introducing Agent Skills](https://www.anthropic.com/news/skills)

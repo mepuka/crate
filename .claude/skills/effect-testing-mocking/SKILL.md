@@ -40,6 +40,41 @@ const result = yield* Effect.provide(program, RepoTest)
 - Layers & Services for DI patterns
 - Time/Logging for deterministic time and observable output
 
+## Local Source Reference
+
+**CRITICAL: Search local Effect source before implementing**
+
+The full Effect source code is available at `docs/effect-source/`. Always search the actual implementation before writing Effect code.
+
+### Key Source Files
+- Layer: `docs/effect-source/effect/src/Layer.ts`
+- TestClock: `docs/effect-source/effect/src/TestClock.ts`
+- TestContext: `docs/effect-source/effect/src/TestContext.ts`
+
+### Example Searches
+```bash
+# Find Layer.succeed patterns for mocks
+grep -F "Layer.succeed" docs/effect-source/effect/src/Layer.ts
+
+# Study TestClock operations
+grep -F "TestClock" docs/effect-source/effect/src/TestClock.ts
+
+# Find test helpers
+grep -F "TestContext" docs/effect-source/effect/src/TestContext.ts
+
+# Look at Layer test examples
+grep -F "Layer.succeed" docs/effect-source/effect/test/Layer.test.ts
+```
+
+### Workflow
+1. Identify the testing API you need (e.g., Layer.succeed, TestClock)
+2. Search `docs/effect-source/effect/src/Layer.ts` for the implementation
+3. Study the types and testing patterns
+4. Look at test files for usage examples
+5. Write your code based on real implementations
+
+**Real source code > documentation > assumptions**
+
 ## Real-world snippet: Build a comprehensive Test layer
 ```ts
 export const TestLayer = (input?: TestLiveInput) =>
