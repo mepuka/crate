@@ -15,6 +15,7 @@ import {
 } from "effect";
 import { KexpApi, PlayResult } from "@crate/api";
 import { sortPlaysByAirdateDesc } from "./timeline-utils";
+import { AlbumBarWorkerClient } from "@/workers/album-bar-worker-client";
 
 // Combined runtime with configured HTTP client and Reactivity support
 
@@ -255,7 +256,8 @@ export const TimelineRuntime = Atom.runtime(
     Reactivity.layer,
     BrowserKeyValueStore.layerLocalStorage,
     FetchHttpClient.layer,
-    TimelineKVS.Default
+    TimelineKVS.Default,
+    AlbumBarWorkerClient.Default
   )
 );
 

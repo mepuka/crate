@@ -1,10 +1,8 @@
 import { Atom } from "@effect-atom/atom-react";
-import { Effect, Chunk, Layer } from "effect";
+import { Effect, Chunk } from "effect";
 import { AlbumBarWorkerClient } from "@/workers/album-bar-worker-client";
 import type { AlbumArtworkData } from "@/workers/album-bar-worker-protocol";
-import { TimelineKVS } from "@/lib/http-runtime";
-import { Reactivity } from "@effect/experimental";
-import { BrowserKeyValueStore } from "@effect/platform-browser";
+import { TimelineKVS, TimelineRuntime } from "@/lib/http-runtime";
 
 /**
  * Re-export AlbumArtworkData type from worker protocol
@@ -17,19 +15,6 @@ export type { AlbumArtworkData };
 export const ALBUM_BAR_PLAY_COUNT = 25;
 
 /**
- * Runtime for Album Bar Worker Client.
- * Includes AlbumBarWorkerClient and necessary platform layers.
- */
-const AlbumBarRuntime = Atom.runtime(
-  Layer.mergeAll(
-    Reactivity.layer,
-    BrowserKeyValueStore.layerLocalStorage,
-    AlbumBarWorkerClient.Default,
-    TimelineKVS.Default
-  )
-);
-
-/**
  * Reactive atom that loads album artwork using the Web Worker.
  *
  * Processing happens off the main thread:
@@ -39,8 +24,9 @@ const AlbumBarRuntime = Atom.runtime(
  * 4. Automatically updates when timeline changes
  *
  * Uses Atom.withReactivity() to invalidate when plays change.
+ * Uses shared TimelineRuntime to ensure consistent state with timeline atoms.
  */
-export const recentAlbumArtAtom = AlbumBarRuntime.atom(
+export const recentAlbumArtAtom = TimelineRuntime.atom(
   Effect.gen(function* () {
     const workerClient = yield* AlbumBarWorkerClient;
     const timelineKVS = yield* TimelineKVS;
