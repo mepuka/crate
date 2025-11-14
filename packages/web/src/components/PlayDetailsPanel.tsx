@@ -114,36 +114,37 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
 
           return (
             <div className="space-y-6">
-              {/* Title */}
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold mb-2">
-                  {play.song || "Untitled"}
-                </h1>
-              </div>
-
-              {/* Album Art & Primary Info */}
-              <div className="flex gap-6">
+              {/* Album Art and Info Side by Side */}
+              <div className="flex flex-col sm:flex-row gap-6">
+                {/* Album Art - Left */}
                 <AlbumArt
-                  src={play.thumbnail_uri || play.image_uri}
+                  src={play.image_uri || play.thumbnail_uri}
                   alt={`${play.album} by ${play.artist}`}
-                  size={200}
-                  className="shrink-0"
+                  size={400}
+                  className="shrink-0 w-full sm:w-auto rounded-lg"
                 />
-                <div className="flex-1 space-y-3">
-                  <div>
-                    <h2 className="text-2xl font-semibold text-foreground">
+
+                {/* Info - Right */}
+                <div className="flex-1 space-y-4">
+                  {/* Title and Artist Info */}
+                  <div className="space-y-2">
+                    <h1 className="text-3xl sm:text-4xl font-bold">
+                      {play.song || "Untitled"}
+                    </h1>
+                    <h2 className="text-xl sm:text-2xl text-muted-foreground">
                       {play.artist || "Unknown Artist"}
                     </h2>
                     {play.album && (
-                      <p className="text-lg text-muted-foreground">
+                      <p className="text-base text-muted-foreground/80">
                         {play.album}
                         {releaseYear && ` • ${releaseYear}`}
                       </p>
                     )}
                   </div>
 
+                  {/* Play Time Info */}
                   {play.airdate && (
-                    <div className="space-y-1">
+                    <div className="space-y-1 pt-2">
                       <p className="text-sm text-muted-foreground">
                         Played {formatRelativeTime(play.airdate)}
                       </p>
