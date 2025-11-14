@@ -67,3 +67,44 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  /* Scrolling Album Bar Styles */
+  .scrolling-album-bar {
+    animation: slideInFromTop 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .scrolling-album-bar canvas {
+    image-rendering: auto;
+    image-rendering: crisp-edges;
+    image-rendering: -webkit-optimize-contrast;
+  }
+}
+
+@layer utilities {
+  /* Smooth slide-in animation for the top bar */
+  @keyframes slideInFromTop {
+    from {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  /* Pulse animation for loading state */
+  @keyframes pulse-slow {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .animate-pulse-slow {
+    animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
