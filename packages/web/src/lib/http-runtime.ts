@@ -126,8 +126,6 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
       Effect.gen(function* () {
         // Store individual play (single source of truth)
         yield* playStore.set(`timeline:play:${play.id}`, play);
-        // Invalidate reactivity key so reactive streams refetch
-        yield* Reactivity.invalidate([`timeline:play:${play.id}`]);
 
         // Get current HashSet from KVS
         const currentHashSetOption = yield* playIdsHashSetStore.get(
@@ -140,17 +138,22 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
         );
 
         // Fast O(1) lookup to check if play already exists
-        if (!HashSet.has(currentHashSet, play.id)) {
+        const isNew = !HashSet.has(currentHashSet, play.id);
+
+        if (isNew) {
           // Add to HashSet (this is the source of truth for which plays exist)
           const newHashSet = HashSet.add(currentHashSet, play.id);
 
           // Persist HashSet - chunk will be reconstructed when needed
           yield* playIdsHashSetStore.set("timeline:play_ids_set", newHashSet);
-
-          // Invalidate reactivity key for the plays chunk
-          // This triggers atoms to refetch, which will reconstruct the chunk from HashSet
-          yield* Reactivity.invalidate(["timeline:plays_chunk"]);
         }
+
+        // Always invalidate reactivity keys, even for metadata updates to existing plays
+        // This ensures chunk atoms stay in sync with KV store (artist corrections, enrichment, etc.)
+        yield* Reactivity.invalidate([
+          "timeline:plays_chunk",
+          `timeline:play:${play.id}`
+        ]);
       });
 
     // Get a play by ID (for use in atoms - Effect Atom handles reactivity)
@@ -179,21 +182,52 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
       });
 
     // Get the list of play IDs in order (from Chunk, maintaining insertion order)
-    // Reconstructs from all plays to ensure single source of truth
+    // Reads from cached chunk, only reconstructs if cache miss
     const getPlayIds = () =>
       Effect.gen(function* () {
-        const chunk = yield* reconstructChunkFromAllPlays();
+        // Try to read from cached chunk first
+        const cachedChunkOption = yield* playsChunkStore.get("timeline:plays_chunk");
+
+        const chunk = yield* Option.match(cachedChunkOption, {
+          // Cache hit - use stored chunk
+          onSome: (cachedChunk) =>
+            Effect.gen(function* () {
+              yield* Effect.logDebug(`Using cached chunk with ${Chunk.size(cachedChunk)} plays`);
+              return cachedChunk;
+            }),
+          // Cache miss - reconstruct and store
+          onNone: () =>
+            Effect.gen(function* () {
+              yield* Effect.logInfo("Cache miss for plays_chunk, reconstructing from all plays");
+              return yield* reconstructChunkFromAllPlays();
+            })
+        });
+
         // Extract IDs from Chunk in order (newest first)
         return Chunk.toReadonlyArray(chunk).map((play) => play.id);
       });
 
     // Get the Chunk of plays directly (for advanced use cases)
-    // Reconstructs from all individual plays to ensure single source of truth
+    // Reads from cached chunk, only reconstructs if cache miss
     const getPlaysChunk = () =>
       Effect.gen(function* () {
-        // Reconstruct from all individual plays to ensure we have the complete set
-        // This is the single source of truth
-        return yield* reconstructChunkFromAllPlays();
+        // Try to read from cached chunk first
+        const cachedChunkOption = yield* playsChunkStore.get("timeline:plays_chunk");
+
+        return yield* Option.match(cachedChunkOption, {
+          // Cache hit - use stored chunk
+          onSome: (cachedChunk) =>
+            Effect.gen(function* () {
+              yield* Effect.logDebug(`Using cached chunk with ${Chunk.size(cachedChunk)} plays`);
+              return cachedChunk;
+            }),
+          // Cache miss - reconstruct and store
+          onNone: () =>
+            Effect.gen(function* () {
+              yield* Effect.logInfo("Cache miss for plays_chunk, reconstructing from all plays");
+              return yield* reconstructChunkFromAllPlays();
+            })
+        });
       });
 
     return {
@@ -241,7 +275,7 @@ export const FetchLatestLive = Effect.gen(function* () {
     yield* Effect.log("No plays returned from timeline API");
   }
 }).pipe(
-  Effect.repeat(Schedule.spaced(Duration.millis(10000))),
+  Effect.repeat(Schedule.spaced(Duration.millis(100000))),
   Effect.forever,
   Effect.forkScoped,
   Effect.uninterruptible,
@@ -260,6 +294,7 @@ export const TimelineRuntime = Atom.runtime(
     AlbumBarWorkerClient.Default
   )
 );
+
 
 /**
  * Type-safe KEXP API client.

@@ -83,41 +83,37 @@ const fetchShowsEffect = Effect.gen(function* () {
   return showsMap
 }).pipe(Effect.provide(KexpLayer))
 
-/**
- * Cached programs effect
- * Pattern: Effect.cached for automatic memoization
- * Cache persists for the lifetime of the runtime
- */
-const cachedProgramsEffect = Effect.cached(fetchProgramsEffect)
-
-/**
- * Cached shows effect
- * Pattern: Effect.cached for automatic memoization
- * Cache persists for the lifetime of the runtime
- */
-const cachedShowsEffect = Effect.cached(fetchShowsEffect)
-
 // === Runtime Atoms ===
 
 /**
  * Private atom that executes the cached programs effect
- * Pattern: TimelineRuntime.atom for runtime execution
+ * Pattern: TimelineRuntime.atom with cachedWithTTL for runtime-scoped caching
+ * Cache scoped to runtime lifecycle with 24-hour TTL
+ *
+ * cachedWithTTL returns Effect<Effect<A>> which needs to be flatMapped
  */
 const _programsAtom = TimelineRuntime.atom(
   Effect.gen(function* () {
-    const getCachedPrograms = yield* cachedProgramsEffect
-    return yield* getCachedPrograms
+    const cached = yield* fetchProgramsEffect.pipe(
+      Effect.cachedWithTTL("24 hours")
+    )
+    return yield* cached
   })
 )
 
 /**
  * Private atom that executes the cached shows effect
- * Pattern: TimelineRuntime.atom for runtime execution
+ * Pattern: TimelineRuntime.atom with cachedWithTTL for runtime-scoped caching
+ * Cache scoped to runtime lifecycle with 24-hour TTL
+ *
+ * cachedWithTTL returns Effect<Effect<A>> which needs to be flatMapped
  */
 const _showsAtom = TimelineRuntime.atom(
   Effect.gen(function* () {
-    const getCachedShows = yield* cachedShowsEffect
-    return yield* getCachedShows
+    const cached = yield* fetchShowsEffect.pipe(
+      Effect.cachedWithTTL("24 hours")
+    )
+    return yield* cached
   })
 )
 
@@ -245,35 +241,28 @@ export interface ShowBoundary {
 }
 
 /**
- * Factory function to create a derived atom for computing show boundaries
- * from a plays atom.
+ * Computes show boundaries for a given array of plays.
  *
- * Show boundaries are points in the timeline where the show changes.
- * They're used to render visual markers indicating show transitions.
+ * A boundary is inserted at the first play of each new show,
+ * enriched with program/host information from showsMapAtom.
+ *
+ * Uses Atom.family for automatic memoization per unique plays array.
  *
  * Pattern: HashMap.get returns Option, use Option.match for safe access
  *
- * @param playsAtom - An atom that provides an array of plays
- * @returns An atom that computes show boundaries
- *
  * @example
  * ```tsx
- * import { playsChunkAtom } from "@/atoms/timeline"
- * import { Chunk } from "effect"
+ * import { showBoundariesForPlaysAtom } from "@/atoms/kexp-atoms"
  *
- * const playsArrayAtom = Atom.make((get) => {
- *   const chunk = get.get(playsChunkAtom)
- *   return Chunk.toReadonlyArray(chunk)
- * })
- *
- * const boundaries = createShowBoundariesAtom(playsArrayAtom)
+ * function MyComponent() {
+ *   const plays = useAtomValue(playsArrayAtom)
+ *   const boundaries = useAtomValue(showBoundariesForPlaysAtom(plays))
+ *   return <div>{boundaries.length} show transitions</div>
+ * }
  * ```
  */
-export function createShowBoundariesAtom(
-  playsAtom: Atom.Atom<readonly Play[]>
-): Atom.Atom<ShowBoundary[]> {
-  return Atom.make((get) => {
-    const plays = get.get(playsAtom)
+export const showBoundariesForPlaysAtom = Atom.family((plays: readonly Play[]) =>
+  Atom.make((get) => {
     const shows = get.get(showsMapAtom)
     const boundaries: ShowBoundary[] = []
 
@@ -281,19 +270,22 @@ export function createShowBoundariesAtom(
       const prevPlay = plays[idx - 1]
       const isNewShow = !prevPlay || prevPlay.show !== play.show
 
-      if (isNewShow) {
+      if (isNewShow && play.show !== null) {
         const showOption = HashMap.get(shows, play.show)
+
         Option.match(showOption, {
           onNone: () => {
+            // Show data not loaded yet, emit minimal boundary
             boundaries.push({
               timestamp: play.airdate as Date | string,
-              showId: play.show as number
+              showId: play.show!
             })
           },
           onSome: (showInfo) => {
+            // Enrich with program/host info
             boundaries.push({
               timestamp: play.airdate as Date | string,
-              showId: play.show as number,
+              showId: play.show!,
               programName: showInfo.program_name ?? undefined,
               programId: showInfo.program ?? undefined,
               hostNames: showInfo.host_names ?? undefined
@@ -305,4 +297,4 @@ export function createShowBoundariesAtom(
 
     return boundaries
   })
-}
+)

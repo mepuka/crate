@@ -11,7 +11,7 @@ import {
   getNewestNPlays,
   extractPlayIds,
 } from "@/lib/timeline-utils";
-import { createShowBoundariesAtom } from "@/atoms/kexp-atoms";
+import { showBoundariesForPlaysAtom } from "@/atoms/kexp-atoms";
 import type { Play } from "@/domain/Play";
 
 // Atom that launches the background fetching service
@@ -169,13 +169,6 @@ export const newestNPlaysAtom = Atom.family((n: number) =>
   })
 );
 
-export const PullAtom = TimelineRuntime.pull((_get) => {
-  return Effect.gen(function* () {
-    const timelineKVS = yield* TimelineKVS;
-    return yield* timelineKVS.getPlayIds();
-  });
-});
-
 // This is a simple Atom that will emit the current scroll position of the
 // window.
 export const scrollYAtom: Atom.Atom<number> = Atom.make((get) => {
@@ -223,14 +216,14 @@ const playsArrayAtom = Atom.make((get) => {
  * Reactive atom for show boundaries in the timeline.
  * Automatically updates when plays chunk or shows data changes.
  * Returns Result-wrapped show boundaries.
+ *
+ * Delegates to showBoundariesForPlaysAtom for computation.
  */
 export const showBoundariesAtom = Atom.make((get) => {
   const playsResult = get(playsArrayAtom);
 
   return Result.map(playsResult, (plays) => {
-    // Create a temporary atom for this plays array and compute boundaries
-    const boundariesAtom = createShowBoundariesAtom(Atom.make(() => plays));
-    return get(boundariesAtom);
+    return get(showBoundariesForPlaysAtom(plays));
   });
 });
 

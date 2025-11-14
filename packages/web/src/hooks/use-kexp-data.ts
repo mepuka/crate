@@ -32,7 +32,7 @@
 import { useMemo } from "react"
 import { useAtomValue } from "@effect-atom/atom-react"
 import { HashMap, Option } from "effect"
-import { showsMapAtom, programsMapAtom } from "@/atoms/kexp-atoms"
+import { showsMapAtom, programsMapAtom, showBoundariesForPlaysAtom } from "@/atoms/kexp-atoms"
 import type { Kexp } from "@crate/domain"
 import type { Play } from "@/domain/Play"
 
@@ -123,7 +123,8 @@ export interface ShowBoundary {
  * Show boundaries are points where the show changes in the timeline.
  * They're used to render visual markers indicating show transitions.
  *
- * Pattern: HashMap.get returns Option, use Option.match for safe access
+ * Delegates to showBoundariesForPlaysAtom for computation,
+ * ensuring consistent logic and automatic memoization.
  *
  * @param plays - Array of plays (must be sorted by airdate)
  * @returns Array of show boundaries
@@ -148,36 +149,5 @@ export interface ShowBoundary {
  * ```
  */
 export function useShowBoundaries(plays: readonly Play[]): ShowBoundary[] {
-  const showsMap = useAtomValue(showsMapAtom)
-
-  return useMemo(() => {
-    const boundaries: ShowBoundary[] = []
-
-    plays.forEach((play, idx) => {
-      const prevPlay = plays[idx - 1]
-      const isNewShow = !prevPlay || prevPlay.show !== play.show
-
-      if (isNewShow) {
-        const showOption = HashMap.get(showsMap, play.show)
-        Option.match(showOption, {
-          onNone: () => {
-            boundaries.push({
-              timestamp: play.airdate as Date | string,
-              showId: play.show as number
-            })
-          },
-          onSome: (showInfo) => {
-            boundaries.push({
-              timestamp: play.airdate as Date | string,
-              showId: play.show as number,
-              programName: showInfo.program_name ?? undefined,
-              hostNames: showInfo.host_names ?? undefined
-            })
-          }
-        })
-      }
-    })
-
-    return boundaries
-  }, [plays, showsMap])
+  return useAtomValue(showBoundariesForPlaysAtom(plays))
 }
