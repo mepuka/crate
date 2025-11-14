@@ -4,13 +4,14 @@ import {
   latestItemAtom,
   playIdsAtom,
   newestPlayAtom,
+  playIdToBoundaryMapAtom,
 } from '@/atoms/timeline'
 import { DevAtomDisplay } from './DevAtomDisplay'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TimelineSkeleton } from './TimelineSkeleton'
 import { TimelineEmptyState } from './TimelineEmptyState'
 import { TimelineErrorState } from './TimelineErrorState'
-import { TimelinePlayCardWrapper } from './TimelinePlayCardWrapper'
+import { TimelineItemWithMarker } from './TimelineItemWithMarker'
 
 export function Timeline() {
   // Mount the background fetching service
@@ -19,6 +20,7 @@ export function Timeline() {
   // Get reactive play IDs - automatically updates when KVS changes
   const playIds = useAtomValue(playIdsAtom);
   const newestPlay = useAtomValue(newestPlayAtom);
+  const boundaryMap = useAtomValue(playIdToBoundaryMapAtom);
 
   return (
     <>
@@ -77,9 +79,21 @@ export function Timeline() {
                 />
               ) : (
                 <div className="space-y-1">
-                  {success.value.map((id) => (
-                    <TimelinePlayCardWrapper key={id} playId={id} />
-                  ))}
+                  {success.value.map((id) => {
+                    const boundary = Result.matchWithWaiting(boundaryMap, {
+                      onWaiting: () => undefined,
+                      onError: () => undefined,
+                      onDefect: () => undefined,
+                      onSuccess: (s) => s.value.get(id)
+                    });
+                    return (
+                      <TimelineItemWithMarker
+                        key={id}
+                        playId={id}
+                        showBoundary={boundary}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </>
