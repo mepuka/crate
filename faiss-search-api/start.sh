@@ -20,7 +20,7 @@ cron
 
 # Run initial sync to catch up
 echo "Running initial sync..."
-python /app/scripts/sync_plays.py \
+python3 /app/scripts/sync_plays.py \
     --db-path /app/data/music_kb.sqlite \
     --play-ids-path /app/data/play_ids.npy \
     >> /app/logs/sync.log 2>&1 || echo "Initial sync failed (will retry via cron)"
