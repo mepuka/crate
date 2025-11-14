@@ -116,4 +116,43 @@
   .animate-pulse-slow {
     animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
+
+  /* Timeline visual elements */
+  .timeline-list {
+    position: relative;
+    padding-left: 1rem;
+  }
+
+  .timeline-list::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      hsl(var(--border)) 10%,
+      hsl(var(--border)) 90%,
+      transparent 100%
+    );
+  }
+
+  .timeline-item {
+    position: relative;
+  }
+
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -0.875rem;
+    top: 1.5rem;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: hsl(var(--primary));
+    border: 2px solid hsl(var(--background));
+    z-index: 10;
+  }
 }

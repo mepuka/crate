@@ -8,7 +8,7 @@ import { Link } from '@tanstack/react-router'
 
 const playCardVariants = cva(
   [
-    "group relative border-b border-border/40 bg-card",
+    "group relative border-b border-border/40 bg-card timeline-item",
     "transition-colors duration-150",
     "hover:bg-muted/30",
     "focus-within:bg-muted/40 focus-within:outline-none",

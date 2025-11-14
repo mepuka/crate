@@ -129,7 +129,7 @@ export function Timeline() {
                   description="Waiting for plays from the background service. New plays will appear here automatically."
                 />
               ) : (
-                <div className="space-y-1">
+                <div className="timeline-list space-y-1">
                   {success.value.map((id) => (
                     <TimelinePlayCardWrapper key={id} playId={id} />
                   ))}
