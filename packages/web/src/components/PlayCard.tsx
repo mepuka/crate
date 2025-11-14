@@ -23,7 +23,7 @@ const playCardVariants = cva(
       },
       size: {
         compact: "p-2",
-        default: "p-4",
+        default: "p-3",
         expanded: "p-6"
       }
     },
@@ -65,7 +65,7 @@ export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
         role="article"
         aria-label={`${play.song} by ${play.artist} played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`}
       >
-        <div className="flex gap-3 py-3">
+        <div className="flex gap-3 py-2">
           {/* Album Art - only render if image exists */}
           {(play.thumbnail_uri || play.image_uri) && (
             <AlbumArt
@@ -76,7 +76,7 @@ export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
           )}
 
           {/* Metadata */}
-          <div className="flex-1 min-w-0 flex flex-col gap-0.5 py-0.5">
+          <div className="flex-1 min-w-0 flex flex-col gap-1 py-0">
             {/* Title & Time */}
             <div className="flex items-baseline justify-between gap-3">
               <h3 className="text-base font-medium text-foreground leading-snug truncate" title={play.song}>
