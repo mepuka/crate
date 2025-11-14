@@ -1,7 +1,11 @@
 /**
- * Link Extraction - Pure functions for URL extraction and categorization
+ * Link Extraction - Functions for URL extraction and categorization
  *
- * CRITICAL: All functions are pure (no side effects, deterministic)
+ * PURITY NOTE: All functions are pure EXCEPT extractLinksFromComment which uses
+ * nanoid() for non-deterministic ID generation. This is intentional - each link
+ * needs a unique ID for hover coordination between comment highlights and previews.
+ *
+ * CRITICAL:
  * - Use pipe for composable transformations
  * - Use Effect collections (Chunk, HashMap, Option) not arrays/objects
  * - Reference local Effect source before using new APIs
@@ -231,8 +235,22 @@ export function selectFeaturedLink(
 }
 
 /**
- * Extract all links from comment and build PlayLinks model
- * Pure function - no side effects, fully deterministic
+ * Extract all links from comment and build PlayLinks model.
+ *
+ * PURITY NOTE: This function is NOT strictly pure due to nanoid() generating
+ * non-deterministic IDs on each call. This is intentional and necessary:
+ * - Each link needs a unique ID for React key props
+ * - IDs coordinate hover state between comment highlights and link previews
+ * - Same comment text will produce different IDs each time (expected behavior)
+ *
+ * All other aspects are deterministic: URL extraction, normalization, typing,
+ * categorization, and featured link selection are pure and repeatable.
+ *
+ * Why not make ID generator injectable?
+ * - Adds unnecessary complexity for a simple use case
+ * - IDs are ephemeral (not persisted, regenerated on each render)
+ * - Testing focuses on link extraction correctness, not ID values
+ * - See extraction.test.ts for ID uniqueness verification
  *
  * @param playId - ID of the play containing this comment
  * @param comment - Comment text to extract links from
