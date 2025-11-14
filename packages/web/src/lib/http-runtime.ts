@@ -18,7 +18,7 @@ import { sortPlaysByAirdateDesc } from "./timeline-utils";
 
 // Combined runtime with configured HTTP client and Reactivity support
 
-class TimelineClient extends AtomHttpApi.Tag<TimelineClient>()(
+export class TimelineClient extends AtomHttpApi.Tag<TimelineClient>()(
   "TimelineClient",
   {
     api: KexpApi,
@@ -248,6 +248,8 @@ export const FetchLatestLive = Effect.gen(function* () {
   Layer.provide(Layer.mergeAll(TimelineClient.layer, TimelineKVS.Default))
 );
 
+// Note: SearchWorkerClient is imported at runtime to avoid circular deps
+// It will be added to the runtime when the atoms module loads
 export const TimelineRuntime = Atom.runtime(
   Layer.mergeAll(
     Reactivity.layer,
