@@ -34,8 +34,8 @@
  * - Works seamlessly with TanStack Router
  */
 
-import { Atom } from "@effect-atom/atom-react"
-import { Schema, Option } from "effect"
+import { Atom } from "@effect-atom/atom-react";
+import { Schema, Option } from "effect";
 
 /**
  * URL param atoms for timeline navigation.
@@ -54,33 +54,33 @@ import { Schema, Option } from "effect"
 
 // Limit param
 export const limitAtom = Atom.searchParam("limit", {
-  schema: Schema.NumberFromString
-})
+  schema: Schema.NumberFromString,
+});
 
 // Cursor param
 export const cursorAtom = Atom.searchParam("cursor", {
-  schema: Schema.String
-})
+  schema: Schema.String,
+});
 
 // Since param for time-based jumps
 export const sinceAtom = Atom.searchParam("since", {
-  schema: Schema.String
-})
+  schema: Schema.String,
+});
 
 // Until param for time-based jumps
 export const untilAtom = Atom.searchParam("until", {
-  schema: Schema.String
-})
+  schema: Schema.String,
+});
 
 // Percentage param for percentage-based jumps
 export const percentageAtom = Atom.searchParam("percentage", {
-  schema: Schema.NumberFromString
-})
+  schema: Schema.NumberFromString,
+});
 
 // Anchor ID param for anchor-based jumps
 export const anchorIdAtom = Atom.searchParam("anchor_id", {
-  schema: Schema.NumberFromString
-})
+  schema: Schema.NumberFromString,
+});
 
 /**
  * Computed atom that derives API call params from URL params.
@@ -98,8 +98,8 @@ export const timelineParamsAtom = Atom.make((get) => ({
   since: Option.getOrUndefined(get(sinceAtom)),
   until: Option.getOrUndefined(get(untilAtom)),
   percentage: Option.getOrUndefined(get(percentageAtom)),
-  anchor_id: Option.getOrUndefined(get(anchorIdAtom))
-}))
+  anchor_id: Option.getOrUndefined(get(anchorIdAtom)),
+}));
 
 /**
  * Example: Fetch timeline using URL-synchronized params
