@@ -40,7 +40,8 @@ export function AlbumArt({ src, alt, size = 120, className }: AlbumArtProps) {
           loading="lazy"
           decoding="async"
           className={cn(
-            "w-full h-full object-cover transition-opacity duration-300",
+            "w-full h-full object-cover transition-all duration-200",
+            "group-hover:scale-105",
             loaded ? "opacity-100" : "opacity-0"
           )}
           onLoad={() => setLoaded(true)}
