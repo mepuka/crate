@@ -187,10 +187,12 @@ class DatabaseService:
         params = []
 
         if artist_mbid:
-            # For JSON array search in SQLite, use LIKE with proper escaping
+            # Use SQLite JSON functions for robust array searching (SQLite 3.38+)
             # artist_ids is stored as ["uuid1", "uuid2", ...]
-            conditions.append("artist_ids LIKE ?")
-            params.append(f'%"{artist_mbid}"%')
+            # json_each() expands the array and we check if any value matches
+            # COLLATE NOCASE ensures case-insensitive comparison for UUIDs
+            conditions.append("EXISTS (SELECT 1 FROM json_each(artist_ids) WHERE value = ? COLLATE NOCASE)")
+            params.append(artist_mbid)
 
         if recording_mbid:
             conditions.append("recording_id = ?")

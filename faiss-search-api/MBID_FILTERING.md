@@ -11,7 +11,8 @@ This document describes the MBID filtering functionality added to the timeline A
 The timeline API now supports filtering by four types of MusicBrainz IDs:
 
 1. **`artist_mbid`**: Filter by artist MusicBrainz ID
-   - Searches within the JSON array of artist IDs
+   - Searches within the JSON array of artist IDs using SQLite JSON functions
+   - Case-insensitive UUID comparison
    - Example: `a74b1b7f-71a5-4011-9441-d0b5e4122711` (Radiohead)
 
 2. **`recording_mbid`**: Filter by recording MusicBrainz ID
@@ -169,7 +170,7 @@ CREATE INDEX idx_fact_plays_artist_ids ON fact_plays(artist_ids);
 ### Query Performance
 
 - **Single MBID filters**: < 5ms (indexed lookups)
-- **Artist MBID filter**: < 10ms (JSON array search with index)
+- **Artist MBID filter**: < 10ms (JSON function array search with index)
 - **Multiple combined filters**: < 15ms (indexed AND conditions)
 - **Filtered pagination**: < 5ms per page (cursor-based)
 
@@ -269,9 +270,10 @@ def _build_mbid_filter_clause(
     params = []
 
     if artist_mbid:
-        # JSON array search using LIKE
-        conditions.append("artist_ids LIKE ?")
-        params.append(f'%"{artist_mbid}"%')
+        # Use SQLite JSON functions for robust array searching
+        # COLLATE NOCASE ensures case-insensitive UUID comparison
+        conditions.append("EXISTS (SELECT 1 FROM json_each(artist_ids) WHERE value = ? COLLATE NOCASE)")
+        params.append(artist_mbid)
 
     if recording_mbid:
         conditions.append("recording_id = ?")

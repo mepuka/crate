@@ -285,7 +285,7 @@ class TestMBIDFiltering:
             artist_mbid="A74B1B7F-71A5-4011-9441-D0B5E4122711"  # Uppercase
         )
 
-        # Should still match (SQLite LIKE is case-insensitive for ASCII)
+        # Should still match (COLLATE NOCASE ensures case-insensitive comparison)
         assert len(result['results']) == 2
 
 
@@ -307,8 +307,8 @@ class TestBuildMBIDFilterClause:
             artist_mbid="test-mbid"
         )
 
-        assert "artist_ids LIKE ?" in where_clause
-        assert params == ['%"test-mbid"%']
+        assert "EXISTS (SELECT 1 FROM json_each(artist_ids) WHERE value = ? COLLATE NOCASE)" in where_clause
+        assert params == ["test-mbid"]
 
     def test_recording_filter_only(self, test_db):
         """Test building filter clause with recording filter only."""
@@ -329,7 +329,7 @@ class TestBuildMBIDFilterClause:
             release_mbid="release-mbid"
         )
 
-        assert "artist_ids LIKE ?" in where_clause
+        assert "EXISTS (SELECT 1 FROM json_each(artist_ids) WHERE value = ? COLLATE NOCASE)" in where_clause
         assert "recording_id = ?" in where_clause
         assert "release_id = ?" in where_clause
         assert " AND " in where_clause
