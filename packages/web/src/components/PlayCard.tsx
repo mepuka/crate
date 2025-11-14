@@ -78,13 +78,13 @@ export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
           {/* Metadata */}
           <div className="flex-1 min-w-0 flex flex-col gap-1 py-0">
             {/* Title & Time */}
-            <div className="flex items-baseline justify-between gap-3">
-              <h3 className="text-base font-medium text-foreground leading-snug truncate" title={play.song}>
+            <div className="flex items-baseline justify-between gap-4">
+              <h3 className="text-base font-semibold text-foreground leading-snug truncate tracking-tight" title={play.song}>
                 {play.song || 'Untitled'}
               </h3>
               {play.airdate && (
                 <time
-                  className="text-xs text-muted-foreground font-mono whitespace-nowrap shrink-0 tabular-nums"
+                  className="text-xs text-muted-foreground font-mono whitespace-nowrap shrink-0 ml-auto tabular-nums"
                   dateTime={play.airdate.toISOString()}
                 >
                   {formatPlayTime(play.airdate)}
