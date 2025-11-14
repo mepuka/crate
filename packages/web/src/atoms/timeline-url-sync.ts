@@ -1,7 +1,7 @@
 /**
- * Example: URL-synchronized timeline params using effect-atom
+ * URL-synchronized timeline params using effect-atom
  *
- * This example shows how to use the reusable TimelineParams schema
+ * This shows how to use the reusable TimelineParams schema
  * from @crate/api with Atom.searchParam() for URL synchronization.
  *
  * Pattern from effect-atom README:
@@ -11,7 +11,7 @@
  *
  * ```typescript
  * import { useAtom } from "@effect-atom/atom-react"
- * import { limitAtom, cursorAtom } from "@/atoms/timeline-url-sync-example"
+ * import { limitAtom, cursorAtom } from "@/atoms/timeline-url-sync"
  * import { Option } from "effect"
  *
  * function TimelineComponent() {
