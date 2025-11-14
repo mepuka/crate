@@ -31,7 +31,9 @@ import {
   updatePrograms,
   updateShows,
   setProgramsLoading,
-  setShowsLoading
+  setShowsLoading,
+  setProgramsError,
+  setShowsError
 } from "./kexp-atoms"
 
 /**
@@ -75,11 +77,11 @@ export function useKexpDataSync() {
 
         case "error":
           console.error(`KEXP worker error (${response.requestType}):`, response.error)
-          // Clear loading state on error
+          // Set error state and clear loading state
           if (response.requestType === "fetch-programs") {
-            setProgramsLoading(false)
+            setProgramsError(response.error)
           } else if (response.requestType === "fetch-shows") {
-            setShowsLoading(false)
+            setShowsError(response.error)
           }
           break
 

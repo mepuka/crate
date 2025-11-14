@@ -42,6 +42,8 @@ const kexpState = {
   showsMap: new Map<number, KexpShow>(),
   programsLoading: false,
   showsLoading: false,
+  programsError: null as string | null,
+  showsError: null as string | null,
   programsTimestamp: null as string | null,
   showsTimestamp: null as string | null,
   programsCached: false,
@@ -58,6 +60,7 @@ export function updatePrograms(programs: readonly KexpProgram[], timestamp: stri
   kexpState.programsTimestamp = timestamp
   kexpState.programsCached = cached
   kexpState.programsLoading = false
+  kexpState.programsError = null
   kexpState.version++
 }
 
@@ -69,6 +72,7 @@ export function updateShows(shows: readonly KexpShow[], timestamp: string, cache
   kexpState.showsTimestamp = timestamp
   kexpState.showsCached = cached
   kexpState.showsLoading = false
+  kexpState.showsError = null
   kexpState.version++
 }
 
@@ -85,6 +89,24 @@ export function setProgramsLoading(loading: boolean) {
  */
 export function setShowsLoading(loading: boolean) {
   kexpState.showsLoading = loading
+  kexpState.version++
+}
+
+/**
+ * Set programs error state
+ */
+export function setProgramsError(error: string | null) {
+  kexpState.programsError = error
+  kexpState.programsLoading = false
+  kexpState.version++
+}
+
+/**
+ * Set shows error state
+ */
+export function setShowsError(error: string | null) {
+  kexpState.showsError = error
+  kexpState.showsLoading = false
   kexpState.version++
 }
 
@@ -156,6 +178,22 @@ export const programsCachedAtom = Atom.make<boolean>(() => {
 export const showsCachedAtom = Atom.make<boolean>(() => {
   kexpState.version
   return kexpState.showsCached
+})
+
+/**
+ * Error message for programs data (null if no error)
+ */
+export const programsErrorAtom = Atom.make<string | null>(() => {
+  kexpState.version
+  return kexpState.programsError
+})
+
+/**
+ * Error message for shows data (null if no error)
+ */
+export const showsErrorAtom = Atom.make<string | null>(() => {
+  kexpState.version
+  return kexpState.showsError
 })
 
 // === Derived Atoms ===
