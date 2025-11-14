@@ -66,12 +66,14 @@ export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
         aria-label={`${play.song} by ${play.artist} played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`}
       >
         <div className="flex gap-3 py-3">
-          {/* Album Art */}
-          <AlbumArt
-            src={play.thumbnail_uri || play.image_uri}
-            alt={`${play.album} by ${play.artist}`}
-            size={imageSize}
-          />
+          {/* Album Art - only render if image exists */}
+          {(play.thumbnail_uri || play.image_uri) && (
+            <AlbumArt
+              src={play.thumbnail_uri || play.image_uri}
+              alt={`${play.album} by ${play.artist}`}
+              size={imageSize}
+            />
+          )}
 
           {/* Metadata */}
           <div className="flex-1 min-w-0 flex flex-col gap-0.5 py-0.5">
