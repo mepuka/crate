@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@crate/api": "workspace:*",
+    "@crate/domain": "workspace:^",
     "@effect-atom/atom": "^0.4.0",
     "@effect-atom/atom-react": "^0.4.0",
     "@effect/experimental": "^0.57.0",
