@@ -7,6 +7,7 @@ import { AlbumArt } from './AlbumArt'
 import { useAtom } from '@effect-atom/atom-react'
 import { selectedPlayIdAtom } from '@/atoms/play-details'
 import { Option } from 'effect'
+import { FeaturedLinkPreview } from './FeaturedLinkPreview'
 
 const playCardVariants = cva(
   [
@@ -176,6 +177,11 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
               <p className="mt-2 text-xs text-muted-foreground italic line-clamp-2">
                 {play.comment}
               </p>
+            )}
+
+            {/* Featured Link Preview */}
+            {size !== 'compact' && (
+              <FeaturedLinkPreview playId={play.id} />
             )}
           </div>
         </div>
