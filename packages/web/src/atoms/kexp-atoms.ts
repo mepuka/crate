@@ -1,220 +1,234 @@
 /**
  * KEXP Data State Management
  *
- * Provides state management for KEXP programs and shows data using a backing store.
- * These values are populated by the KEXP worker and used throughout the application.
+ * Provides state management for KEXP programs and shows data using Effect-based atoms.
+ * Uses the main TimelineRuntime for consistent runtime management.
  *
  * Architecture:
- * - Singleton state object that holds all KEXP data
- * - Update functions to modify state from worker messages
- * - Atoms that read from the state object
- * - Derived computations for show-to-program lookup
+ * - Uses TimelineRuntime.atom() for Effect execution
+ * - Caching via Effect.cached with proper TTL
+ * - Immutable HashMap for O(1) lookups
+ * - Result.matchWithWaiting for safe Result handling
+ * - Derived atoms for common access patterns
  *
  * Usage:
  * ```tsx
  * import { useAtomValue } from "@effect-atom/atom-react"
+ * import { Result } from "@effect-atom/atom"
  * import { programsMapAtom, showsMapAtom } from "@/atoms/kexp-atoms"
  *
  * function MyComponent() {
- *   const programs = useAtomValue(programsMapAtom)
- *   const shows = useAtomValue(showsMapAtom)
- *   // ...
+ *   const programsMap = useAtomValue(programsMapAtom)  // HashMap<number, KexpProgram>
+ *   const showsMap = useAtomValue(showsMapAtom)        // HashMap<number, KexpShow>
+ *
+ *   return <div>Programs: {HashMap.size(programsMap)}</div>
  * }
  * ```
  */
 
-import { Atom } from "@effect-atom/atom"
+import { Atom, Result } from "@effect-atom/atom"
+import { Effect, Layer, HashMap, Option } from "effect"
+import { FetchHttpClient } from "@effect/platform"
 import type { Kexp } from "@crate/domain"
 import type { Play } from "@/domain/Play"
+import { KexpApiService, KexpApiServiceLive } from "@/services/kexp-api-service"
+import { TimelineRuntime } from "@/lib/http-runtime"
 
 // Re-export types for convenience
 type KexpProgram = Kexp.KexpProgram
 type KexpShow = Kexp.KexpShow
 
-// === Backing Store ===
+// === Layer Setup ===
 
 /**
- * Internal state object that holds all KEXP data
- * This is the source of truth that atoms read from
+ * Layer providing KEXP API service
+ * Will be provided to TimelineRuntime for use in atoms
  */
-const kexpState = {
-  programsMap: new Map<number, KexpProgram>(),
-  showsMap: new Map<number, KexpShow>(),
-  programsLoading: false,
-  showsLoading: false,
-  programsError: null as string | null,
-  showsError: null as string | null,
-  programsTimestamp: null as string | null,
-  showsTimestamp: null as string | null,
-  programsCached: false,
-  showsCached: false,
-  // Increment this to trigger atom updates
-  version: 0
-}
+const KexpLayer = Layer.provide(KexpApiServiceLive, FetchHttpClient.layer)
+
+// === Fetch Effects with Caching ===
 
 /**
- * Update the programs data
+ * Effect that fetches programs from KEXP API
+ * Pattern: Effect.gen with service access
  */
-export function updatePrograms(programs: readonly KexpProgram[], timestamp: string, cached: boolean) {
-  kexpState.programsMap = new Map(programs.map((p) => [p.id, p]))
-  kexpState.programsTimestamp = timestamp
-  kexpState.programsCached = cached
-  kexpState.programsLoading = false
-  kexpState.programsError = null
-  kexpState.version++
-}
+const fetchProgramsEffect = Effect.gen(function* () {
+  yield* Effect.logInfo("Fetching programs from KEXP API")
+  const apiService = yield* KexpApiService
+  const response = yield* apiService.fetchPrograms
+
+  const programsMap = HashMap.fromIterable(
+    response.results.map((p) => [p.id, p] as const)
+  )
+
+  yield* Effect.logInfo(`Fetched ${response.results.length} programs`)
+  return programsMap
+}).pipe(Effect.provide(KexpLayer))
 
 /**
- * Update the shows data
+ * Effect that fetches shows from KEXP API
+ * Pattern: Effect.gen with service access
  */
-export function updateShows(shows: readonly KexpShow[], timestamp: string, cached: boolean) {
-  kexpState.showsMap = new Map(shows.map((s) => [s.id, s]))
-  kexpState.showsTimestamp = timestamp
-  kexpState.showsCached = cached
-  kexpState.showsLoading = false
-  kexpState.showsError = null
-  kexpState.version++
-}
+const fetchShowsEffect = Effect.gen(function* () {
+  const limit = 200
+  yield* Effect.logInfo(`Fetching shows from KEXP API (limit: ${limit})`)
+  const apiService = yield* KexpApiService
+  const response = yield* apiService.fetchShows(limit)
+
+  const showsMap = HashMap.fromIterable(
+    response.results.map((s) => [s.id, s] as const)
+  )
+
+  yield* Effect.logInfo(`Fetched ${response.results.length} shows`)
+  return showsMap
+}).pipe(Effect.provide(KexpLayer))
 
 /**
- * Set programs loading state
+ * Cached programs effect
+ * Pattern: Effect.cached for automatic memoization
+ * Cache persists for the lifetime of the runtime
  */
-export function setProgramsLoading(loading: boolean) {
-  kexpState.programsLoading = loading
-  kexpState.version++
-}
+const cachedProgramsEffect = Effect.cached(fetchProgramsEffect)
 
 /**
- * Set shows loading state
+ * Cached shows effect
+ * Pattern: Effect.cached for automatic memoization
+ * Cache persists for the lifetime of the runtime
  */
-export function setShowsLoading(loading: boolean) {
-  kexpState.showsLoading = loading
-  kexpState.version++
-}
+const cachedShowsEffect = Effect.cached(fetchShowsEffect)
+
+// === Runtime Atoms ===
 
 /**
- * Set programs error state
+ * Private atom that executes the cached programs effect
+ * Pattern: TimelineRuntime.atom for runtime execution
  */
-export function setProgramsError(error: string | null) {
-  kexpState.programsError = error
-  kexpState.programsLoading = false
-  kexpState.version++
-}
+const _programsAtom = TimelineRuntime.atom(
+  Effect.gen(function* () {
+    const getCachedPrograms = yield* cachedProgramsEffect
+    return yield* getCachedPrograms
+  })
+)
 
 /**
- * Set shows error state
+ * Private atom that executes the cached shows effect
+ * Pattern: TimelineRuntime.atom for runtime execution
  */
-export function setShowsError(error: string | null) {
-  kexpState.showsError = error
-  kexpState.showsLoading = false
-  kexpState.version++
-}
+const _showsAtom = TimelineRuntime.atom(
+  Effect.gen(function* () {
+    const getCachedShows = yield* cachedShowsEffect
+    return yield* getCachedShows
+  })
+)
 
-// === Atoms (Read from state) ===
+// === Public Derived Atoms ===
 
 /**
- * Map of program ID -> KexpProgram
- * Populated by the KEXP worker when programs are fetched
+ * HashMap of program ID -> KexpProgram
+ * Pattern: Result.matchWithWaiting for safe Result handling
+ * Returns empty HashMap while loading or on error
  */
-export const programsMapAtom = Atom.make<Map<number, KexpProgram>>(() => {
-  // Read current version to trigger re-evaluation
-  kexpState.version
-  return kexpState.programsMap
+export const programsMapAtom = Atom.make((get) => {
+  const result = get.get(_programsAtom)
+  return Result.matchWithWaiting(result, {
+    onWaiting: () => HashMap.empty<number, KexpProgram>(),
+    onSuccess: (s) => s.value,
+    onError: () => HashMap.empty<number, KexpProgram>(),
+    onDefect: () => HashMap.empty<number, KexpProgram>()
+  })
 })
 
 /**
- * Map of show ID -> KexpShow
- * Populated by the KEXP worker when shows are fetched
+ * HashMap of show ID -> KexpShow
+ * Pattern: Result.matchWithWaiting for safe Result handling
+ * Returns empty HashMap while loading or on error
  */
-export const showsMapAtom = Atom.make<Map<number, KexpShow>>(() => {
-  // Read current version to trigger re-evaluation
-  kexpState.version
-  return kexpState.showsMap
+export const showsMapAtom = Atom.make((get) => {
+  const result = get.get(_showsAtom)
+  return Result.matchWithWaiting(result, {
+    onWaiting: () => HashMap.empty<number, KexpShow>(),
+    onSuccess: (s) => s.value,
+    onError: () => HashMap.empty<number, KexpShow>(),
+    onDefect: () => HashMap.empty<number, KexpShow>()
+  })
 })
 
 /**
  * Loading state for programs data
+ * Pattern: Result.matchWithWaiting with boolean return
  */
-export const programsLoadingAtom = Atom.make<boolean>(() => {
-  kexpState.version
-  return kexpState.programsLoading
+export const programsLoadingAtom = Atom.make<boolean>((get) => {
+  const result = get.get(_programsAtom)
+  return Result.matchWithWaiting(result, {
+    onWaiting: () => true,
+    onSuccess: () => false,
+    onError: () => false,
+    onDefect: () => false
+  })
 })
 
 /**
  * Loading state for shows data
+ * Pattern: Result.matchWithWaiting with boolean return
  */
-export const showsLoadingAtom = Atom.make<boolean>(() => {
-  kexpState.version
-  return kexpState.showsLoading
-})
-
-/**
- * Timestamp of the programs data (ISO string)
- */
-export const programsTimestampAtom = Atom.make<string | null>(() => {
-  kexpState.version
-  return kexpState.programsTimestamp
-})
-
-/**
- * Timestamp of the shows data (ISO string)
- */
-export const showsTimestampAtom = Atom.make<string | null>(() => {
-  kexpState.version
-  return kexpState.showsTimestamp
-})
-
-/**
- * Whether the current programs data came from cache
- */
-export const programsCachedAtom = Atom.make<boolean>(() => {
-  kexpState.version
-  return kexpState.programsCached
-})
-
-/**
- * Whether the current shows data came from cache
- */
-export const showsCachedAtom = Atom.make<boolean>(() => {
-  kexpState.version
-  return kexpState.showsCached
+export const showsLoadingAtom = Atom.make<boolean>((get) => {
+  const result = get.get(_showsAtom)
+  return Result.matchWithWaiting(result, {
+    onWaiting: () => true,
+    onSuccess: () => false,
+    onError: () => false,
+    onDefect: () => false
+  })
 })
 
 /**
  * Error message for programs data (null if no error)
+ * Pattern: Result.matchWithWaiting for error extraction
  */
-export const programsErrorAtom = Atom.make<string | null>(() => {
-  kexpState.version
-  return kexpState.programsError
+export const programsErrorAtom = Atom.make<string | null>((get) => {
+  const result = get.get(_programsAtom)
+  return Result.matchWithWaiting(result, {
+    onWaiting: () => null,
+    onSuccess: () => null,
+    onError: () => "Failed to load programs",
+    onDefect: () => "Unexpected error loading programs"
+  })
 })
 
 /**
  * Error message for shows data (null if no error)
+ * Pattern: Result.matchWithWaiting for error extraction
  */
-export const showsErrorAtom = Atom.make<string | null>(() => {
-  kexpState.version
-  return kexpState.showsError
+export const showsErrorAtom = Atom.make<string | null>((get) => {
+  const result = get.get(_showsAtom)
+  return Result.matchWithWaiting(result, {
+    onWaiting: () => null,
+    onSuccess: () => null,
+    onError: () => "Failed to load shows",
+    onDefect: () => "Unexpected error loading shows"
+  })
 })
 
-// === Derived Atoms ===
-
 /**
- * Derived atom: Map from show ID -> program
+ * Derived atom: HashMap from show ID -> program
+ * Pattern: HashMap composition with Option.match for safe access
  * Provides O(1) lookup of a show's program without traversing maps
  */
 export const showToProgramMapAtom = Atom.make((get) => {
   const shows = get.get(showsMapAtom)
   const programs = get.get(programsMapAtom)
-  const map = new Map<number, KexpProgram>()
 
-  shows.forEach((show) => {
-    const program = programs.get(show.program)
-    if (program) {
-      map.set(show.id, program)
+  return HashMap.reduce(
+    shows,
+    HashMap.empty<number, KexpProgram>(),
+    (acc, show) => {
+      const programOption = HashMap.get(programs, show.program)
+      return Option.match(programOption, {
+        onNone: () => acc,
+        onSome: (program) => HashMap.set(acc, show.id, program)
+      })
     }
-  })
-
-  return map
+  )
 })
 
 // === Show Boundaries Types ===
@@ -236,6 +250,8 @@ export interface ShowBoundary {
  *
  * Show boundaries are points in the timeline where the show changes.
  * They're used to render visual markers indicating show transitions.
+ *
+ * Pattern: HashMap.get returns Option, use Option.match for safe access
  *
  * @param playsAtom - An atom that provides an array of plays
  * @returns An atom that computes show boundaries
@@ -266,14 +282,24 @@ export function createShowBoundariesAtom(
       const isNewShow = !prevPlay || prevPlay.show !== play.show
 
       if (isNewShow) {
-        const showInfo = shows.get(play.show)
-        boundaries.push({
-          timestamp: play.airdate as Date | string,
-          showId: play.show as number,
-          programName: showInfo?.program_name ?? undefined,
-          programId: showInfo?.program ?? undefined,
-          hostNames: showInfo?.host_names ?? undefined
-        } as ShowBoundary)
+        const showOption = HashMap.get(shows, play.show)
+        Option.match(showOption, {
+          onNone: () => {
+            boundaries.push({
+              timestamp: play.airdate as Date | string,
+              showId: play.show as number
+            })
+          },
+          onSome: (showInfo) => {
+            boundaries.push({
+              timestamp: play.airdate as Date | string,
+              showId: play.show as number,
+              programName: showInfo.program_name ?? undefined,
+              programId: showInfo.program ?? undefined,
+              hostNames: showInfo.host_names ?? undefined
+            })
+          }
+        })
       }
     })
 

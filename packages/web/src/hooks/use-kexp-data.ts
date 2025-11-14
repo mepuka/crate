@@ -8,6 +8,7 @@
  * Architecture:
  * - Thin wrappers around atom reads
  * - Type-safe access to KEXP data
+ * - HashMap-based lookups with Option handling
  * - Memoized computations for derived data
  *
  * Usage:
@@ -30,6 +31,7 @@
 
 import { useMemo } from "react"
 import { useAtomValue } from "@effect-atom/atom-react"
+import { HashMap, Option } from "effect"
 import { showsMapAtom, programsMapAtom } from "@/atoms/kexp-atoms"
 import type { Kexp } from "@crate/domain"
 import type { Play } from "@/domain/Play"
@@ -39,6 +41,8 @@ type KexpProgram = Kexp.KexpProgram
 
 /**
  * Get show and program information for a specific show ID
+ *
+ * Pattern: HashMap.get returns Option, use Option.match for safe access
  *
  * @param showId - KEXP show ID
  * @returns Object containing show and program, or undefined if not found
@@ -67,9 +71,18 @@ export function useShowInfo(showId: number): {
   const programsMap = useAtomValue(programsMapAtom)
 
   return useMemo(() => {
-    const show = showsMap.get(showId)
-    const program = show ? programsMap.get(show.program) : undefined
-    return { show, program }
+    const showOption = HashMap.get(showsMap, showId)
+    return Option.match(showOption, {
+      onNone: () => ({ show: undefined, program: undefined }),
+      onSome: (show) => {
+        const programOption = HashMap.get(programsMap, show.program)
+        const program = Option.match(programOption, {
+          onNone: () => undefined,
+          onSome: (p) => p
+        })
+        return { show, program }
+      }
+    })
   }, [showsMap, programsMap, showId])
 }
 
@@ -110,6 +123,8 @@ export interface ShowBoundary {
  * Show boundaries are points where the show changes in the timeline.
  * They're used to render visual markers indicating show transitions.
  *
+ * Pattern: HashMap.get returns Option, use Option.match for safe access
+ *
  * @param plays - Array of plays (must be sorted by airdate)
  * @returns Array of show boundaries
  *
@@ -143,13 +158,23 @@ export function useShowBoundaries(plays: readonly Play[]): ShowBoundary[] {
       const isNewShow = !prevPlay || prevPlay.show !== play.show
 
       if (isNewShow) {
-        const showInfo = showsMap.get(play.show)
-        boundaries.push({
-          timestamp: play.airdate as Date | string,
-          showId: play.show as number,
-          programName: showInfo?.program_name ?? undefined,
-          hostNames: showInfo?.host_names ?? undefined
-        } as ShowBoundary)
+        const showOption = HashMap.get(showsMap, play.show)
+        Option.match(showOption, {
+          onNone: () => {
+            boundaries.push({
+              timestamp: play.airdate as Date | string,
+              showId: play.show as number
+            })
+          },
+          onSome: (showInfo) => {
+            boundaries.push({
+              timestamp: play.airdate as Date | string,
+              showId: play.show as number,
+              programName: showInfo.program_name ?? undefined,
+              hostNames: showInfo.host_names ?? undefined
+            })
+          }
+        })
       }
     })
 
