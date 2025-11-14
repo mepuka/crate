@@ -1,21 +1,19 @@
-import { Context, Effect, Layer, Schedule, Schema } from "effect"
+import { Context, Data, Effect, Layer, Schedule, Schema } from "effect"
 import { HttpClient } from "@effect/platform"
 import { Kexp } from "@crate/domain"
 
 const { KexpProgramsResponse, KexpShowsResponse } = Kexp
 
 // Error types
-export class NetworkError extends Error {
-  readonly _tag = "NetworkError"
-}
+export class NetworkError extends Data.TaggedError("NetworkError")<{
+  readonly url: string
+  readonly cause: unknown
+}> {}
 
-export class ParseError extends Error {
-  readonly _tag = "ParseError"
-}
-
-export class NotFoundError extends Error {
-  readonly _tag = "NotFoundError"
-}
+export class ParseError extends Data.TaggedError("ParseError")<{
+  readonly message: string
+  readonly cause: unknown
+}> {}
 
 // Type aliases for better readability
 type KexpProgramsResponseType = Schema.Schema.Type<typeof KexpProgramsResponse>
@@ -43,7 +41,7 @@ export const KexpApiServiceLive = Layer.effect(
     const httpClient = yield* HttpClient.HttpClient
 
     const retryPolicy = Schedule.exponential("100 millis").pipe(
-      Schedule.compose(Schedule.recurs(3))
+      Schedule.intersect(Schedule.recurs(3))
     )
 
     const fetchPrograms = httpClient
@@ -52,13 +50,21 @@ export const KexpApiServiceLive = Layer.effect(
         Effect.flatMap((response) => response.json),
         Effect.flatMap((json) =>
           Schema.decodeUnknown(KexpProgramsResponse)(json).pipe(
-            Effect.mapError((error) => new ParseError(String(error)))
+            Effect.mapError((error) => new ParseError({
+              message: "Failed to parse KEXP programs response",
+              cause: error
+            }))
           )
         ),
         Effect.retry(retryPolicy),
         Effect.catchAll((error) =>
           Effect.fail(
-            error instanceof ParseError ? error : new NetworkError(String(error))
+            error instanceof ParseError
+              ? error
+              : new NetworkError({
+                  url: `${BASE_URL}/programs/?format=json`,
+                  cause: error
+                })
           )
         )
       )
@@ -70,7 +76,10 @@ export const KexpApiServiceLive = Layer.effect(
           Effect.flatMap((response) => response.json),
           Effect.flatMap((json) =>
             Schema.decodeUnknown(KexpShowsResponse)(json).pipe(
-              Effect.mapError((error) => new ParseError(String(error)))
+              Effect.mapError((error) => new ParseError({
+                message: "Failed to parse KEXP shows response",
+                cause: error
+              }))
             )
           ),
           Effect.retry(retryPolicy),
@@ -78,14 +87,17 @@ export const KexpApiServiceLive = Layer.effect(
             Effect.fail(
               error instanceof ParseError
                 ? error
-                : new NetworkError(String(error))
+                : new NetworkError({
+                    url: `${BASE_URL}/shows/?format=json&limit=${limit}`,
+                    cause: error
+                  })
             )
           )
         )
 
-    return {
+    return KexpApiService.of({
       fetchPrograms,
       fetchShows
-    }
+    })
   })
 )
