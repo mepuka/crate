@@ -52,6 +52,7 @@ export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
       <Link
         to="/play/$id"
         params={{ id: String(play.id) }}
+        search={(prev) => prev}
         ref={ref}
         className={cn(
           playCardVariants({
