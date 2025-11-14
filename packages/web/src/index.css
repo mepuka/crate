@@ -451,13 +451,112 @@
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
     }
-    
+
     .album-grid-blur {
       background: rgba(0, 0, 0, 0.75) !important;
     }
-    
+
     .timeline-backdrop {
       background: rgba(15, 18, 28, 0.90) !important;
+    }
+  }
+
+  /* ========================================
+     LINK DISPLAY SYSTEM
+     Highlights, hover coordination, previews
+     ======================================== */
+
+  /* Comment with links - base styling */
+  .comment-text {
+    line-height: 1.6;
+  }
+
+  /* Link highlight in comment text */
+  .link-highlight {
+    position: relative;
+    padding: 0 2px;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+    color: hsl(var(--primary));
+  }
+
+  .link-highlight:hover {
+    background: hsl(var(--primary) / 0.1);
+    text-decoration-color: hsl(var(--primary));
+  }
+
+  /* Active state for hover coordination */
+  .link-highlight.link-active,
+  .link-item.link-active {
+    background: hsl(var(--primary) / 0.15);
+    border-color: hsl(var(--primary) / 0.3);
+  }
+
+  /* Featured link preview */
+  .featured-preview {
+    transition: all 0.2s ease;
+  }
+
+  .featured-preview:hover {
+    transform: translateY(-1px);
+  }
+
+  /* YouTube preview specific styling */
+  .youtube-preview img {
+    transition: transform 0.2s ease;
+  }
+
+  .youtube-preview:hover img {
+    transform: scale(1.05);
+  }
+
+  /* Link item hover states */
+  .link-item {
+    transition: all 0.2s ease;
+  }
+
+  .link-item:hover .link-thumbnail {
+    transform: scale(1.05);
+  }
+
+  /* Category section styling */
+  .category-section {
+    border-radius: 8px;
+  }
+
+  .category-header {
+    color: hsl(var(--foreground));
+    opacity: 0.9;
+  }
+
+  /* Links section container */
+  .links-section {
+    border-radius: 8px;
+  }
+
+  /* Hover coordination via data-link-id */
+  [data-link-id]:hover {
+    cursor: pointer;
+  }
+
+  /* Smooth transitions for all link elements */
+  .link-highlight,
+  .link-item,
+  .featured-preview,
+  .link-thumbnail {
+    will-change: transform;
+  }
+
+  /* Respect reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .link-highlight,
+    .link-item,
+    .featured-preview,
+    .link-thumbnail,
+    .youtube-preview img {
+      transition: none;
+      transform: none !important;
+      animation: none;
     }
   }
 }

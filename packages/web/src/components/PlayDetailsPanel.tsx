@@ -17,6 +17,8 @@ import { formatPlayTime, formatRelativeTime } from "@/lib/date-utils";
 import { AlbumArt } from "./AlbumArt";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CommentWithLinks } from "./CommentWithLinks";
+import { LinksByCategory } from "./LinksByCategory";
 
 export function PlayDetailsPanel() {
   const [selectedId, setSelectedId] = useAtom(selectedPlayIdAtom);
@@ -205,9 +207,14 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                     <h4 className="text-sm font-medium text-muted-foreground mb-2">
                       Comment
                     </h4>
-                    <p className="text-sm italic">{play.comment}</p>
+                    <CommentWithLinks playId={play.id} comment={play.comment} variant="details" />
                   </div>
                 )}
+              </div>
+
+              {/* Links Section */}
+              <div className="space-y-4 border-t border-border pt-4">
+                <LinksByCategory playId={play.id} />
               </div>
 
               {/* Future Analysis Section Placeholder */}
