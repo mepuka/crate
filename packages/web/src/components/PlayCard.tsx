@@ -79,7 +79,7 @@ export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
           <div className="flex-1 min-w-0 flex flex-col gap-1 py-0">
             {/* Title & Time */}
             <div className="flex items-baseline justify-between gap-4">
-              <h3 className="text-base font-semibold text-foreground leading-snug truncate tracking-tight" title={play.song}>
+              <h3 className="text-base font-bold text-foreground leading-tight truncate tracking-tight" title={play.song}>
                 {play.song || 'Untitled'}
               </h3>
               {play.airdate && (
@@ -93,15 +93,15 @@ export const PlayCard = forwardRef<HTMLAnchorElement, PlayCardProps>(
             </div>
 
             {/* Artist */}
-            <p className="text-sm text-foreground/70 truncate" title={play.artist}>
+            <p className="text-sm text-foreground/85 truncate" title={play.artist}>
               {play.artist || 'Unknown Artist'}
             </p>
 
             {/* Album & Year */}
             {play.album && (
-              <p className="text-xs text-muted-foreground truncate" title={play.album}>
+              <p className="text-xs text-muted-foreground/80 leading-tight truncate" title={play.album}>
                 {play.album}
-                {releaseYear && `, ${releaseYear}`}
+                {releaseYear && ` • ${releaseYear}`}
               </p>
             )}
 
