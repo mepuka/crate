@@ -223,13 +223,19 @@ async def search(
     "/api/plays/timeline",
     response_model=TimelineResponse,
     tags=["plays"],
-    summary="Get plays chronologically with flexible navigation",
+    summary="Get plays chronologically with flexible navigation and MBID filtering",
     description="""
     Browse plays in chronological order (newest first) with multiple navigation methods:
     - **Cursor pagination**: Standard forward/backward navigation
     - **Time-based jump**: Jump to a specific date/time range
     - **Percentage jump**: Jump to a percentage position in the timeline
     - **Anchor jump**: Show plays centered around a specific play ID
+
+    **MBID Filtering** (optional, can be combined with navigation methods):
+    - **artist_mbid**: Filter by artist MusicBrainz ID
+    - **recording_mbid**: Filter by recording MusicBrainz ID
+    - **release_mbid**: Filter by release MusicBrainz ID
+    - **release_group_mbid**: Filter by release group MusicBrainz ID
 
     All methods return the same chronological list with pagination cursor.
     """,
@@ -246,6 +252,10 @@ async def get_timeline(
     until: Optional[str] = None,
     percentage: Optional[float] = None,
     anchor_id: Optional[int] = None,
+    artist_mbid: Optional[str] = None,
+    recording_mbid: Optional[str] = None,
+    release_mbid: Optional[str] = None,
+    release_group_mbid: Optional[str] = None,
     db_svc: DatabaseService = Depends(get_db_service)
 ) -> TimelineResponse:
     """
@@ -318,7 +328,11 @@ async def get_timeline(
             result = await anyio.to_thread.run_sync(
                 db_svc.get_plays_by_percentage,
                 percentage,
-                limit
+                limit,
+                artist_mbid,
+                recording_mbid,
+                release_mbid,
+                release_group_mbid
             )
 
         elif anchor_id is not None:
@@ -326,7 +340,11 @@ async def get_timeline(
             result = await anyio.to_thread.run_sync(
                 db_svc.get_plays_around_id,
                 anchor_id,
-                limit
+                limit,
+                artist_mbid,
+                recording_mbid,
+                release_mbid,
+                release_group_mbid
             )
 
         elif since is not None or until is not None:
@@ -338,12 +356,23 @@ async def get_timeline(
                 db_svc.get_plays_by_time_range,
                 since_dt,
                 until_dt,
-                limit
+                limit,
+                artist_mbid,
+                recording_mbid,
+                release_mbid,
+                release_group_mbid
             )
 
         else:
             # Standard cursor pagination (fast indexed query - can run directly)
-            result = db_svc.get_plays_by_cursor(limit=limit, cursor=cursor)
+            result = db_svc.get_plays_by_cursor(
+                limit=limit,
+                cursor=cursor,
+                artist_mbid=artist_mbid,
+                recording_mbid=recording_mbid,
+                release_mbid=release_mbid,
+                release_group_mbid=release_group_mbid
+            )
 
         # Convert to PlayResult models (similarity=0 for timeline browsing)
         play_results = [

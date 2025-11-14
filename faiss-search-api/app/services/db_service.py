@@ -164,19 +164,73 @@ class DatabaseService:
         except Exception as e:
             raise ValueError(f"Invalid cursor: {e}")
 
+    def _build_mbid_filter_clause(
+        self,
+        artist_mbid: Optional[str] = None,
+        recording_mbid: Optional[str] = None,
+        release_mbid: Optional[str] = None,
+        release_group_mbid: Optional[str] = None
+    ) -> tuple[str, List[Any]]:
+        """
+        Build WHERE clause and parameters for MBID filtering.
+
+        Args:
+            artist_mbid: Filter by artist MBID (searches in JSON array)
+            recording_mbid: Filter by recording MBID
+            release_mbid: Filter by release MBID
+            release_group_mbid: Filter by release group MBID
+
+        Returns:
+            Tuple of (where_clause, params) for SQL query
+        """
+        conditions = []
+        params = []
+
+        if artist_mbid:
+            # For JSON array search in SQLite, use LIKE with proper escaping
+            # artist_ids is stored as ["uuid1", "uuid2", ...]
+            conditions.append("artist_ids LIKE ?")
+            params.append(f'%"{artist_mbid}"%')
+
+        if recording_mbid:
+            conditions.append("recording_id = ?")
+            params.append(recording_mbid)
+
+        if release_mbid:
+            conditions.append("release_id = ?")
+            params.append(release_mbid)
+
+        if release_group_mbid:
+            conditions.append("release_group_id = ?")
+            params.append(release_group_mbid)
+
+        where_clause = ""
+        if conditions:
+            where_clause = "WHERE " + " AND ".join(conditions)
+
+        return where_clause, params
+
     def get_plays_by_cursor(
         self,
         limit: int = 50,
         cursor: Optional[str] = None,
-        direction: str = "next"
+        direction: str = "next",
+        artist_mbid: Optional[str] = None,
+        recording_mbid: Optional[str] = None,
+        release_mbid: Optional[str] = None,
+        release_group_mbid: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Get plays using cursor-based pagination.
+        Get plays using cursor-based pagination with optional MBID filtering.
 
         Args:
             limit: Maximum number of results to return
             cursor: Optional cursor for pagination (base64-encoded "airdate:id")
             direction: Pagination direction ("next" or "prev")
+            artist_mbid: Optional artist MBID filter
+            recording_mbid: Optional recording MBID filter
+            release_mbid: Optional release MBID filter
+            release_group_mbid: Optional release group MBID filter
 
         Returns:
             Dictionary with:
@@ -189,35 +243,57 @@ class DatabaseService:
         # Fetch limit+1 to detect if more results exist
         fetch_limit = limit + 1
 
+        # Build MBID filter clause
+        mbid_filter, mbid_params = self._build_mbid_filter_clause(
+            artist_mbid, recording_mbid, release_mbid, release_group_mbid
+        )
+
         if cursor is None:
             # First page: get most recent plays
-            query = """
+            query = f"""
                 SELECT * FROM fact_plays
+                {mbid_filter}
                 ORDER BY airdate DESC, id DESC
                 LIMIT ?
             """
-            cursor_obj.execute(query, (fetch_limit,))
+            params = mbid_params + [fetch_limit]
+            cursor_obj.execute(query, params)
         else:
             # Subsequent page: use compound cursor for stable pagination
             airdate, play_id = self.decode_cursor(cursor)
 
             if direction == "next":
-                query = """
+                # Combine cursor condition with MBID filters
+                cursor_condition = "airdate < ? OR (airdate = ? AND id < ?)"
+                if mbid_filter:
+                    combined_where = f"WHERE ({cursor_condition}) AND ({mbid_filter[6:]})"  # Remove "WHERE " prefix
+                else:
+                    combined_where = f"WHERE {cursor_condition}"
+
+                query = f"""
                     SELECT * FROM fact_plays
-                    WHERE airdate < ? OR (airdate = ? AND id < ?)
+                    {combined_where}
                     ORDER BY airdate DESC, id DESC
                     LIMIT ?
                 """
-                cursor_obj.execute(query, (airdate, airdate, play_id, fetch_limit))
+                params = [airdate, airdate, play_id] + mbid_params + [fetch_limit]
+                cursor_obj.execute(query, params)
             else:
                 # "prev" direction (for future implementation)
-                query = """
+                cursor_condition = "airdate > ? OR (airdate = ? AND id > ?)"
+                if mbid_filter:
+                    combined_where = f"WHERE ({cursor_condition}) AND ({mbid_filter[6:]})"  # Remove "WHERE " prefix
+                else:
+                    combined_where = f"WHERE {cursor_condition}"
+
+                query = f"""
                     SELECT * FROM fact_plays
-                    WHERE airdate > ? OR (airdate = ? AND id > ?)
+                    {combined_where}
                     ORDER BY airdate ASC, id ASC
                     LIMIT ?
                 """
-                cursor_obj.execute(query, (airdate, airdate, play_id, fetch_limit))
+                params = [airdate, airdate, play_id] + mbid_params + [fetch_limit]
+                cursor_obj.execute(query, params)
 
         rows = cursor_obj.fetchall()
 
@@ -266,7 +342,11 @@ class DatabaseService:
         self,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
-        limit: int = 50
+        limit: int = 50,
+        artist_mbid: Optional[str] = None,
+        recording_mbid: Optional[str] = None,
+        release_mbid: Optional[str] = None,
+        release_group_mbid: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get plays within a time range, chronologically ordered (newest first).
@@ -275,6 +355,10 @@ class DatabaseService:
             since: Start datetime (inclusive). If None, no lower bound.
             until: End datetime (inclusive). If None, no upper bound.
             limit: Maximum number of results to return
+            artist_mbid: Optional artist MBID filter
+            recording_mbid: Optional recording MBID filter
+            release_mbid: Optional release MBID filter
+            release_group_mbid: Optional release group MBID filter
 
         Returns:
             Dictionary with:
@@ -304,6 +388,15 @@ class DatabaseService:
         if until is not None:
             conditions.append("airdate <= ?")
             params.append(until.isoformat())
+
+        # Add MBID filters
+        mbid_filter, mbid_params = self._build_mbid_filter_clause(
+            artist_mbid, recording_mbid, release_mbid, release_group_mbid
+        )
+        if mbid_filter:
+            # Extract conditions from WHERE clause
+            conditions.extend(mbid_filter[6:].split(" AND "))  # Remove "WHERE " and split
+            params.extend(mbid_params)
 
         where_clause = ""
         if conditions:
@@ -343,7 +436,11 @@ class DatabaseService:
     def get_plays_by_percentage(
         self,
         percentage: float,
-        limit: int = 50
+        limit: int = 50,
+        artist_mbid: Optional[str] = None,
+        recording_mbid: Optional[str] = None,
+        release_mbid: Optional[str] = None,
+        release_group_mbid: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Jump to a percentage position in the timeline.
@@ -354,6 +451,10 @@ class DatabaseService:
         Args:
             percentage: Position in timeline (0.0 to 1.0)
             limit: Maximum number of results to return
+            artist_mbid: Optional artist MBID filter
+            recording_mbid: Optional recording MBID filter
+            release_mbid: Optional release MBID filter
+            release_group_mbid: Optional release group MBID filter
 
         Returns:
             Dictionary with:
@@ -369,22 +470,37 @@ class DatabaseService:
         if not 0.0 <= percentage <= 1.0:
             raise ValueError("Percentage must be between 0.0 and 1.0")
 
-        total = self.total_count
+        # Build MBID filter clause
+        mbid_filter, mbid_params = self._build_mbid_filter_clause(
+            artist_mbid, recording_mbid, release_mbid, release_group_mbid
+        )
+
+        # Get total count (with filters if applicable)
+        cursor_obj = self.conn.cursor()
+        if mbid_filter:
+            count_query = f"SELECT COUNT(*) FROM fact_plays {mbid_filter}"
+            cursor_obj.execute(count_query, mbid_params)
+        else:
+            count_query = "SELECT COUNT(*) FROM fact_plays"
+            cursor_obj.execute(count_query)
+
+        total = cursor_obj.fetchone()[0]
         offset = int(total * percentage)
 
         # Clamp offset to valid range
         if offset >= total:
             offset = max(0, total - limit)
 
-        cursor_obj = self.conn.cursor()
         fetch_limit = limit + 1
 
-        query = """
+        query = f"""
             SELECT * FROM fact_plays
+            {mbid_filter}
             ORDER BY airdate DESC, id DESC
             LIMIT ? OFFSET ?
         """
-        cursor_obj.execute(query, (fetch_limit, offset))
+        params = mbid_params + [fetch_limit, offset]
+        cursor_obj.execute(query, params)
         rows = cursor_obj.fetchall()
 
         # Check if there are more results
@@ -411,7 +527,11 @@ class DatabaseService:
     def get_plays_around_id(
         self,
         anchor_id: int,
-        limit: int = 50
+        limit: int = 50,
+        artist_mbid: Optional[str] = None,
+        recording_mbid: Optional[str] = None,
+        release_mbid: Optional[str] = None,
+        release_group_mbid: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get plays centered around a specific play ID.
@@ -422,6 +542,10 @@ class DatabaseService:
         Args:
             anchor_id: Play ID to center around
             limit: Total number of results to return (split before/after)
+            artist_mbid: Optional artist MBID filter
+            recording_mbid: Optional recording MBID filter
+            release_mbid: Optional release MBID filter
+            release_group_mbid: Optional release group MBID filter
 
         Returns:
             Dictionary with:
@@ -434,8 +558,12 @@ class DatabaseService:
             # Get 50 plays centered around play ID 3576848
             service.get_plays_around_id(3576848, limit=50)
         """
+        # Build MBID filter clause
+        mbid_filter, mbid_params = self._build_mbid_filter_clause(
+            artist_mbid, recording_mbid, release_mbid, release_group_mbid
+        )
+
         # First, get the anchor play to get its airdate
-        # Fetch anchor first (we already have it as anchor_play dict, but need Row object)
         cursor_obj = self.conn.cursor()
         anchor_row = cursor_obj.execute("SELECT * FROM fact_plays WHERE id = ?", (anchor_id,)).fetchone()
         if not anchor_row:
@@ -448,24 +576,35 @@ class DatabaseService:
         before_limit = remaining_slots // 2
         after_limit = remaining_slots - before_limit
 
+        # Build queries with MBID filters
+        if mbid_filter:
+            # Combine time/position conditions with MBID filters
+            before_conditions = f"(airdate > ? OR (airdate = ? AND id > ?)) AND ({mbid_filter[6:]})"
+            after_conditions = f"(airdate < ? OR (airdate = ? AND id < ?)) AND ({mbid_filter[6:]})"
+        else:
+            before_conditions = "airdate > ? OR (airdate = ? AND id > ?)"
+            after_conditions = "airdate < ? OR (airdate = ? AND id < ?)"
+
         # Get plays before anchor (excluding anchor)
-        query_before = """
+        query_before = f"""
             SELECT * FROM fact_plays
-            WHERE airdate > ? OR (airdate = ? AND id > ?)
+            WHERE {before_conditions}
             ORDER BY airdate ASC, id ASC
             LIMIT ?
         """
-        cursor_obj.execute(query_before, (anchor_airdate, anchor_airdate, anchor_id, before_limit))
+        before_params = [anchor_airdate, anchor_airdate, anchor_id] + mbid_params + [before_limit]
+        cursor_obj.execute(query_before, before_params)
         rows_before = cursor_obj.fetchall()
 
         # Get plays after anchor (excluding anchor)
-        query_after = """
+        query_after = f"""
             SELECT * FROM fact_plays
-            WHERE airdate < ? OR (airdate = ? AND id < ?)
+            WHERE {after_conditions}
             ORDER BY airdate DESC, id DESC
             LIMIT ?
         """
-        cursor_obj.execute(query_after, (anchor_airdate, anchor_airdate, anchor_id, after_limit + 1))
+        after_params = [anchor_airdate, anchor_airdate, anchor_id] + mbid_params + [after_limit + 1]
+        cursor_obj.execute(query_after, after_params)
         rows_after = cursor_obj.fetchall()
 
         # Check if there are more results after
