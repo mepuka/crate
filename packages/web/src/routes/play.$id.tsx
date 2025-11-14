@@ -1,4 +1,4 @@
-import { createFileRoute, useParams } from '@tanstack/react-router'
+import { createFileRoute, useParams, Link } from '@tanstack/react-router'
 import { useAtomValue, Result } from '@effect-atom/atom-react'
 import { playAtom } from '@/atoms/timeline'
 import { Option } from 'effect'
@@ -14,12 +14,13 @@ function PlayDetailPage() {
   return (
     <div className="container mx-auto p-6">
       <header className="mb-6">
-        <a
-          href="/"
+        <Link
+          to="/"
+          search={(prev) => prev}
           className="text-sm text-gray-600 hover:text-gray-900 mb-4 inline-block"
         >
           ← Back to Timeline
-        </a>
+        </Link>
       </header>
 
       {Result.matchWithWaiting(play, {
