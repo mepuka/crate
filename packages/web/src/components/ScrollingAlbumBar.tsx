@@ -1,5 +1,5 @@
 import { useAtomValue, Result } from "@effect-atom/atom-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { recentAlbumArtAtom, type AlbumArtworkData } from "@/atoms/album-bar";
 
 /**
@@ -10,6 +10,18 @@ interface RowState {
   direction: -1 | 1;
   speed: number;
   images: HTMLImageElement[];
+}
+
+/**
+ * Tile metadata for position tracking and highlighting
+ */
+interface TileMetadata {
+  id: number;
+  x: number;
+  y: number;
+  rowIndex: number;
+  imageIndex: number;
+  highlighted: boolean;
 }
 
 /**
@@ -29,8 +41,14 @@ const CONFIG = {
 
   // Visual effects
   CANVAS_OPACITY: 0.75, // High visibility for prominent background
-  BLUR_RADIUS: 20, // px - slightly reduced for sharper appearance
+  BLUR_RADIUS: 20, // px - target blur for loaded state
+  BLUR_RADIUS_INITIAL: 40, // px - initial heavy blur
   BACKGROUND_OPACITY: 0.45, // Significantly reduced for darker, more visible albums
+
+  // Progressive loading & fade-in
+  MIN_IMAGES_TO_START: 10, // Start rendering after 10 images load
+  FADE_IN_DURATION: 800, // ms - blur fade-in duration
+  BLUR_FADE_DELAY: 200, // ms - delay before starting blur fade
 } as const;
 
 /**
@@ -51,18 +69,38 @@ const ROW_CONFIGS = [
  * - Ambient speed (slower than foreground elements)
  * - CSS blur overlay for background effect
  * - GPU-accelerated rendering
+ * - Progressive image loading with blur fade-in
+ * - Static/animated mode toggle
+ * - Tile position tracking for highlighting
  */
 export function ScrollingAlbumBar() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const albumArtResult = useAtomValue(recentAlbumArtAtom);
 
-  // FIX: Use single boolean + ref instead of Map to prevent animation re-runs
+  // Progressive loading state
+  const [loadedImageCount, setLoadedImageCount] = useState(0);
   const [isLoadingComplete, setIsLoadingComplete] = useState(false);
-  const imagesRef = useRef<HTMLImageElement[]>([]);
+  const [canRender, setCanRender] = useState(false);
 
+  // Animation control
+  const [isAnimating, setIsAnimating] = useState(true);
+
+  // Blur fade-in state
+  const [currentBlur, setCurrentBlur] = useState(CONFIG.BLUR_RADIUS_INITIAL);
+  const [canvasOpacity, setCanvasOpacity] = useState(0);
+
+  // Image storage
+  const imagesRef = useRef<HTMLImageElement[]>([]);
+  const artworkDataRef = useRef<AlbumArtworkData[]>([]);
+
+  // Animation refs
   const animationFrameRef = useRef<number>();
   const rowsRef = useRef<RowState[]>([]);
   const lastTimeRef = useRef<number>(0);
+
+  // Tile tracking for highlighting
+  const tilesRef = useRef<Map<number, TileMetadata>>(new Map());
+  const highlightedTilesRef = useRef<Set<number>>(new Set());
 
   // PERFORMANCE: Precompute clipping path once
   const clipPathRef = useRef<Path2D>();
@@ -73,11 +111,57 @@ export function ScrollingAlbumBar() {
     clipPathRef.current = path;
   }, []);
 
-  // Load album artwork images (fixed to prevent animation re-runs)
+  // API: Control animation
+  const pauseAnimation = useCallback(() => {
+    setIsAnimating(false);
+  }, []);
+
+  const resumeAnimation = useCallback(() => {
+    setIsAnimating(true);
+  }, []);
+
+  const toggleAnimation = useCallback(() => {
+    setIsAnimating((prev) => !prev);
+  }, []);
+
+  // API: Highlight tiles
+  const highlightTile = useCallback((id: number) => {
+    highlightedTilesRef.current.add(id);
+  }, []);
+
+  const unhighlightTile = useCallback((id: number) => {
+    highlightedTilesRef.current.delete(id);
+  }, []);
+
+  const clearHighlights = useCallback(() => {
+    highlightedTilesRef.current.clear();
+  }, []);
+
+  // Expose API via ref (for external control)
+  useEffect(() => {
+    // Store methods on canvas ref for external access
+    if (canvasRef.current) {
+      (canvasRef.current as any).albumBarAPI = {
+        pauseAnimation,
+        resumeAnimation,
+        toggleAnimation,
+        highlightTile,
+        unhighlightTile,
+        clearHighlights,
+        getTiles: () => Array.from(tilesRef.current.values()),
+      };
+    }
+  }, [pauseAnimation, resumeAnimation, toggleAnimation, highlightTile, unhighlightTile, clearHighlights]);
+
+  // Load album artwork images with progressive rendering
   useEffect(() => {
     Result.matchWithWaiting(albumArtResult, {
       onWaiting: () => {
         setIsLoadingComplete(false);
+        setCanRender(false);
+        setLoadedImageCount(0);
+        setCurrentBlur(CONFIG.BLUR_RADIUS_INITIAL);
+        setCanvasOpacity(0);
       },
       onError: (error) => {
         console.error("Failed to load album artwork:", error);
@@ -87,20 +171,42 @@ export function ScrollingAlbumBar() {
       },
       onSuccess: (s) => {
         const artworks = s.value as readonly AlbumArtworkData[];
-        const images: HTMLImageElement[] = [];
-        let loadedCount = 0;
+        artworkDataRef.current = [...artworks];
 
-        artworks.forEach((artwork) => {
+        const loadedImages: (HTMLImageElement | null)[] = new Array(artworks.length).fill(null);
+        let loadedCount = 0;
+        let hasStartedRendering = false;
+
+        // OPTIMIZATION: Worker-based preloading to warm browser cache
+        // This runs in parallel with image loading and helps subsequent loads
+        // Note: We don't wait for this - it's fire-and-forget cache warming
+        const imageUrls = artworks.map((a) => a.imageUri);
+        // TODO: Optionally integrate worker preloading here
+        // This would require importing AlbumBarWorkerClient and calling preloadImages
+        // For now, progressive loading provides the main performance benefit
+
+        artworks.forEach((artwork, index) => {
           const img = new Image();
           img.crossOrigin = "anonymous";
 
           img.onload = () => {
-            images.push(img);
+            loadedImages[index] = img;
             loadedCount++;
 
-            // CRITICAL FIX: Single state update when ALL images loaded
+            // Update progress
+            setLoadedImageCount(loadedCount);
+
+            // Update images ref with current loaded images
+            imagesRef.current = loadedImages.filter((img): img is HTMLImageElement => img !== null);
+
+            // Start rendering after MIN_IMAGES_TO_START images load
+            if (!hasStartedRendering && loadedCount >= CONFIG.MIN_IMAGES_TO_START) {
+              hasStartedRendering = true;
+              setCanRender(true);
+            }
+
+            // Mark complete when all loaded
             if (loadedCount === artworks.length) {
-              imagesRef.current = images;
               setIsLoadingComplete(true);
             }
           };
@@ -108,10 +214,16 @@ export function ScrollingAlbumBar() {
           img.onerror = () => {
             console.error(`Failed to load image for play ${artwork.id}`);
             loadedCount++;
+            setLoadedImageCount(loadedCount);
+
+            // Start rendering even with some failures
+            if (!hasStartedRendering && loadedCount >= CONFIG.MIN_IMAGES_TO_START && imagesRef.current.length > 0) {
+              hasStartedRendering = true;
+              setCanRender(true);
+            }
 
             // Still complete if this was the last image
-            if (loadedCount === artworks.length && images.length > 0) {
-              imagesRef.current = images;
+            if (loadedCount === artworks.length && imagesRef.current.length > 0) {
               setIsLoadingComplete(true);
             }
           };
@@ -123,37 +235,81 @@ export function ScrollingAlbumBar() {
     });
   }, [albumArtResult]);
 
-  // Initialize rows when images are loaded
+  // Blur fade-in effect when rendering starts
   useEffect(() => {
-    if (!isLoadingComplete || imagesRef.current.length === 0) return;
+    if (!canRender) return;
+
+    // Delay slightly before starting fade
+    const delayTimer = setTimeout(() => {
+      // Fade in canvas opacity
+      const opacityStart = 0;
+      const opacityEnd = CONFIG.CANVAS_OPACITY;
+      const blurStart = CONFIG.BLUR_RADIUS_INITIAL;
+      const blurEnd = CONFIG.BLUR_RADIUS;
+      const startTime = performance.now();
+
+      const fadeIn = (currentTime: number) => {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / CONFIG.FADE_IN_DURATION, 1);
+
+        // Ease-out cubic for smooth deceleration
+        const eased = 1 - Math.pow(1 - progress, 3);
+
+        // Update opacity and blur
+        setCanvasOpacity(opacityStart + (opacityEnd - opacityStart) * eased);
+        setCurrentBlur(blurStart + (blurEnd - blurStart) * eased);
+
+        if (progress < 1) {
+          requestAnimationFrame(fadeIn);
+        }
+      };
+
+      requestAnimationFrame(fadeIn);
+    }, CONFIG.BLUR_FADE_DELAY);
+
+    return () => clearTimeout(delayTimer);
+  }, [canRender]);
+
+  // Initialize/update rows as images load progressively
+  useEffect(() => {
+    if (!canRender || imagesRef.current.length === 0) return;
 
     const images = imagesRef.current;
     const imagesPerRow = Math.ceil(images.length / CONFIG.ROWS);
 
-    // Create rows with alternating scroll directions
-    rowsRef.current = Array.from({ length: CONFIG.ROWS }, (_, rowIndex) => {
-      const config = ROW_CONFIGS[rowIndex];
-      const startIndex = rowIndex * imagesPerRow;
-      const endIndex = Math.min(startIndex + imagesPerRow, images.length);
-      const rowImages = images.slice(startIndex, endIndex);
+    // If rows don't exist yet, create them
+    if (rowsRef.current.length === 0) {
+      rowsRef.current = Array.from({ length: CONFIG.ROWS }, (_, rowIndex) => {
+        const config = ROW_CONFIGS[rowIndex];
+        const startIndex = rowIndex * imagesPerRow;
+        const endIndex = Math.min(startIndex + imagesPerRow, images.length);
+        const rowImages = images.slice(startIndex, endIndex);
 
-      // Add variance to speed for more organic feel
-      const speedVariance = (Math.random() - 0.5) * 2 * CONFIG.SCROLL_SPEED_VARIANCE;
-      const speed = CONFIG.SCROLL_SPEED_BASE * config.speedMultiplier * (1 + speedVariance);
+        // Add variance to speed for more organic feel
+        const speedVariance = (Math.random() - 0.5) * 2 * CONFIG.SCROLL_SPEED_VARIANCE;
+        const speed = CONFIG.SCROLL_SPEED_BASE * config.speedMultiplier * (1 + speedVariance);
 
-      return {
-        offsetX: 0,
-        direction: config.direction,
-        speed,
-        images: rowImages,
-      };
-    });
-  }, [isLoadingComplete]);
+        return {
+          offsetX: 0,
+          direction: config.direction,
+          speed,
+          images: rowImages,
+        };
+      });
+    } else {
+      // Update existing rows with new images as they load
+      rowsRef.current.forEach((row, rowIndex) => {
+        const startIndex = rowIndex * imagesPerRow;
+        const endIndex = Math.min(startIndex + imagesPerRow, images.length);
+        row.images = images.slice(startIndex, endIndex);
+      });
+    }
+  }, [canRender, loadedImageCount]);
 
-  // Canvas animation loop (only runs once when loading complete)
+  // Canvas animation loop with static/animated mode support
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !isLoadingComplete || rowsRef.current.length === 0) return;
+    if (!canvas || !canRender || rowsRef.current.length === 0) return;
 
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
@@ -186,20 +342,27 @@ export function ScrollingAlbumBar() {
 
       const canvasWidth = window.innerWidth;
 
+      // Clear tile tracking for this frame
+      tilesRef.current.clear();
+
       // Render each row
       rowsRef.current.forEach((row, rowIndex) => {
-        // Update row offset
-        row.offsetX += row.direction * row.speed * deltaTime;
+        // Update row offset ONLY if animating
+        if (isAnimating) {
+          row.offsetX += row.direction * row.speed * deltaTime;
+        }
 
         // Calculate row dimensions
         const rowWidth = row.images.length * tileWidth;
         const y = CONFIG.TILE_GAP + rowIndex * (CONFIG.TILE_SIZE + CONFIG.TILE_GAP);
 
-        // Seamless loop
-        if (row.direction === -1 && row.offsetX <= -rowWidth) {
-          row.offsetX += rowWidth;
-        } else if (row.direction === 1 && row.offsetX >= rowWidth) {
-          row.offsetX -= rowWidth;
+        // Seamless loop (only if animating)
+        if (isAnimating) {
+          if (row.direction === -1 && row.offsetX <= -rowWidth) {
+            row.offsetX += rowWidth;
+          } else if (row.direction === 1 && row.offsetX >= rowWidth) {
+            row.offsetX -= rowWidth;
+          }
         }
 
         // Calculate repetitions needed
@@ -212,13 +375,49 @@ export function ScrollingAlbumBar() {
 
             // Only draw if visible (viewport culling)
             if (x + CONFIG.TILE_SIZE >= 0 && x <= canvasWidth) {
-              // OPTIMIZATION: Use precomputed clip path
+              // Calculate artwork ID from artworkDataRef
+              const absoluteIndex = rowIndex * Math.ceil(imagesRef.current.length / CONFIG.ROWS) + index;
+              const artworkId = absoluteIndex < artworkDataRef.current.length
+                ? artworkDataRef.current[absoluteIndex].id
+                : -1;
+
+              // Track tile position
+              if (artworkId !== -1) {
+                tilesRef.current.set(artworkId, {
+                  id: artworkId,
+                  x,
+                  y,
+                  rowIndex,
+                  imageIndex: index,
+                  highlighted: highlightedTilesRef.current.has(artworkId),
+                });
+              }
+
+              // Apply highlighting effect
+              const isHighlighted = artworkId !== -1 && highlightedTilesRef.current.has(artworkId);
+
               ctx.save();
               ctx.translate(x, y);
+
+              // Add glow for highlighted tiles
+              if (isHighlighted) {
+                ctx.shadowColor = "rgba(245, 130, 22, 0.8)"; // Primary color
+                ctx.shadowBlur = 20;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+              }
+
               if (clipPathRef.current) {
                 ctx.clip(clipPathRef.current);
               }
+
+              // Draw image with optional brightness boost for highlights
+              if (isHighlighted) {
+                ctx.filter = "brightness(1.2) contrast(1.1)";
+              }
+
               ctx.drawImage(img, 0, 0, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE);
+
               ctx.restore();
             }
           });
@@ -237,25 +436,29 @@ export function ScrollingAlbumBar() {
       window.removeEventListener("resize", resizeCanvas);
       lastTimeRef.current = 0;
     };
-  }, [isLoadingComplete]);
+  }, [canRender, isAnimating]);
 
   return (
     <div className="album-grid-background fixed top-0 left-0 right-0 -z-10 overflow-hidden">
       <div className="relative w-full" style={{ height: CONFIG.GRID_HEIGHT }}>
-        {/* Canvas layer - renders album tiles (no blur) */}
+        {/* Canvas layer - renders album tiles with dynamic opacity */}
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full"
-          style={{ opacity: CONFIG.CANVAS_OPACITY }}
+          style={{
+            opacity: canvasOpacity,
+            transition: "opacity 0.3s ease-out",
+          }}
         />
 
-        {/* CSS blur overlay */}
+        {/* CSS blur overlay with dynamic blur amount */}
         <div
           className="album-grid-blur absolute inset-0 bg-background pointer-events-none"
           style={{
             opacity: CONFIG.BACKGROUND_OPACITY,
-            backdropFilter: `blur(${CONFIG.BLUR_RADIUS}px)`,
-            WebkitBackdropFilter: `blur(${CONFIG.BLUR_RADIUS}px)`,
+            backdropFilter: `blur(${currentBlur}px)`,
+            WebkitBackdropFilter: `blur(${currentBlur}px)`,
+            transition: "backdrop-filter 0.3s ease-out",
           }}
         />
 
@@ -265,7 +468,7 @@ export function ScrollingAlbumBar() {
           aria-hidden="true"
         />
 
-        {/* Loading state */}
+        {/* Loading state with progress indicator */}
         {Result.matchWithWaiting(albumArtResult, {
           onWaiting: () => (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -285,7 +488,24 @@ export function ScrollingAlbumBar() {
               <span className="text-sm text-muted-foreground">Error loading album artwork</span>
             </div>
           ),
-          onSuccess: () => null,
+          onSuccess: (s) => {
+            const artworks = s.value as readonly AlbumArtworkData[];
+            const totalCount = artworks.length;
+
+            // Show progress during initial load
+            if (loadedImageCount < totalCount && loadedImageCount > 0) {
+              return (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="flex gap-2 items-center text-sm text-muted-foreground">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    Loading {loadedImageCount} / {totalCount} images...
+                  </div>
+                </div>
+              );
+            }
+
+            return null;
+          },
         })}
       </div>
     </div>
