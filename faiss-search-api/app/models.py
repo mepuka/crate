@@ -52,6 +52,7 @@ class PlayResult(BaseModel):
     # Optional metadata
     album: Optional[str] = None
     airdate: Optional[str] = None
+    release_date: Optional[str] = None
     labels: List[str] = Field(default_factory=list)
     rotation_status: Optional[str] = None
     is_local: bool = False
