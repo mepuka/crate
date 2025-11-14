@@ -1,4 +1,4 @@
 # Sync KEXP plays every 2 minutes
-*/2 * * * * cd /app && python3 /app/scripts/sync_plays.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/sync.log 2>&1
+*/2 * * * * cd /app && /usr/local/bin/python3 /app/scripts/sync_plays.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/sync.log 2>&1
 
 # Keep a newline at end of file for cron
