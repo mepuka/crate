@@ -47,6 +47,8 @@ export const KexpApiServiceLive = Layer.effect(
     const fetchPrograms = httpClient
       .get(`${BASE_URL}/programs/?format=json`)
       .pipe(
+        Effect.withSpan("kexp.fetchPrograms", { kind: "client", captureStackTrace: false }),
+        Effect.withTracerEnabled(false),  // Disable tracing to avoid CORS issues
         Effect.flatMap((response) => response.json),
         Effect.flatMap((json) =>
           Schema.decodeUnknown(KexpProgramsResponse)(json).pipe(
@@ -56,23 +58,15 @@ export const KexpApiServiceLive = Layer.effect(
             }))
           )
         ),
-        Effect.retry(retryPolicy),
-        Effect.catchAll((error) =>
-          Effect.fail(
-            error instanceof ParseError
-              ? error
-              : new NetworkError({
-                  url: `${BASE_URL}/programs/?format=json`,
-                  cause: error
-                })
-          )
-        )
+        Effect.retry(retryPolicy)
       )
 
     const fetchShows = (limit: number) =>
       httpClient
         .get(`${BASE_URL}/shows/?format=json&limit=${limit}`)
         .pipe(
+          Effect.withSpan("kexp.fetchShows", { kind: "client", captureStackTrace: false }),
+          Effect.withTracerEnabled(false),  // Disable tracing to avoid CORS issues
           Effect.flatMap((response) => response.json),
           Effect.flatMap((json) =>
             Schema.decodeUnknown(KexpShowsResponse)(json).pipe(
