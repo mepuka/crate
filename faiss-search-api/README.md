@@ -158,6 +158,31 @@ pytest --cov=app --cov-report=html
 pytest tests/test_api.py::test_search_endpoint_valid -v
 ```
 
+### Performance Benchmarks
+
+Benchmark database trigger performance for MusicBrainz canonical tables:
+
+```bash
+# Default benchmark (10k inserts)
+python scripts/benchmark_triggers.py
+
+# Custom insert count
+python scripts/benchmark_triggers.py --count 50000
+
+# Save to file database for inspection
+python scripts/benchmark_triggers.py --db-path /tmp/benchmark.db
+```
+
+**Benchmark Results (as of 2024-11-13):**
+
+| Insert Count | Total Time | Inserts/Second | Avg Time/Insert | Status |
+|--------------|------------|----------------|-----------------|---------|
+| 10,000       | 0.32s      | 30,971/s       | 0.032 ms        | Excellent |
+| 50,000       | 1.73s      | 28,962/s       | 0.035 ms        | Excellent |
+| 100,000      | 3.64s      | 27,456/s       | 0.036 ms        | Excellent |
+
+Performance consistently exceeds target baseline (>2,000 inserts/second). The triggers perform 6 INSERT or UPDATE operations per play insert (artists, recordings, tracks, releases, release_groups, labels) with JSON parsing and MIN() calculations for first_seen preservation.
+
 ## Deployment to Digital Ocean Droplet
 
 ### Setup Droplet

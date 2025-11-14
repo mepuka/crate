@@ -77,10 +77,21 @@ app = FastAPI(
 )
 
 # Middleware
+# CORS Configuration:
+# allow_credentials MUST be False because nginx.conf sets wildcard CORS headers
+# (Access-Control-Allow-Origin: *). The CORS specification forbids combining
+# credentials with wildcard origins as it creates a security vulnerability.
+# See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSNotSupportingCredentials
+#
+# Security implications:
+# - Browsers will reject responses with both allow_credentials=true and wildcard origins
+# - This prevents cookies/auth headers from being exposed to untrusted origins
+# - If credentials are needed in the future, nginx.conf must use specific origins
+#   instead of wildcards (e.g., the values from CORS_ORIGINS env var)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
-    allow_credentials=False,  # Must be False when upstream proxy uses wildcard origins
+    allow_credentials=False,  # Must be False when nginx uses wildcard origins
     allow_methods=["*"],
     allow_headers=["*"],
 )
