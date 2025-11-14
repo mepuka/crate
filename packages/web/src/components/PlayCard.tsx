@@ -1,19 +1,18 @@
 import { Play } from '@/domain'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
-import { formatDistanceToNow } from 'date-fns'
+import { formatPlayTime, formatRelativeTime } from '@/lib/date-utils'
 import { forwardRef } from 'react'
-import { Badge } from '@/components/ui/badge'
 import { AlbumArt } from './AlbumArt'
 import { toast } from 'sonner'
 
 const playCardVariants = cva(
   [
-    "group relative overflow-hidden rounded-lg border",
-    "transition-all duration-200 ease-in-out",
-    "hover:shadow-md hover:border-primary/50",
-    "focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2",
-    "cursor-pointer"
+    "group relative border-b border-border/40 bg-card",
+    "transition-colors duration-150",
+    "hover:bg-muted/30",
+    "focus-within:bg-muted/40 focus-within:outline-none",
+    "cursor-pointer",
   ],
   {
     variants: {
@@ -67,7 +66,7 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
         )}
         tabIndex={0}
         role="article"
-        aria-label={`${play.song} by ${play.artist} played ${play.airdate ? formatDistanceToNow(new Date(play.airdate)) + ' ago' : ''}`}
+        aria-label={`${play.song} by ${play.artist} played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`}
         onClick={handleCopyLink}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -76,7 +75,7 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           }
         }}
       >
-        <div className="flex gap-3 sm:gap-4">
+        <div className="flex gap-3 py-3">
           {/* Album Art */}
           <AlbumArt
             src={play.thumbnail_uri || play.image_uri}
@@ -85,46 +84,40 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           />
 
           {/* Metadata */}
-          <div className="flex-1 min-w-0 flex flex-col gap-1">
+          <div className="flex-1 min-w-0 flex flex-col gap-0.5 py-0.5">
             {/* Title & Time */}
-            <div className="flex items-start justify-between gap-2">
-              <h3 className="font-semibold text-foreground text-sm sm:text-base truncate" title={play.song}>
+            <div className="flex items-baseline justify-between gap-3">
+              <h3 className="text-base font-medium text-foreground leading-snug truncate" title={play.song}>
                 {play.song || 'Untitled'}
               </h3>
               {play.airdate && (
                 <time
-                  className="text-xs sm:text-sm text-muted-foreground font-mono whitespace-nowrap shrink-0"
+                  className="text-xs text-muted-foreground font-mono whitespace-nowrap shrink-0 tabular-nums"
                   dateTime={play.airdate.toISOString()}
                 >
-                  {play.airdate.toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                  })}
+                  {formatPlayTime(play.airdate)}
                 </time>
               )}
             </div>
 
             {/* Artist */}
-            <p className="text-xs sm:text-sm text-foreground/90 truncate" title={play.artist}>
+            <p className="text-sm text-foreground/70 truncate" title={play.artist}>
               {play.artist || 'Unknown Artist'}
             </p>
 
             {/* Album & Year */}
             {play.album && (
-              <p className="text-xs sm:text-sm text-muted-foreground truncate" title={play.album}>
+              <p className="text-xs text-muted-foreground truncate" title={play.album}>
                 {play.album}
-                {releaseYear && ` • ${releaseYear}`}
+                {releaseYear && `, ${releaseYear}`}
               </p>
             )}
 
             {/* Badges */}
             {size !== 'compact' && (
-              <div className="flex flex-wrap gap-1 mt-1">
+              <div className="flex flex-wrap items-center gap-1.5 mt-1">
                 {play.rotation_status && (
-                  <Badge variant="secondary" className="text-xs px-2 py-0">
-                    {play.rotation_status}
-                  </Badge>
+                  <span className="text-xs text-muted-foreground">{play.rotation_status}</span>
                 )}
                 {play.labels && play.labels.length > 0 && (
                   <span className="text-xs text-muted-foreground truncate" title={play.labels.join(', ')}>
@@ -132,19 +125,13 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
                   </span>
                 )}
                 {play.is_local && (
-                  <Badge variant="outline" className="text-xs px-2 py-0 border-secondary text-secondary">
-                    Local
-                  </Badge>
+                  <span className="text-xs text-muted-foreground">Local</span>
                 )}
                 {play.is_request && (
-                  <Badge variant="outline" className="text-xs px-2 py-0">
-                    ★ Request
-                  </Badge>
+                  <span className="text-xs text-muted-foreground">Request</span>
                 )}
                 {play.is_live && (
-                  <Badge variant="outline" className="text-xs px-2 py-0 border-accent text-accent">
-                    ● Live
-                  </Badge>
+                  <span className="text-xs text-muted-foreground">Live</span>
                 )}
               </div>
             )}
@@ -165,12 +152,6 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           </div>
         </div>
 
-        {/* Hover overlay */}
-        <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none flex items-center justify-center">
-          <span className="text-xs text-primary font-medium bg-background/90 px-3 py-1 rounded-full">
-            Click to copy link
-          </span>
-        </div>
       </div>
     )
   }

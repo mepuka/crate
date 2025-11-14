@@ -1,4 +1,4 @@
-import { format } from 'date-fns'
+import { formatPlayDate } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 interface DateDividerProps {
@@ -21,7 +21,7 @@ export function DateDivider({ date, className, sticky = true }: DateDividerProps
         dateTime={date.toISOString()}
         className="text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wider"
       >
-        {format(date, 'MMMM d, yyyy')}
+        {formatPlayDate(date)}
       </time>
       <div className="h-px flex-1 bg-border/50" />
     </div>

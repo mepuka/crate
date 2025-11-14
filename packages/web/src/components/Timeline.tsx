@@ -3,14 +3,18 @@ import { Chunk, Option } from 'effect'
 import {
   latestItemAtom,
   playIdsAtom,
-  playAtom,
   playsChunkAtom,
   playsSortedByAirdateDescAtom,
   newestPlayAtom,
   oldestPlayAtom,
-  playIdsSortedAtom,
 } from '@/atoms/timeline'
 import { DevAtomDisplay } from './DevAtomDisplay'
+import { Skeleton } from '@/components/ui/skeleton'
+import { TimelineSkeleton } from './TimelineSkeleton'
+import { TimelineEmptyState } from './TimelineEmptyState'
+import { TimelineErrorState } from './TimelineErrorState'
+import { TimelinePlayCardWrapper } from './TimelinePlayCardWrapper'
+import { SearchWorkerTest } from './SearchWorkerTest'
 
 export function Timeline() {
   // Mount the background fetching service
@@ -24,171 +28,117 @@ export function Timeline() {
   const sortedPlays = useAtomValue(playsSortedByAirdateDescAtom);
   const newestPlay = useAtomValue(newestPlayAtom);
   const oldestPlay = useAtomValue(oldestPlayAtom);
-  const sortedPlayIds = useAtomValue(playIdsSortedAtom);
 
   return (
     <>
+      <SearchWorkerTest />
       <DevAtomDisplay />
-      <div className="p-4 max-w-4xl mx-auto pt-16">
-        <h2 className="text-2xl font-bold mb-4">Timeline</h2>
-
-      {/* Demo Section: Derived Atoms using Timeline Utilities */}
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-        <h3 className="text-lg font-semibold mb-3 text-gray-800">
-          Demo: Derived Atoms with Order Utilities
-        </h3>
-        <div className="space-y-2 text-sm">
-          <div>
-            <strong>Plays Chunk Size:</strong>{' '}
-            {Result.matchWithWaiting(playsChunk, {
-              onWaiting: () => 'Loading...',
-              onError: (e) => `Error: ${String(e)}`,
-              onDefect: (d) => `Defect: ${String(d)}`,
-              onSuccess: (s) => Chunk.size(s.value),
-            })}
-          </div>
-          <div>
-            <strong>Sorted Plays Size:</strong>{' '}
-            {Result.matchWithWaiting(sortedPlays, {
-              onWaiting: () => 'Loading...',
-              onError: (e) => `Error: ${String(e)}`,
-              onDefect: (d) => `Defect: ${String(d)}`,
-              onSuccess: (s) => Chunk.size(s.value),
-            })}
-          </div>
-          <div>
-            <strong>Newest Play:</strong>{' '}
-            {Result.matchWithWaiting(newestPlay, {
-              onWaiting: () => 'Loading...',
-              onError: (e) => `Error: ${String(e)}`,
-              onDefect: (d) => `Defect: ${String(d)}`,
-              onSuccess: (s) =>
-                Option.match(s.value, {
-                  onNone: () => 'None',
-                  onSome: (play) =>
-                    `${play.artist} - ${play.song} (${new Date(play.airdate).toLocaleDateString()})`,
-                }),
-            })}
-          </div>
-          <div>
-            <strong>Oldest Play:</strong>{' '}
-            {Result.matchWithWaiting(oldestPlay, {
-              onWaiting: () => 'Loading...',
-              onError: (e) => `Error: ${String(e)}`,
-              onDefect: (d) => `Defect: ${String(d)}`,
-              onSuccess: (s) =>
-                Option.match(s.value, {
-                  onNone: () => 'None',
-                  onSome: (play) =>
-                    `${play.artist} - ${play.song} (${new Date(play.airdate).toLocaleDateString()})`,
-                }),
-            })}
-          </div>
-          <div>
-            <strong>Newest 5 Play IDs:</strong>{' '}
-            {Result.matchWithWaiting(sortedPlayIds, {
-              onWaiting: () => 'Loading...',
-              onError: (e) => `Error: ${String(e)}`,
-              onDefect: (d) => `Defect: ${String(d)}`,
-              onSuccess: (s) => s.value.slice(0, 5).join(', '),
-            })}
-          </div>
-          <div>
-            <strong>Sorted Play IDs Count:</strong>{' '}
-            {Result.matchWithWaiting(sortedPlayIds, {
-              onWaiting: () => 'Loading...',
-              onError: (e) => `Error: ${String(e)}`,
-              onDefect: (d) => `Defect: ${String(d)}`,
-              onSuccess: (s) => s.value.length,
-            })}
-          </div>
+      <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-8">
+        <div className="mb-8 sm:mb-10">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground mb-1">
+            Timeline
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            KEXP play history
+          </p>
         </div>
-      </div>
 
-      {Result.matchWithWaiting(playIds, {
-        onWaiting: () => (
-          <div className="border p-8 rounded text-center text-gray-500">
-            <p>Loading plays from the background service...</p>
-            <p className="text-sm mt-2">New plays will appear here automatically</p>
-          </div>
-        ),
-        onError: (error) => (
-          <div className="text-red-500">Error loading timeline: {String(error)}</div>
-        ),
-        onDefect: (defect) => (
-          <div className="text-red-500">Defect: {String(defect)}</div>
-        ),
-        onSuccess: (success) => (
-          <div className="space-y-4">
-            {/* Info banner */}
-            <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded">
-              <p>
-                New plays will appear at the top as they're fetched by the background service.
-                Currently tracking <strong>{success.value.length}</strong> play{success.value.length !== 1 ? 's' : ''}.
-              </p>
+        {/* Demo Section: Derived Atoms using Timeline Utilities */}
+        <div className="mb-8 border-b border-border/50 pb-6">
+          <h2 className="text-sm font-medium text-muted-foreground mb-4 uppercase tracking-wide">
+            Debug Info
+          </h2>
+          <dl className="space-y-2 text-sm">
+            <div className="flex">
+              <dt className="text-muted-foreground w-32">Chunk Size:</dt>
+              <dd className="text-foreground font-mono">
+                {Result.matchWithWaiting(playsChunk, {
+                  onWaiting: () => <Skeleton className="inline-block h-4 w-8" />,
+                  onError: () => <span className="text-destructive">Error</span>,
+                  onDefect: () => <span className="text-destructive">Defect</span>,
+                  onSuccess: (s) => Chunk.size(s.value),
+                })}
+              </dd>
             </div>
+            <div className="flex">
+              <dt className="text-muted-foreground w-32">Sorted Size:</dt>
+              <dd className="text-foreground font-mono">
+                {Result.matchWithWaiting(sortedPlays, {
+                  onWaiting: () => <Skeleton className="inline-block h-4 w-8" />,
+                  onError: () => <span className="text-destructive">Error</span>,
+                  onDefect: () => <span className="text-destructive">Defect</span>,
+                  onSuccess: (s) => Chunk.size(s.value),
+                })}
+              </dd>
+            </div>
+            <div className="flex">
+              <dt className="text-muted-foreground w-32">Newest:</dt>
+              <dd className="text-foreground">
+                {Result.matchWithWaiting(newestPlay, {
+                  onWaiting: () => <Skeleton className="inline-block h-4 w-32" />,
+                  onError: () => <span className="text-destructive">Error</span>,
+                  onDefect: () => <span className="text-destructive">Defect</span>,
+                  onSuccess: (s) =>
+                    Option.match(s.value, {
+                      onNone: () => <span className="text-muted-foreground">—</span>,
+                      onSome: (play) => `${play.artist} — ${play.song}`,
+                    }),
+                })}
+              </dd>
+            </div>
+            <div className="flex">
+              <dt className="text-muted-foreground w-32">Oldest:</dt>
+              <dd className="text-foreground">
+                {Result.matchWithWaiting(oldestPlay, {
+                  onWaiting: () => <Skeleton className="inline-block h-4 w-32" />,
+                  onError: () => <span className="text-destructive">Error</span>,
+                  onDefect: () => <span className="text-destructive">Defect</span>,
+                  onSuccess: (s) =>
+                    Option.match(s.value, {
+                      onNone: () => <span className="text-muted-foreground">—</span>,
+                      onSome: (play) => `${play.artist} — ${play.song}`,
+                    }),
+                })}
+              </dd>
+            </div>
+          </dl>
+        </div>
 
-            {/* List of plays (newest first) */}
-            {success.value.length === 0 ? (
-              <div className="border p-8 rounded text-center text-gray-500">
-                <p>Waiting for plays from the background service...</p>
-                <p className="text-sm mt-2">New plays will appear here automatically</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {success.value.map((id) => (
-                  <PlayCard key={id} playId={id} />
-                ))}
-              </div>
-            )}
-          </div>
-        ),
-      })}
+        {Result.matchWithWaiting(playIds, {
+          onWaiting: () => (
+            <div className="space-y-4">
+              <TimelineSkeleton count={5} />
+            </div>
+          ),
+          onError: (error) => (
+            <TimelineErrorState error={error} />
+          ),
+          onDefect: (defect) => (
+            <TimelineErrorState error={defect} />
+          ),
+          onSuccess: (success) => (
+            <>
+              {success.value.length > 0 && (
+                <div className="mb-4 text-xs text-muted-foreground">
+                  {success.value.length} play{success.value.length !== 1 ? 's' : ''}
+                </div>
+              )}
+              {success.value.length === 0 ? (
+                <TimelineEmptyState
+                  message="Waiting for plays"
+                  description="Waiting for plays from the background service. New plays will appear here automatically."
+                />
+              ) : (
+                <div className="space-y-1">
+                  {success.value.map((id) => (
+                    <TimelinePlayCardWrapper key={id} playId={id} />
+                  ))}
+                </div>
+              )}
+            </>
+          ),
+        })}
       </div>
     </>
   )
-}
-
-function PlayCard({ playId }: { playId: number }) {
-  const play = useAtomValue(playAtom(playId));
-
-  return (
-    <div className="border p-4 rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
-      {Result.matchWithWaiting(play, {
-        onWaiting: () => (
-          <div className="text-gray-500">Loading play #{playId}...</div>
-        ),
-        onError: (error) => (
-          <div className="text-red-500">Error loading play: {String(error)}</div>
-        ),
-        onDefect: (defect) => (
-          <div className="text-red-500">Defect: {String(defect)}</div>
-        ),
-        onSuccess: (success) => (
-          <div>
-            {Option.match(success.value, {
-              onNone: () => (
-                <div className="text-gray-500">Play #{playId} not found</div>
-              ),
-              onSome: (playData) => (
-                <div className="space-y-2">
-                  <div className="text-sm text-gray-500 font-mono">#{playData.id}</div>
-                  <div>
-                    <div className="font-semibold text-lg">{playData.artist}</div>
-                    <div className="text-gray-700">{playData.song}</div>
-                    {playData.album && (
-                      <div className="text-sm text-gray-600 italic">{playData.album}</div>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {new Date(playData.airdate).toLocaleString()}
-                  </div>
-                </div>
-              ),
-            })}
-          </div>
-        ),
-      })}
-    </div>
-  );
 }
