@@ -17,7 +17,7 @@
  */
 
 import { BrowserWorkerRunner } from "@effect/platform-browser"
-import { WorkerRunner } from "@effect/platform"
+import { WorkerRunner, FetchHttpClient } from "@effect/platform"
 import { Effect, Layer, Context, Schema, Match, HashMap, Option } from "effect"
 import {
   type ProgramsData,
@@ -76,6 +76,10 @@ class KexpDataService extends Context.Tag("KexpDataService")<
  *
  * Live implementation with cache-first strategy and in-memory maps.
  * Uses KexpApiService for network calls and kexp-cache for localStorage.
+ *
+ * Note: KexpDataServiceLive does NOT provide KexpApiServiceLive here.
+ * Layer composition happens at the WorkerLive level where we can also provide
+ * the HttpClient dependency that KexpApiServiceLive requires.
  */
 const KexpDataServiceLive = Layer.effect(
   KexpDataService,
@@ -255,7 +259,7 @@ const KexpDataServiceLive = Layer.effect(
       getShowInfo
     })
   })
-).pipe(Layer.provide(KexpApiServiceLive))
+)
 
 /**
  * Worker Request Handler
@@ -383,16 +387,46 @@ const handleRequest = (request: unknown) =>
  * Composes all service layers needed by the worker.
  * Uses WorkerRunner.layer pattern for proper lifecycle management.
  *
+ * CRITICAL Layer Composition Pattern:
+ *
+ * Understanding Layer.provide:
+ * - Layer.provide feeds the OUTPUT of one layer into the INPUT (requirements) of another
+ * - Signature: Layer.provide<ROut, E, RIn>(that: Layer<ROut, E, RIn>): <ROut2, E2, RIn2>(self: Layer<ROut2, E2, RIn2>) => Layer<ROut2, E | E2, RIn | Exclude<RIn2, ROut>>
+ * - "that" layer provides services, "self" layer consumes them
+ * - The result has all requirements of "that" plus any unsatisfied requirements from "self"
+ *
+ * Dependency Chain:
+ * 1. WorkerRunner.layer(handleRequest) needs: PlatformRunner + KexpDataService
+ * 2. KexpDataServiceLive needs: KexpApiService
+ * 3. KexpApiServiceLive needs: HttpClient
+ * 4. FetchHttpClient.layer provides: HttpClient (no requirements)
+ * 5. BrowserWorkerRunner.layer provides: PlatformRunner (no requirements)
+ *
+ * Composition Order (bottom-up):
+ * - Start with WorkerRunner.layer (needs PlatformRunner + KexpDataService)
+ * - Provide KexpDataServiceLive (needs KexpApiService) - reduces to needs: PlatformRunner + KexpApiService
+ * - Provide KexpApiServiceLive (needs HttpClient) - reduces to needs: PlatformRunner + HttpClient
+ * - Provide FetchHttpClient.layer (provides HttpClient) - reduces to needs: PlatformRunner
+ * - Provide BrowserWorkerRunner.layer (provides PlatformRunner) - reduces to needs: never ✓
+ *
+ * Key Insight: BrowserWorkerRunner.layer does NOT provide HttpClient!
+ * We must explicitly provide FetchHttpClient.layer for HTTP operations in workers.
+ *
  * Layer dependency tree:
  * WorkerLive
  * ├─ KexpDataServiceLive (requires KexpApiService)
- * │  └─ KexpApiServiceLive (requires FetchHttpClient from BrowserWorkerRunner.layer)
- * └─ BrowserWorkerRunner.layer (provides platform + FetchHttpClient)
+ * │  └─ KexpApiServiceLive (requires HttpClient)
+ * │     └─ FetchHttpClient.layer (provides HttpClient)
+ * └─ BrowserWorkerRunner.layer (provides PlatformRunner only)
  */
 const WorkerLive = WorkerRunner.layer(handleRequest).pipe(
-  // Provide our service implementation
+  // Provide KexpDataService (needs KexpApiService)
   Layer.provide(KexpDataServiceLive),
-  // Provide the browser platform runner
+  // Provide KexpApiService (needs HttpClient)
+  Layer.provide(KexpApiServiceLive),
+  // Provide HttpClient implementation for fetch-based HTTP
+  Layer.provide(FetchHttpClient.layer),
+  // Provide browser platform runner (provides PlatformRunner for WorkerRunner)
   Layer.provide(BrowserWorkerRunner.layer)
 )
 
@@ -401,6 +435,10 @@ const WorkerLive = WorkerRunner.layer(handleRequest).pipe(
  *
  * Launch the worker using BrowserWorkerRunner.launch
  * Pattern from Effect source: BrowserWorkerRunner.launch(WorkerLive) + Effect.runFork
+ *
+ * The launch function signature: launch<A, E, R>(layer: Layer<A, E, R>) => Effect<void, E | WorkerError, R>
+ * Since WorkerLive has satisfied all requirements (R = never), this produces Effect<void, WorkerError, never>
+ * which is compatible with Effect.runFork.
  */
 Effect.runFork(BrowserWorkerRunner.launch(WorkerLive))
 

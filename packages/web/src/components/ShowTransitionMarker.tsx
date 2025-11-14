@@ -29,6 +29,7 @@ export function ShowTransitionMarker({
 
   return (
     <div
+      data-show-id={showId}
       className={cn(
         'relative flex items-center gap-3 py-3 my-2',
         'border-t border-border/50',
