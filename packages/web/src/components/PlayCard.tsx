@@ -64,7 +64,7 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
         <Link
           to="/play/$id"
           params={{ id: String(play.id) }}
-          search={(prev) => prev}
+          search={(prev: Record<string, unknown>) => prev}
           className="absolute inset-0 z-0"
           tabIndex={0}
           aria-label={`View ${play.song} by ${play.artist}`}
