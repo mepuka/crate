@@ -7,8 +7,8 @@
  * Uses Effect's Order type class for type-safe, composable ordering operations.
  */
 
-import { Array, Chunk, HashSet, Option, Order } from "effect";
-import { PlayResult, type Play } from "@crate/api";
+import { Array, Chunk, HashMap, HashSet, Option, Order } from "effect";
+import { type Play } from "@crate/api";
 
 /**
  * Order Instances for PlayResult
@@ -318,4 +318,293 @@ export const playIdsChunkToHashSet = (
 ): HashSet.HashSet<number> => {
   const ids = extractPlayIds(plays);
   return HashSet.fromIterable(Chunk.toReadonlyArray(ids));
+};
+
+/**
+ * Date Operations on Chunks
+ *
+ * Pure functions for working with dates in Chunk<Play> collections.
+ * Uses Effect's native data structures (HashMap, HashSet, Chunk) for all operations.
+ */
+
+/**
+ * Group plays by date string (YYYY-MM-DD format).
+ * Returns a HashMap where keys are ISO date strings and values are Chunks of plays for that date.
+ *
+ * @param plays - Chunk of plays to group
+ * @returns HashMap of date strings to Chunks of plays
+ *
+ * @example
+ * ```ts
+ * const grouped = groupPlaysByDate(playsChunk)
+ * const playsForDate = HashMap.get(grouped, '2024-01-15') // Option<Chunk<Play>>
+ * ```
+ */
+export const groupPlaysByDate = (
+  plays: Chunk.Chunk<Play>
+): HashMap.HashMap<string, Chunk.Chunk<Play>> =>
+  Chunk.reduce(
+    plays,
+    HashMap.empty<string, Chunk.Chunk<Play>>(),
+    (acc, play) => {
+      const dateKey = play.airdate.toISOString().split("T")[0]; // YYYY-MM-DD
+      const existing = HashMap.get(acc, dateKey);
+      const updatedChunk = Option.match(existing, {
+        onNone: () => Chunk.of(play),
+        onSome: (chunk) => Chunk.append(chunk, play),
+      });
+      return HashMap.set(acc, dateKey, updatedChunk);
+    }
+  );
+
+/**
+ * Group plays by day (same as groupPlaysByDate, but with explicit day grouping).
+ * Alias for groupPlaysByDate for semantic clarity.
+ *
+ * @param plays - Chunk of plays to group
+ * @returns HashMap of date strings to Chunks of plays
+ */
+export const groupPlaysByDay = (
+  plays: Chunk.Chunk<Play>
+): HashMap.HashMap<string, Chunk.Chunk<Play>> => groupPlaysByDate(plays);
+
+/**
+ * Group plays by week (ISO week format: YYYY-Www).
+ * Returns a HashMap where keys are week strings and values are Chunks of plays for that week.
+ *
+ * @param plays - Chunk of plays to group
+ * @returns HashMap of week strings to Chunks of plays
+ *
+ * @example
+ * ```ts
+ * const grouped = groupPlaysByWeek(playsChunk)
+ * const playsForWeek = HashMap.get(grouped, '2024-W03') // Option<Chunk<Play>>
+ * ```
+ */
+export const groupPlaysByWeek = (
+  plays: Chunk.Chunk<Play>
+): HashMap.HashMap<string, Chunk.Chunk<Play>> =>
+  Chunk.reduce(
+    plays,
+    HashMap.empty<string, Chunk.Chunk<Play>>(),
+    (acc, play) => {
+      const weekKey = getISOWeekString(play.airdate);
+      const existing = HashMap.get(acc, weekKey);
+      const updatedChunk = Option.match(existing, {
+        onNone: () => Chunk.of(play),
+        onSome: (chunk) => Chunk.append(chunk, play),
+      });
+      return HashMap.set(acc, weekKey, updatedChunk);
+    }
+  );
+
+/**
+ * Group plays by month (YYYY-MM format).
+ * Returns a HashMap where keys are month strings and values are Chunks of plays for that month.
+ *
+ * @param plays - Chunk of plays to group
+ * @returns HashMap of month strings to Chunks of plays
+ *
+ * @example
+ * ```ts
+ * const grouped = groupPlaysByMonth(playsChunk)
+ * const playsForMonth = HashMap.get(grouped, '2024-01') // Option<Chunk<Play>>
+ * ```
+ */
+export const groupPlaysByMonth = (
+  plays: Chunk.Chunk<Play>
+): HashMap.HashMap<string, Chunk.Chunk<Play>> =>
+  Chunk.reduce(
+    plays,
+    HashMap.empty<string, Chunk.Chunk<Play>>(),
+    (acc, play) => {
+      const date = play.airdate;
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const existing = HashMap.get(acc, monthKey);
+      const updatedChunk = Option.match(existing, {
+        onNone: () => Chunk.of(play),
+        onSome: (chunk) => Chunk.append(chunk, play),
+      });
+      return HashMap.set(acc, monthKey, updatedChunk);
+    }
+  );
+
+/**
+ * Get the date range (min and max dates) from a Chunk of plays.
+ * Returns Option.none() if the chunk is empty.
+ *
+ * @param plays - Chunk of plays to analyze
+ * @returns Option containing start and end dates, or none if empty
+ *
+ * @example
+ * ```ts
+ * const range = getDateRangeFromChunk(playsChunk)
+ * Option.match(range, {
+ *   onNone: () => console.log('No plays'),
+ *   onSome: ({ start, end }) => console.log(`Range: ${start} to ${end}`)
+ * })
+ * ```
+ */
+export const getDateRangeFromChunk = (
+  plays: Chunk.Chunk<Play>
+): Option.Option<{ readonly start: Date; readonly end: Date }> => {
+  if (Chunk.isEmpty(plays)) {
+    return Option.none();
+  }
+
+  const oldest = getOldestPlay(plays);
+  const newest = getNewestPlay(plays);
+
+  return Option.match(oldest, {
+    onNone: () => Option.none(),
+    onSome: (oldestPlay) =>
+      Option.match(newest, {
+        onNone: () => Option.none(),
+        onSome: (newestPlay) =>
+          Option.some({
+            start: oldestPlay.airdate,
+            end: newestPlay.airdate,
+          } as const),
+      }),
+  });
+};
+
+/**
+ * Get plays for a specific date (same day, ignoring time).
+ *
+ * @param plays - Chunk of plays to filter
+ * @param targetDate - The target date to filter by
+ * @returns Chunk of plays for that date
+ *
+ * @example
+ * ```ts
+ * const playsForDate = getPlaysForDate(playsChunk, new Date('2024-01-15'))
+ * ```
+ */
+export const getPlaysForDate = (
+  plays: Chunk.Chunk<Play>,
+  targetDate: Date
+): Chunk.Chunk<Play> => {
+  const targetDateStr = targetDate.toISOString().split("T")[0];
+  return Chunk.filter(plays, (play) => {
+    const playDateStr = play.airdate.toISOString().split("T")[0];
+    return playDateStr === targetDateStr;
+  });
+};
+
+/**
+ * Map dates in plays using a transformation function.
+ *
+ * @param plays - Chunk of plays to transform
+ * @param fn - Function to transform dates
+ * @returns Chunk of plays with transformed dates
+ *
+ * @example
+ * ```ts
+ * const adjusted = mapPlayDates(
+ *   playsChunk,
+ *   (date) => new Date(date.getTime() + 60 * 60 * 1000) // Add 1 hour
+ * )
+ * ```
+ */
+export const mapPlayDates = (
+  plays: Chunk.Chunk<Play>,
+  fn: (date: Date) => Date
+): Chunk.Chunk<Play> =>
+  Chunk.map(plays, (play) => ({
+    ...play,
+    airdate: fn(play.airdate),
+  }));
+
+/**
+ * Extract unique dates from a Chunk of plays, sorted ascending.
+ *
+ * @param plays - Chunk of plays to extract dates from
+ * @returns Chunk of unique dates, sorted oldest to newest
+ *
+ * @example
+ * ```ts
+ * const uniqueDates = extractUniqueDates(playsChunk)
+ * // Returns Chunk<Date> with unique dates, sorted oldest to newest
+ * ```
+ */
+export const extractUniqueDates = (
+  plays: Chunk.Chunk<Play>
+): Chunk.Chunk<Date> => {
+  // Build HashSet of unique date strings
+  const dateStringSet = Chunk.reduce(
+    plays,
+    HashSet.empty<string>(),
+    (acc, play) => HashSet.add(acc, play.airdate.toISOString())
+  );
+
+  // Convert HashSet to Chunk of dates, then sort
+  const uniqueDates = HashSet.toValues(dateStringSet).map(
+    (dateStr) => new Date(dateStr)
+  );
+
+  return Chunk.sort(Chunk.fromIterable(uniqueDates), Order.Date);
+};
+
+/**
+ * Filter plays by date range (alias for filterPlaysByDateRange for consistency).
+ * This is a pure function that filters plays within the specified date range.
+ *
+ * @param plays - Chunk of plays to filter
+ * @param startDate - Start date (inclusive)
+ * @param endDate - End date (inclusive)
+ * @returns Filtered Chunk of plays
+ *
+ * @example
+ * ```ts
+ * const filtered = filterPlaysByDateRange(
+ *   playsChunk,
+ *   new Date('2024-01-01'),
+ *   new Date('2024-01-31')
+ * )
+ * ```
+ */
+export const filterPlaysByDateRangeEffect = (
+  plays: Chunk.Chunk<Play>,
+  startDate: Date,
+  endDate: Date
+): Chunk.Chunk<Play> => filterPlaysByDateRange(plays, startDate, endDate);
+
+/**
+ * Filter plays by a date predicate function.
+ *
+ * @param plays - Chunk of plays to filter
+ * @param predicate - Function that takes a date and returns a boolean
+ * @returns Filtered Chunk of plays
+ *
+ * @example
+ * ```ts
+ * const weekendPlays = filterPlaysByDatePredicate(
+ *   playsChunk,
+ *   (date) => {
+ *     const day = date.getDay()
+ *     return day === 0 || day === 6 // Saturday or Sunday
+ *   }
+ * )
+ * ```
+ */
+export const filterPlaysByDatePredicate = (
+  plays: Chunk.Chunk<Play>,
+  predicate: (date: Date) => boolean
+): Chunk.Chunk<Play> => Chunk.filter(plays, (play) => predicate(play.airdate));
+
+/**
+ * Helper function to get ISO week string (YYYY-Www format).
+ */
+const getISOWeekString = (date: Date): string => {
+  const d = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+  );
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(
+    ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+  );
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 };
