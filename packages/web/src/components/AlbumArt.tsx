@@ -17,20 +17,21 @@ function generateOrganicGradient(seed: string): string {
     hash = hash & hash
   }
 
-  // Color palettes that fit the dark theme
+  // Desaturated placeholder palettes - Phase 1.3
+  // Low saturation (15%) so placeholders recede visually and don't compete with real album art
   const palettes = [
-    // Deep purples to blues
-    ['hsl(260, 60%, 35%)', 'hsl(220, 70%, 45%)'],
-    // Warm oranges to reds
-    ['hsl(20, 85%, 45%)', 'hsl(340, 75%, 50%)'],
-    // Teals to greens
-    ['hsl(180, 60%, 40%)', 'hsl(160, 65%, 45%)'],
-    // Deep blues to purples
-    ['hsl(230, 65%, 40%)', 'hsl(270, 60%, 45%)'],
-    // Warm pinks to purples
-    ['hsl(330, 70%, 45%)', 'hsl(280, 65%, 50%)'],
-    // Amber to orange
-    ['hsl(35, 80%, 45%)', 'hsl(15, 85%, 50%)'],
+    // Blue-gray gradient
+    ['hsl(240, 15%, 28%)', 'hsl(240, 15%, 32%)'],
+    // Purple-gray gradient
+    ['hsl(280, 15%, 28%)', 'hsl(280, 15%, 32%)'],
+    // Teal-gray gradient
+    ['hsl(160, 15%, 28%)', 'hsl(160, 15%, 32%)'],
+    // Cyan-gray gradient
+    ['hsl(200, 15%, 28%)', 'hsl(200, 15%, 32%)'],
+    // Magenta-gray gradient
+    ['hsl(320, 15%, 28%)', 'hsl(320, 15%, 32%)'],
+    // Amber-gray gradient
+    ['hsl(40, 15%, 28%)', 'hsl(40, 15%, 32%)'],
   ]
 
   const paletteIndex = Math.abs(hash) % palettes.length
@@ -75,8 +76,7 @@ export function AlbumArt({ src, alt, size = 120, className }: AlbumArtProps) {
           loading="lazy"
           decoding="async"
           className={cn(
-            "w-full h-full object-cover transition-all duration-200 relative z-10",
-            "group-hover:scale-105",
+            "w-full h-full object-cover transition-opacity duration-200 relative z-10",
             loaded ? "opacity-100" : "opacity-0"
           )}
           onLoad={() => setLoaded(true)}

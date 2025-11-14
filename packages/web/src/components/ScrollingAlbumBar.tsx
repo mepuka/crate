@@ -3,68 +3,126 @@ import { useEffect, useRef, useState } from "react";
 import { recentAlbumArtAtom, type AlbumArtworkData } from "@/atoms/album-bar";
 
 /**
- * Row configuration for multi-directional scrolling
- */
-interface RowState {
-  offsetX: number;
-  direction: -1 | 1;
-  speed: number;
-  images: HTMLImageElement[];
-}
-
-/**
- * Configuration for the multi-row background album grid
+ * Configuration for the static background album grid
  */
 const CONFIG = {
-  // Grid structure
-  ROWS: 4,
-  GRID_HEIGHT: 4 * (300 + 4) + 4, // rows * (tile + gap) + top gap = 1220px
-  TILE_SIZE: 300, // Full native album art size
+  TILE_SIZE: 200,
   TILE_GAP: 4,
-  TILE_RADIUS: 8, // Increased for larger tiles
-
-  // Animation (slower for ambient background effect)
-  SCROLL_SPEED_BASE: 12, // pixels/second (research recommended 10-15)
-  SCROLL_SPEED_VARIANCE: 0.1, // ±10% variance per row (reduced for cohesion)
-
-  // Visual effects
-  CANVAS_OPACITY: 0.75, // High visibility for prominent background
-  BLUR_RADIUS: 20, // px - slightly reduced for sharper appearance
-  BACKGROUND_OPACITY: 0.45, // Significantly reduced for darker, more visible albums
+  TILE_RADIUS: 6,
+  CANVAS_OPACITY: 0.75,
+  BLUR_RADIUS: 8,
+  BACKGROUND_OPACITY: 0.25,
+  // Row offset for brick/staggered pattern
+  ROW_OFFSET: 102, // Half tile width (200/2 + gap) for clean brick pattern
+  // Visual defect ranges (subtle analog imperfections)
+  BLUR_VARIANCE: 1, // Max blur radius variance (0-1px) - reduced for subtlety
+  OPACITY_VARIANCE: 0.08, // Subtle opacity variation (92-100%)
+  BRIGHTNESS_VARIANCE: 0.08, // Subtle brightness variation (±8%)
+  CONTRAST_VARIANCE: 0.06, // Subtle contrast variation (±6%)
+  // Per-tile granular defects
+  VIGNETTE_STRENGTH: 0.25, // Vignette darkening strength (0-1)
+  GRAIN_OPACITY: 0.08, // Film grain opacity (0-1)
+  COLOR_SHIFT_AMOUNT: 0.06, // Subtle color channel shifts (±6%)
 } as const;
 
 /**
- * Row animation configurations (alternating directions)
- * Speed multipliers reduced for more cohesive motion
+ * Seeded pseudo-random number generator using sin waves
+ * Returns value between 0 and 1
  */
-const ROW_CONFIGS = [
-  { direction: -1 as const, speedMultiplier: 0.95 },  // Row 0: left, slightly slower
-  { direction: 1 as const, speedMultiplier: 1.0 },    // Row 1: right, normal
-  { direction: -1 as const, speedMultiplier: 1.05 },  // Row 2: left, slightly faster
-  { direction: 1 as const, speedMultiplier: 0.98 },   // Row 3: right, near normal
-];
+function organicNoise(row: number, col: number, seed: number = 0): number {
+  const x = row * 12.9898 + col * 78.233 + seed * 43.758;
+  return Math.abs(Math.sin(x) * 43758.5453123) % 1;
+}
 
 /**
- * Multi-row scrolling background grid displaying recent album artwork.
+ * Apply granular visual defects within a single tile
+ * Creates localized imperfections like vignetting, grain, and color shifts
+ */
+function applyTileDefects(
+  ctx: CanvasRenderingContext2D,
+  row: number,
+  col: number,
+  size: number
+): void {
+  // Vignette effect (darkened edges)
+  const vignetteStrength = organicNoise(row, col, 10) * CONFIG.VIGNETTE_STRENGTH;
+  if (vignetteStrength > 0.05) {
+    const gradient = ctx.createRadialGradient(
+      size / 2, size / 2, size * 0.3,
+      size / 2, size / 2, size * 0.7
+    );
+    gradient.addColorStop(0, `rgba(0, 0, 0, 0)`);
+    gradient.addColorStop(1, `rgba(0, 0, 0, ${vignetteStrength})`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+  }
+
+  // Film grain texture
+  const grainAmount = organicNoise(row, col, 11) * CONFIG.GRAIN_OPACITY;
+  if (grainAmount > 0.02) {
+    const imageData = ctx.getImageData(0, 0, size, size);
+    const pixels = imageData.data;
+    
+    // Apply subtle random noise to pixels
+    for (let i = 0; i < pixels.length; i += 4) {
+      const pixelNoise = organicNoise(
+        Math.floor(i / 4 / size),
+        (i / 4) % size,
+        row * 1000 + col
+      );
+      const grain = (pixelNoise - 0.5) * grainAmount * 255;
+      pixels[i] += grain;     // R
+      pixels[i + 1] += grain; // G
+      pixels[i + 2] += grain; // B
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  // Subtle color channel shifts (chromatic aberration-like)
+  const colorShift = organicNoise(row, col, 12) * CONFIG.COLOR_SHIFT_AMOUNT;
+  if (colorShift > 0.015) {
+    // Get image data and apply slight color channel modifications
+    const imageData = ctx.getImageData(0, 0, size, size);
+    const pixels = imageData.data;
+    
+    const redShift = (organicNoise(row, col, 13) - 0.5) * colorShift * 2;
+    const greenShift = (organicNoise(row, col, 14) - 0.5) * colorShift * 2;
+    const blueShift = (organicNoise(row, col, 15) - 0.5) * colorShift * 2;
+    
+    for (let i = 0; i < pixels.length; i += 4) {
+      pixels[i] *= (1 + redShift);       // R
+      pixels[i + 1] *= (1 + greenShift); // G
+      pixels[i + 2] *= (1 + blueShift);  // B
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+  }
+}
+
+/**
+ * Static background displaying recent album artwork with subtle analog defects.
+ * Simplified from animated version - clean brick pattern with visual imperfections.
+ * 
  * Features:
- * - 4 rows with alternating scroll directions
- * - Ambient speed (slower than foreground elements)
- * - CSS blur overlay for background effect
- * - GPU-accelerated rendering
+ * - GPU-accelerated rendering with ImageBitmap
+ * - Clean brick pattern (alternating row offset) - no position variance
+ * - Two layers of visual defects:
+ *   1. Tile-level: slight blur, opacity fade, brightness/contrast shifts
+ *   2. Granular: vignetting, film grain, color channel shifts within each tile
+ * - Creates analog/film-like quality without disrupting layout
+ * - Seeded random for consistent appearance across renders
+ * - Automatic sizing based on viewport
+ * - Refreshes when new plays arrive
  */
 export function ScrollingAlbumBar() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const albumArtResult = useAtomValue(recentAlbumArtAtom);
-
-  // FIX: Use single boolean + ref instead of Map to prevent animation re-runs
+  
   const [isLoadingComplete, setIsLoadingComplete] = useState(false);
-  const imagesRef = useRef<HTMLImageElement[]>([]);
-
-  const animationFrameRef = useRef<number>();
-  const rowsRef = useRef<RowState[]>([]);
-  const lastTimeRef = useRef<number>(0);
-
-  // PERFORMANCE: Precompute clipping path once
+  const imagesRef = useRef<ImageBitmap[]>([]);
+  
+  // Precompute clipping path for rounded corners
   const clipPathRef = useRef<Path2D>();
 
   useEffect(() => {
@@ -73,7 +131,7 @@ export function ScrollingAlbumBar() {
     clipPathRef.current = path;
   }, []);
 
-  // Load album artwork images (fixed to prevent animation re-runs)
+  // Load album artwork images as ImageBitmaps (GPU-native, optimized)
   useEffect(() => {
     Result.matchWithWaiting(albumArtResult, {
       onWaiting: () => {
@@ -85,209 +143,186 @@ export function ScrollingAlbumBar() {
       onDefect: (error) => {
         console.error("Defect loading album artwork:", error);
       },
-      onSuccess: (s) => {
+      onSuccess: async (s) => {
         const artworks = s.value as readonly AlbumArtworkData[];
-        const images: HTMLImageElement[] = [];
-        let loadedCount = 0;
+        const bitmaps: ImageBitmap[] = [];
 
-        artworks.forEach((artwork) => {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
+        // Load images as ImageBitmaps for GPU-native rendering
+        for (const artwork of artworks) {
+          try {
+            const response = await fetch(artwork.imageUri);
+            const blob = await response.blob();
 
-          img.onload = () => {
-            images.push(img);
-            loadedCount++;
+            // Decode to ImageBitmap with resize during decode (saves memory)
+            const bitmap = await createImageBitmap(blob, {
+              resizeWidth: CONFIG.TILE_SIZE,
+              resizeHeight: CONFIG.TILE_SIZE,
+              resizeQuality: 'medium'
+            });
 
-            // CRITICAL FIX: Single state update when ALL images loaded
-            if (loadedCount === artworks.length) {
-              imagesRef.current = images;
-              setIsLoadingComplete(true);
-            }
-          };
+            bitmaps.push(bitmap);
+          } catch (err) {
+            console.error(`Failed to load image for play ${artwork.id}:`, err);
+          }
+        }
 
-          img.onerror = () => {
-            console.error(`Failed to load image for play ${artwork.id}`);
-            loadedCount++;
-
-            // Still complete if this was the last image
-            if (loadedCount === artworks.length && images.length > 0) {
-              imagesRef.current = images;
-              setIsLoadingComplete(true);
-            }
-          };
-
-          // Use full-size image for better quality at 300x300
-          img.src = artwork.imageUri;
-        });
+        if (bitmaps.length > 0) {
+          imagesRef.current = bitmaps;
+          setIsLoadingComplete(true);
+        }
       },
     });
   }, [albumArtResult]);
 
-  // Initialize rows when images are loaded
-  useEffect(() => {
-    if (!isLoadingComplete || imagesRef.current.length === 0) return;
-
-    const images = imagesRef.current;
-    const imagesPerRow = Math.ceil(images.length / CONFIG.ROWS);
-
-    // Create rows with alternating scroll directions
-    rowsRef.current = Array.from({ length: CONFIG.ROWS }, (_, rowIndex) => {
-      const config = ROW_CONFIGS[rowIndex];
-      const startIndex = rowIndex * imagesPerRow;
-      const endIndex = Math.min(startIndex + imagesPerRow, images.length);
-      const rowImages = images.slice(startIndex, endIndex);
-
-      // Add variance to speed for more organic feel
-      const speedVariance = (Math.random() - 0.5) * 2 * CONFIG.SCROLL_SPEED_VARIANCE;
-      const speed = CONFIG.SCROLL_SPEED_BASE * config.speedMultiplier * (1 + speedVariance);
-
-      return {
-        offsetX: 0,
-        direction: config.direction,
-        speed,
-        images: rowImages,
-      };
-    });
-  }, [isLoadingComplete]);
-
-  // Canvas animation loop (only runs once when loading complete)
+  // Render static grid when images are loaded
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !isLoadingComplete || rowsRef.current.length === 0) return;
+    if (!canvas || !isLoadingComplete || imagesRef.current.length === 0) return;
 
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
 
-    // Set canvas size
-    const resizeCanvas = () => {
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = CONFIG.GRID_HEIGHT * dpr;
-      canvas.style.width = `${window.innerWidth}px`;
-      canvas.style.height = `${CONFIG.GRID_HEIGHT}px`;
-      ctx.scale(dpr, dpr);
-    };
-
-    resizeCanvas();
-    window.addEventListener("resize", resizeCanvas);
-
+    const images = imagesRef.current;
     const tileWidth = CONFIG.TILE_SIZE + CONFIG.TILE_GAP;
 
-    const animate = (currentTime: number) => {
-      if (lastTimeRef.current === 0) {
-        lastTimeRef.current = currentTime;
-      }
-
-      const deltaTime = (currentTime - lastTimeRef.current) / 1000;
-      lastTimeRef.current = currentTime;
-
-      // OPTIMIZATION: Clear only once instead of per-row
-      ctx.clearRect(0, 0, window.innerWidth, CONFIG.GRID_HEIGHT);
-
+    const renderGrid = () => {
       const canvasWidth = window.innerWidth;
+      const canvasHeight = window.innerHeight;
+      
+      // Use standard DPR for static content
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = canvasWidth * dpr;
+      canvas.height = canvasHeight * dpr;
+      canvas.style.width = `${canvasWidth}px`;
+      canvas.style.height = `${canvasHeight}px`;
+      ctx.scale(dpr, dpr);
 
-      // Render each row
-      rowsRef.current.forEach((row, rowIndex) => {
-        // Update row offset
-        row.offsetX += row.direction * row.speed * deltaTime;
+      // Clear canvas
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-        // Calculate row dimensions
-        const rowWidth = row.images.length * tileWidth;
-        const y = CONFIG.TILE_GAP + rowIndex * (CONFIG.TILE_SIZE + CONFIG.TILE_GAP);
+      // Calculate grid dimensions (extra tiles to account for brick pattern offset)
+      const cols = Math.ceil(canvasWidth / tileWidth) + 2;
+      const rows = Math.ceil(canvasHeight / tileWidth) + 1;
 
-        // Seamless loop
-        if (row.direction === -1 && row.offsetX <= -rowWidth) {
-          row.offsetX += rowWidth;
-        } else if (row.direction === 1 && row.offsetX >= rowWidth) {
-          row.offsetX -= rowWidth;
+      // Render grid with alternating row offset (brick pattern) + subtle visual defects
+      let imageIndex = 0;
+      for (let row = 0; row < rows; row++) {
+        // Start column offset for even rows to fill left edge
+        const startCol = row % 2 === 1 ? -1 : 0;
+        const endCol = cols + (row % 2 === 1 ? 0 : 1);
+        
+        for (let col = startCol; col < endCol; col++) {
+          // Clean brick pattern position (no jitter)
+          const x = col * tileWidth + (row % 2 === 1 ? CONFIG.ROW_OFFSET : 0);
+          const y = row * tileWidth;
+
+          // Get image (cycle through available images)
+          const img = images[imageIndex % images.length];
+          imageIndex++;
+
+          // Apply subtle visual defects (analog imperfections)
+          ctx.save();
+          ctx.translate(x, y);
+          
+          // Subtle blur variation (out of focus effect)
+          const blurAmount = organicNoise(row, col, 1) * CONFIG.BLUR_VARIANCE;
+          if (blurAmount > 0.3) {
+            ctx.filter = `blur(${blurAmount}px)`;
+          }
+          
+          // Subtle opacity variation (slight fading)
+          const opacity = 1 - organicNoise(row, col, 2) * CONFIG.OPACITY_VARIANCE;
+          ctx.globalAlpha = opacity;
+          
+          // Subtle brightness/contrast variation (analog color shifts)
+          const brightness = 1 + (organicNoise(row, col, 3) - 0.5) * 2 * CONFIG.BRIGHTNESS_VARIANCE;
+          const contrast = 1 + (organicNoise(row, col, 4) - 0.5) * 2 * CONFIG.CONTRAST_VARIANCE;
+          
+          // Apply color matrix for brightness/contrast
+          if (brightness !== 1 || contrast !== 1) {
+            const existingFilter = ctx.filter !== 'none' ? ctx.filter + ' ' : '';
+            ctx.filter = `${existingFilter}brightness(${brightness}) contrast(${contrast})`;
+          }
+          
+          // Draw with rounded corners
+          if (clipPathRef.current) {
+            ctx.clip(clipPathRef.current);
+          }
+          ctx.drawImage(img, 0, 0, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE);
+          
+          // Apply granular per-tile defects (vignette, grain, color shifts)
+          applyTileDefects(ctx, row, col, CONFIG.TILE_SIZE);
+          
+          ctx.restore();
         }
-
-        // Calculate repetitions needed
-        const repetitionsNeeded = Math.ceil(canvasWidth / rowWidth) + 2;
-
-        // Draw tiles for this row
-        for (let rep = 0; rep < repetitionsNeeded; rep++) {
-          row.images.forEach((img, index) => {
-            const x = row.offsetX + rep * rowWidth + index * tileWidth;
-
-            // Only draw if visible (viewport culling)
-            if (x + CONFIG.TILE_SIZE >= 0 && x <= canvasWidth) {
-              // OPTIMIZATION: Use precomputed clip path
-              ctx.save();
-              ctx.translate(x, y);
-              if (clipPathRef.current) {
-                ctx.clip(clipPathRef.current);
-              }
-              ctx.drawImage(img, 0, 0, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE);
-              ctx.restore();
-            }
-          });
-        }
-      });
-
-      animationFrameRef.current = requestAnimationFrame(animate);
+      }
     };
 
-    animationFrameRef.current = requestAnimationFrame(animate);
+    // Initial render
+    renderGrid();
+
+    // Re-render on resize
+    let resizeTimeout: number;
+    const handleResize = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = window.setTimeout(renderGrid, 250);
+    };
+    
+    window.addEventListener("resize", handleResize);
 
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      window.removeEventListener("resize", resizeCanvas);
-      lastTimeRef.current = 0;
+      clearTimeout(resizeTimeout);
+      window.removeEventListener("resize", handleResize);
     };
   }, [isLoadingComplete]);
 
   return (
-    <div className="album-grid-background fixed top-0 left-0 right-0 -z-10 overflow-hidden">
-      <div className="relative w-full" style={{ height: CONFIG.GRID_HEIGHT }}>
-        {/* Canvas layer - renders album tiles (no blur) */}
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full"
-          style={{ opacity: CONFIG.CANVAS_OPACITY }}
-        />
+    <div className="album-grid-background fixed inset-0 -z-10 overflow-hidden">
+      {/* Canvas layer - renders album tiles (no blur) */}
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 w-full h-full"
+        style={{ opacity: CONFIG.CANVAS_OPACITY }}
+      />
 
-        {/* CSS blur overlay */}
-        <div
-          className="album-grid-blur absolute inset-0 bg-background pointer-events-none"
-          style={{
-            opacity: CONFIG.BACKGROUND_OPACITY,
-            backdropFilter: `blur(${CONFIG.BLUR_RADIUS}px)`,
-            WebkitBackdropFilter: `blur(${CONFIG.BLUR_RADIUS}px)`,
-          }}
-        />
+      {/* CSS blur overlay - light blur for aesthetic */}
+      <div
+        className="album-grid-blur absolute inset-0 bg-background pointer-events-none"
+        style={{
+          opacity: CONFIG.BACKGROUND_OPACITY,
+          backdropFilter: `blur(${CONFIG.BLUR_RADIUS}px) saturate(120%)`,
+          WebkitBackdropFilter: `blur(${CONFIG.BLUR_RADIUS}px) saturate(120%)`,
+        }}
+      />
 
-        {/* Scrim gradient for text contrast (WCAG compliance) */}
-        <div
-          className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/50 to-background/80 pointer-events-none"
-          aria-hidden="true"
-        />
+      {/* Scrim gradient for text contrast */}
+      <div
+        className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/50 to-background/80 pointer-events-none"
+        aria-hidden="true"
+      />
 
-        {/* Loading state */}
-        {Result.matchWithWaiting(albumArtResult, {
-          onWaiting: () => (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="flex gap-2 items-center text-sm text-muted-foreground">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                Loading album artwork...
-              </div>
+      {/* Loading state */}
+      {Result.matchWithWaiting(albumArtResult, {
+        onWaiting: () => (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="flex gap-2 items-center text-sm text-muted-foreground">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              Loading album artwork...
             </div>
-          ),
-          onError: () => (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <span className="text-sm text-muted-foreground">Failed to load album artwork</span>
-            </div>
-          ),
-          onDefect: () => (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <span className="text-sm text-muted-foreground">Error loading album artwork</span>
-            </div>
-          ),
-          onSuccess: () => null,
-        })}
-      </div>
+          </div>
+        ),
+        onError: () => (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="text-sm text-muted-foreground">Failed to load album artwork</span>
+          </div>
+        ),
+        onDefect: () => (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="text-sm text-muted-foreground">Error loading album artwork</span>
+          </div>
+        ),
+        onSuccess: () => null,
+      })}
     </div>
   );
 }

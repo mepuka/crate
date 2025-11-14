@@ -4,7 +4,9 @@ import { cn } from '@/lib/utils'
 import { formatPlayTime, formatRelativeTime } from '@/lib/date-utils'
 import { forwardRef } from 'react'
 import { AlbumArt } from './AlbumArt'
-import { Link } from '@tanstack/react-router'
+import { useAtom } from '@effect-atom/atom-react'
+import { selectedPlayIdAtom } from '@/atoms/play-details'
+import { Option } from 'effect'
 
 const playCardVariants = cva(
   [
@@ -40,37 +42,68 @@ interface PlayCardProps extends VariantProps<typeof playCardVariants> {
   className?: string
 }
 
+// Age calculation for recency indicators - Phase 2.3
+function getAgeCategory(airdate: Date | null): 'recent' | 'older' | 'old' {
+  if (!airdate) return 'old'
+  const minutesAgo = (Date.now() - airdate.getTime()) / 60000
+  if (minutesAgo < 30) return 'recent'
+  if (minutesAgo < 180) return 'older'
+  return 'old'
+}
+
 export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
   ({ play, variant, size, isFocused, className }, ref) => {
     const imageSize = size === 'compact' ? 80 : size === 'expanded' ? 160 : 120
+    const [_, setSelectedId] = useAtom(selectedPlayIdAtom)
 
     // Parse release year from airdate
     const releaseYear = play.airdate ? new Date(play.airdate).getFullYear() : null
+
+    // Determine if card has album art or is a placeholder
+    const hasArt = !!(play.thumbnail_uri || play.image_uri)
+
+    // Calculate age category for recency indicators
+    const ageCategory = getAgeCategory(play.airdate)
+
+    // Handle click to open play details panel
+    const handleClick = () => {
+      setSelectedId(Option.some(play.id))
+    }
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        setSelectedId(Option.some(play.id))
+      }
+    }
 
     return (
       <div
         ref={ref}
         className={cn(
+          "play-card",
+          hasArt ? "has-art" : "is-placeholder",
           playCardVariants({
             variant: isFocused ? 'focused' : variant,
             size
           }),
           className
         )}
+        data-age={ageCategory}
         role="article"
         aria-label={`${play.song} by ${play.artist} played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`}
       >
-        {/* Invisible link overlay for entire card */}
-        <Link
-          to="/play/$id"
-          params={{ id: String(play.id) }}
-          search={(prev) => prev}
-          className="absolute inset-0 z-0"
+        {/* Clickable overlay for entire card */}
+        <div
+          onClick={handleClick}
+          onKeyDown={handleKeyDown}
           tabIndex={0}
-          aria-label={`View ${play.song} by ${play.artist}`}
+          role="button"
+          className="absolute inset-0 z-20 cursor-pointer"
+          aria-label={`View details for ${play.song} by ${play.artist}`}
         />
 
-        <div className="relative z-10 flex gap-3 py-2">
+        <div className="relative z-10 flex gap-3 py-2 pointer-events-none">
           {/* Album Art */}
           <AlbumArt
             src={play.thumbnail_uri || play.image_uri}
@@ -82,12 +115,12 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           <div className="flex-1 min-w-0 flex flex-col gap-1 py-0">
             {/* Title & Time */}
             <div className="flex items-baseline justify-between gap-4">
-              <h3 className="text-base font-bold text-foreground leading-tight truncate tracking-tight" title={play.song}>
+              <h3 className="track-title text-foreground truncate" title={play.song}>
                 {play.song || 'Untitled'}
               </h3>
               {play.airdate && (
                 <time
-                  className="text-xs text-muted-foreground font-mono whitespace-nowrap shrink-0 ml-auto tabular-nums"
+                  className="timestamp text-foreground whitespace-nowrap shrink-0 ml-auto font-mono"
                   dateTime={play.airdate.toISOString()}
                 >
                   {formatPlayTime(play.airdate)}
@@ -96,7 +129,7 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
             </div>
 
             {/* Artist */}
-            <p className="text-sm text-foreground/85 truncate" title={play.artist}>
+            <p className="artist-name text-foreground truncate" title={play.artist}>
               {play.artist || 'Unknown Artist'}
             </p>
 

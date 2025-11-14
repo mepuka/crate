@@ -34,7 +34,8 @@ export class AlbumBarWorkerClient extends Effect.Service<AlbumBarWorkerClient>()
 
       // Create a worker pool with Schema serialization
       const pool = yield* Worker.makePoolSerialized<WorkerRequest>({
-        size: 1, // Single worker for album bar processing
+        size: 4, // Single worker for album bar processing
+        concurrency: 10, // 10 concurrent requests per worker
       });
 
       yield* Effect.logInfo("AlbumBarWorkerClient: Worker pool created");

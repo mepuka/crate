@@ -29,6 +29,43 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+
+    /* Typography System - Phase 1.1 */
+    --font-title: 16px;
+    --font-artist: 14px;
+    --font-time: 12px;
+    --weight-title: 600;
+    --weight-artist: 400;
+    --weight-time: 500;
+
+    /* Shadow System - Phase 2.1 */
+    --shadow-near: 0 2px 8px rgba(0, 0, 0, 0.15);
+    --shadow-hover: 0 6px 20px rgba(0, 0, 0, 0.25);
+    --shadow-placeholder: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+    /* Glassmorphism Design Tokens */
+    /* Glass opacity levels */
+    --glass-opacity-subtle: rgba(255, 255, 255, 0.05);
+    --glass-opacity-medium: rgba(255, 255, 255, 0.08);
+    --glass-opacity-strong: rgba(255, 255, 255, 0.12);
+
+    /* Blur intensities */
+    --glass-blur-light: blur(8px);
+    --glass-blur-medium: blur(12px);
+    --glass-blur-heavy: blur(16px);
+    --glass-blur-intense: blur(20px);
+
+    /* Border colors */
+    --glass-border-subtle: rgba(255, 255, 255, 0.1);
+    --glass-border-bright: rgba(255, 255, 255, 0.25);
+
+    /* Saturation boost */
+    --glass-saturation: saturate(150%);
+    --glass-saturation-strong: saturate(180%);
+
+    /* Shadow depths for glass */
+    --glass-shadow-near: 0 2px 12px rgba(0, 0, 0, 0.15);
+    --glass-shadow-far: 0 8px 32px rgba(0, 0, 0, 0.25);
   }
 
   .dark {
@@ -78,46 +115,349 @@
 }
 
 @layer components {
-  /* Multi-row Background Album Grid Styles */
-  .album-grid-background {
+  /* Typography System - Phase 1.1 */
+  .track-title {
+    font-size: var(--font-title);
+    font-weight: var(--weight-title);
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+  }
+
+  .artist-name {
+    font-size: var(--font-artist);
+    font-weight: var(--weight-artist);
+    opacity: 0.7;
+    margin-top: 2px;
+  }
+
+  .timestamp {
+    font-size: var(--font-time);
+    font-weight: var(--weight-time);
+    font-variant-numeric: tabular-nums; /* Aligns times vertically */
+    opacity: 0.5;
+    letter-spacing: 0.02em;
+  }
+
+  /* Border Radius & Block Refinement - Phase 1.2 
+     OPTIMIZED: Removed expensive pseudo-elements for performance */
+  .play-card {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    /* Simple subtle border instead of complex gradient */
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    /* Direct background instead of backdrop-filter pseudo-element */
+    background: rgba(255, 255, 255, 0.03);
+    /* GPU optimization */
+    transform: translateZ(0);
+  }
+
+  /* Subtle glass effect on hover only - better performance */
+  .play-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  /* Disable all expensive effects during scroll */
+  .scrolling .play-card {
+    transition: none;
+  }
+
+  .scrolling .play-card:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  /* Shadow System - Phase 2.1 */
+  /* Real album art gets depth */
+  .play-card.has-art {
+    box-shadow: var(--shadow-near);
+  }
+
+  /* Placeholders are flatter */
+  .play-card.is-placeholder {
+    box-shadow: var(--shadow-placeholder);
+  }
+
+  /* Recency Indicators - Phase 2.3 */
+  /* Most recent plays feel "closer" */
+  .play-card[data-age="recent"] {
+    opacity: 1;
+  }
+
+  .play-card[data-age="older"] {
+    opacity: 0.85;
+  }
+
+  .play-card[data-age="old"] {
+    opacity: 0.7;
+  }
+
+  /* Scale adjustments for recency (base state, hover overrides) */
+  .play-card[data-age="recent"] {
+    transform: scale(1);
+  }
+
+  .play-card[data-age="older"] {
+    transform: scale(0.98);
+  }
+
+  .play-card[data-age="old"] {
+    transform: scale(0.96);
+  }
+
+  /* Hover States - Phase 2.2 (integrated with recency) */
+  /* Hover state needs to account for base scale */
+  .play-card[data-age="recent"]:hover {
+    transform: translateY(-2px) scale(1.01);
+    box-shadow: var(--shadow-hover);
+    z-index: 10;
+  }
+
+  .play-card[data-age="older"]:hover {
+    transform: translateY(-2px) scale(0.99);
+    box-shadow: var(--shadow-hover);
+    z-index: 10;
+  }
+
+  .play-card[data-age="old"]:hover {
+    transform: translateY(-2px) scale(0.97);
+    box-shadow: var(--shadow-hover);
+    z-index: 10;
+  }
+
+  /* ========================================
+     CRATE-STYLE GLASSMORPHISM - TIMELINE CONTAINER
+     Philosophy: Minimal, transparent, let album art breathe
+     Performance-optimized with single backdrop-filter layer
+     ======================================== */
+  
+  .timeline-container {
+    position: relative;
+    isolation: isolate;
+    border-radius: 16px;
+    overflow: visible;
+    background: transparent;
+    border: none;
+    box-shadow: none;
     /* GPU acceleration */
     transform: translateZ(0);
-    will-change: transform;
-    /* Smooth entrance animation */
-    animation: slideInFromTop 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .album-grid-background canvas {
-    /* Optimize for photos, not pixel art */
-    image-rendering: auto;
-    /* GPU acceleration for canvas */
-    will-change: contents;
+  /* Subtle glass layer - lets album canvas show through naturally */
+  .timeline-backdrop {
+    content: "";
+    position: absolute;
+    inset: 0;
+    /* Lighter, more transparent background (Crate philosophy) */
+    background: rgba(8, 10, 15, 0.50);
+    backdrop-filter: blur(16px) saturate(130%);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    border-radius: 16px;
+    pointer-events: none;
+    z-index: 0;
+    /* GPU optimization */
     transform: translateZ(0);
+    will-change: transform;
   }
 
-  /* Blur overlay optimization */
-  .album-grid-blur {
-    /* Force GPU layer for blur */
-    transform: translate3d(0, 0, 0);
-    will-change: backdrop-filter;
-    /* Use content containment - less restrictive, prevents clipping */
-    contain: content;
-    /* Ensure it stays behind foreground */
-    isolation: isolate;
+  /* Minimal edge treatment - subtle border only */
+  .timeline-backdrop-edge {
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    /* Very subtle border - barely visible */
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    /* Minimal shadow for depth */
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+    z-index: 1;
   }
 
-  /* Fallback for browsers without backdrop-filter */
-  @supports not (backdrop-filter: blur(20px)) {
-    .album-grid-blur {
-      background: hsl(var(--background) / 0.95) !important;
+  /* Progressive fallback for browsers without backdrop-filter */
+  @supports not (backdrop-filter: blur(16px)) {
+    .timeline-backdrop {
+      background: rgba(8, 10, 15, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
     }
   }
 
-  /* Safari-specific optimizations */
-  @supports (-webkit-backdrop-filter: blur(20px)) {
+  /* Ensure content is positioned above glass layers */
+  .timeline-container > * {
+    position: relative;
+    z-index: 10;
+  }
+
+  /* CRITICAL: Disable expensive effects during scroll for smooth performance */
+  .scrolling .timeline-backdrop {
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+  }
+
+  .scrolling .timeline-backdrop-edge {
+    opacity: 0.7;
+  }
+
+  /* ========================================
+     LAYERED BACKGROUND ATMOSPHERE SYSTEM
+     Phase 3: Multi-layer depth creation
+     ======================================== */
+
+  .timeline-wrapper {
+    position: relative;
+    min-height: 100vh;
+  }
+
+  .bg-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /* Layer 1: Heavily blurred album collage (deepest) */
+  .bg-image {
+    background-size: cover;
+    background-position: center;
+    filter: blur(80px) brightness(0.4);
+    opacity: 0.12;
+    z-index: -4;
+  }
+
+  /* Layer 2: Dark gradient overlay */
+  .bg-gradient {
+    background: linear-gradient(
+      180deg,
+      rgba(8, 10, 18, 0.98) 0%,
+      rgba(12, 15, 25, 0.92) 30%,
+      rgba(12, 15, 25, 0.88) 60%,
+      rgba(8, 10, 18, 0.94) 100%
+    );
+    z-index: -3;
+  }
+
+  /* Layer 3: Reactive ambient glow (from current track) */
+  .bg-ambient {
+    background: radial-gradient(
+      circle at 50% 15%,
+      var(--ambient-color, rgba(80, 90, 120, 0.15)) 0%,
+      transparent 50%
+    );
+    opacity: 0;
+    transition:
+      opacity 10s ease,
+      background 12s ease;
+    z-index: -2;
+  }
+
+  .bg-ambient.active {
+    opacity: 1;
+  }
+
+  /* Layer 4: Subtle grain texture */
+  .bg-noise {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23noise)"/></svg>');
+    background-repeat: repeat;
+    background-size: 200px 200px;
+    opacity: 0.03;
+    mix-blend-mode: overlay;
+    z-index: -1;
+  }
+
+  /* Content layer with proper z-index */
+  .timeline-content {
+    position: relative;
+    z-index: 1;
+    padding: 40px 20px;
+  }
+
+  /* ========================================
+     ALBUM CANVAS BACKGROUND OPTIMIZATION
+     Integrated with glassmorphism system
+     ======================================== */
+
+  /* Static album grid container */
+  .album-grid-background {
+    /* GPU acceleration */
+    transform: translateZ(0);
+    /* Smooth entrance animation */
+    animation: slideInFromTop 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    /* Ensure proper z-index layering */
+    z-index: -10;
+    /* Prevent interference with Timeline glass effects */
+    isolation: isolate;
+  }
+
+  /* Canvas rendering optimization */
+  .album-grid-background canvas {
+    /* Optimize for photos, not pixel art */
+    image-rendering: auto;
+    /* Smooth rendering for album art */
+    image-rendering: -webkit-optimize-contrast;
+  }
+
+  /* Blur overlay - subtle to let album art show through (Crate philosophy)
+     Works with Timeline backdrop-filter for layered depth */
+  .album-grid-blur {
+    /* Light blur to maintain album visibility */
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    /* Ensure proper layering */
+    isolation: isolate;
+  }
+
+  /* Mobile optimization: Disable expensive blur for battery life */
+  @media (max-width: 768px) {
     .album-grid-blur {
-      /* Force compositing layer in Safari */
-      -webkit-transform: translate3d(0, 0, 0);
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      /* Use lighter solid overlay to keep albums visible */
+      background: rgba(0, 0, 0, 0.6) !important;
+    }
+  }
+
+  /* Gradient scrim optimization for WCAG text contrast */
+  .album-grid-background .bg-gradient-to-b {
+    /* Ensure smooth blending with glass effects */
+    mix-blend-mode: multiply;
+  }
+
+  /* Fallback for browsers without backdrop-filter */
+  @supports not (backdrop-filter: blur(16px)) {
+    .album-grid-blur {
+      background: hsl(var(--background) / 0.92) !important;
+      backdrop-filter: none;
+    }
+  }
+
+  /* PERFORMANCE: Reduce effects during scroll */
+  .scrolling .timeline-backdrop {
+    backdrop-filter: blur(4px) saturate(110%);
+    -webkit-backdrop-filter: blur(4px) saturate(110%);
+  }
+
+  .scrolling .timeline-backdrop-edge {
+    box-shadow: none;
+  }
+
+  .scrolling .play-card.has-art {
+    box-shadow: none;
+  }
+
+  /* Progressive enhancement: Only enable blur on capable devices */
+  @media (prefers-reduced-motion: reduce) {
+    .album-grid-blur,
+    .timeline-backdrop {
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+    
+    .album-grid-blur {
+      background: rgba(0, 0, 0, 0.75) !important;
+    }
+    
+    .timeline-backdrop {
+      background: rgba(15, 18, 28, 0.90) !important;
     }
   }
 }
