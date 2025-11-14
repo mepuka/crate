@@ -108,8 +108,8 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
           </div>
         ),
         onSome: (play) => {
-          const releaseYear = play.airdate
-            ? new Date(play.airdate).getFullYear()
+          const releaseYear = play.release_date
+            ? new Date(play.release_date).getFullYear()
             : null;
 
           return (

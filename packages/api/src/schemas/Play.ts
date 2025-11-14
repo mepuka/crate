@@ -16,6 +16,7 @@ export class PlayResult extends Schema.Class<PlayResult>("PlayResult")({
   // Metadata
   album: Schema.NullOr(Schema.String),
   airdate: Schema.DateFromString, // Always present - automatically transforms ISO 8601 strings to Date objects
+  release_date: Schema.NullOr(Schema.DateFromString), // Album/track release date (optional)
   labels: Schema.Array(Schema.String),
   rotation_status: Schema.NullOr(Schema.String),
   is_local: Schema.Boolean,

@@ -56,8 +56,8 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
     const imageSize = size === 'compact' ? 80 : size === 'expanded' ? 160 : 120
     const [_, setSelectedId] = useAtom(selectedPlayIdAtom)
 
-    // Parse release year from airdate
-    const releaseYear = play.airdate ? new Date(play.airdate).getFullYear() : null
+    // Parse release year from release_date
+    const releaseYear = play.release_date ? new Date(play.release_date).getFullYear() : null
 
     // Determine if card has album art or is a placeholder
     const hasArt = !!(play.thumbnail_uri || play.image_uri)
