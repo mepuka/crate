@@ -5,6 +5,7 @@ import {
   latestItemAtom,
   playIdsAtom,
   newestPlayAtom,
+  playIdToBoundaryMapAtom,
 } from '@/atoms/timeline'
 import { isPanelOpenAtom } from '@/atoms/play-details'
 import { DevAtomDisplay } from './DevAtomDisplay'
@@ -12,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { TimelineSkeleton } from './TimelineSkeleton'
 import { TimelineEmptyState } from './TimelineEmptyState'
 import { TimelineErrorState } from './TimelineErrorState'
-import { TimelinePlayCardWrapper } from './TimelinePlayCardWrapper'
+import { TimelineItemWithMarker } from './TimelineItemWithMarker'
 import { FPSIndicator } from './FPSIndicator'
 import { cn } from '@/lib/utils'
 
@@ -23,18 +24,19 @@ export function Timeline() {
   // Get reactive play IDs - automatically updates when KVS changes
   const playIds = useAtomValue(playIdsAtom);
   const newestPlay = useAtomValue(newestPlayAtom);
-  
+  const boundaryMap = useAtomValue(playIdToBoundaryMapAtom);
+
   // Check if play details panel is open
   const isPanelOpen = useAtomValue(isPanelOpenAtom);
 
   // Performance optimization: Reduce expensive effects during scroll
   useEffect(() => {
     let scrollTimeout: ReturnType<typeof setTimeout>
-    
+
     const handleScroll = () => {
       // Add scrolling class immediately
       document.body.classList.add('scrolling')
-      
+
       // Remove class after scroll stops (debounced)
       clearTimeout(scrollTimeout)
       scrollTimeout = setTimeout(() => {
@@ -43,7 +45,7 @@ export function Timeline() {
     }
 
     window.addEventListener('scroll', handleScroll, { passive: true })
-    
+
     return () => {
       window.removeEventListener('scroll', handleScroll)
       clearTimeout(scrollTimeout)
@@ -135,9 +137,21 @@ export function Timeline() {
                     />
                   ) : (
                     <div className="space-y-1">
-                      {success.value.map((id) => (
-                        <TimelinePlayCardWrapper key={id} playId={id} />
-                      ))}
+                      {success.value.map((id) => {
+                        const boundary = Result.matchWithWaiting(boundaryMap, {
+                          onWaiting: () => undefined,
+                          onError: () => undefined,
+                          onDefect: () => undefined,
+                          onSuccess: (s) => s.value.get(id)
+                        });
+                        return (
+                          <TimelineItemWithMarker
+                            key={id}
+                            playId={id}
+                            showBoundary={boundary}
+                          />
+                        );
+                      })}
                     </div>
                   )}
                 </>

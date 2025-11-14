@@ -11,6 +11,8 @@ import {
   getNewestNPlays,
   extractPlayIds,
 } from "@/lib/timeline-utils";
+import { createShowBoundariesAtom } from "@/atoms/kexp-atoms";
+import type { Play } from "@/domain/Play";
 
 // Atom that launches the background fetching service
 export const latestItemAtom = Atom.runtime((_get) =>
@@ -204,4 +206,62 @@ export const viewportHeightAtom: Atom.Atom<number> = Atom.make((get) => {
 
   // Return the current viewport height
   return window.innerHeight;
+});
+
+/**
+ * Atom for plays as a readonly array (for show boundary computation).
+ * Converts the Chunk<PlayResult> to readonly Play[] for use with createShowBoundariesAtom.
+ */
+const playsArrayAtom = Atom.make((get) => {
+  const chunk = get(playsChunkAtom);
+  return Result.map(chunk, (chunkValue) => {
+    return Chunk.toReadonlyArray(chunkValue) as readonly Play[];
+  });
+});
+
+/**
+ * Reactive atom for show boundaries in the timeline.
+ * Automatically updates when plays chunk or shows data changes.
+ * Returns Result-wrapped show boundaries.
+ */
+export const showBoundariesAtom = Atom.make((get) => {
+  const playsResult = get(playsArrayAtom);
+
+  return Result.map(playsResult, (plays) => {
+    // Create a temporary atom for this plays array and compute boundaries
+    const boundariesAtom = createShowBoundariesAtom(Atom.make(() => plays));
+    return get(boundariesAtom);
+  });
+});
+
+/**
+ * Map of play ID -> show boundary
+ * This allows efficient lookup of which plays should have a show marker before them
+ */
+export const playIdToBoundaryMapAtom = Atom.make((get) => {
+  const playsResult = get(playsArrayAtom);
+  const boundariesResult = get(showBoundariesAtom);
+
+  return Result.map(playsResult, (plays) => {
+    return Result.matchWithWaiting(boundariesResult, {
+      onWaiting: () => new Map(),
+      onError: () => new Map(),
+      onDefect: () => new Map(),
+      onSuccess: (s) => {
+        const map = new Map();
+        // Each boundary corresponds to the first play of a show
+        // Find the play ID for each boundary by matching timestamp and showId
+        s.value.forEach(boundary => {
+          const play = plays.find(p =>
+            p.show === boundary.showId &&
+            p.airdate?.toString() === boundary.timestamp.toString()
+          );
+          if (play && play.id) {
+            map.set(play.id, boundary);
+          }
+        });
+        return map;
+      }
+    });
+  });
 });

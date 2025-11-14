@@ -170,6 +170,9 @@ importers:
       '@crate/api':
         specifier: workspace:*
         version: link:../api
+      '@crate/domain':
+        specifier: workspace:^
+        version: link:../domain/dist
       '@effect-atom/atom':
         specifier: ^0.4.0
         version: 0.4.2(@effect/experimental@0.57.0(@effect/platform@0.93.0(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.93.0(effect@3.19.3))(@effect/rpc@0.72.1(@effect/platform@0.93.0(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)
