@@ -403,6 +403,14 @@ class Airbreak(BasePlay):
         description="Usually empty for airbreaks"
     )
 
+    @field_validator("comment", mode="before")
+    @classmethod
+    def validate_comment(cls, v: Any) -> str:
+        """Convert None to empty string for comment."""
+        if v is None:
+            return ""
+        return v
+
 
 class TrackPlay(BasePlay):
     """
@@ -495,6 +503,14 @@ class TrackPlay(BasePlay):
     @classmethod
     def validate_release_date(cls, v: Any) -> str:
         """Convert None to empty string for release_date."""
+        if v is None:
+            return ""
+        return v
+
+    @field_validator("album", mode="before")
+    @classmethod
+    def validate_album(cls, v: Any) -> str:
+        """Convert None to empty string for album."""
         if v is None:
             return ""
         return v
