@@ -15,6 +15,7 @@ import { TimelineEmptyState } from './TimelineEmptyState'
 import { TimelineErrorState } from './TimelineErrorState'
 import { TimelineItemWithMarker } from './TimelineItemWithMarker'
 import { FPSIndicator } from './FPSIndicator'
+import { TimelineScrollButtons } from './TimelineScrollButtons'
 import { cn } from '@/lib/utils'
 
 export function Timeline() {
@@ -59,6 +60,7 @@ export function Timeline() {
     )}>
       <DevAtomDisplay />
       <FPSIndicator />
+      <TimelineScrollButtons />
       <div className="px-4 sm:px-6 lg:px-8 pt-20 pb-12 max-w-4xl mx-auto">
         <div className="timeline-container bg-background rounded-lg shadow-xl p-6 border border-white/10">
           {/* Glassy backdrop layer - extends to blur nearby album art */}
