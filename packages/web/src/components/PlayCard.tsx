@@ -57,6 +57,9 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
     const imageSize = size === 'compact' ? 80 : size === 'expanded' ? 160 : 120
     const [_, setSelectedId] = useAtom(selectedPlayIdAtom)
 
+    // Check if this is a non-track play (special segment/show)
+    const isNonTrackPlay = !play.song && !play.artist && play.comment
+
     // Parse release year from release_date
     const releaseYear = play.release_date ? new Date(play.release_date).getFullYear() : null
 
@@ -92,7 +95,10 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
         )}
         data-age={ageCategory}
         role="article"
-        aria-label={`${play.song} by ${play.artist} played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`}
+        aria-label={isNonTrackPlay
+          ? `${play.comment} - Special program segment played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`
+          : `${play.song} by ${play.artist} played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`
+        }
       >
         {/* Clickable overlay for entire card */}
         <div
@@ -101,7 +107,10 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           tabIndex={0}
           role="button"
           className="absolute inset-0 z-20 cursor-pointer"
-          aria-label={`View details for ${play.song} by ${play.artist}`}
+          aria-label={isNonTrackPlay
+            ? `View details for ${play.comment}`
+            : `View details for ${play.song} by ${play.artist}`
+          }
         />
 
         <div className="relative z-10 flex gap-3 py-2 pointer-events-none">
@@ -116,8 +125,8 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           <div className="flex-1 min-w-0 flex flex-col gap-1 py-0">
             {/* Title & Time */}
             <div className="flex items-baseline justify-between gap-4">
-              <h3 className="track-title text-foreground truncate" title={play.song}>
-                {play.song || 'Untitled'}
+              <h3 className="track-title text-foreground truncate" title={isNonTrackPlay ? play.comment! : play.song}>
+                {isNonTrackPlay ? play.comment : (play.song || 'Untitled')}
               </h3>
               {play.airdate && (
                 <time
@@ -129,13 +138,20 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
               )}
             </div>
 
-            {/* Artist */}
-            <p className="artist-name text-foreground truncate" title={play.artist}>
-              {play.artist || 'Unknown Artist'}
-            </p>
+            {/* Artist or special content indicator */}
+            {!isNonTrackPlay && (
+              <p className="artist-name text-foreground truncate" title={play.artist}>
+                {play.artist || 'Unknown Artist'}
+              </p>
+            )}
+            {isNonTrackPlay && (
+              <p className="artist-name text-muted-foreground/80 text-xs italic">
+                Special Program Segment
+              </p>
+            )}
 
             {/* Album & Year */}
-            {play.album && (
+            {!isNonTrackPlay && play.album && (
               <p className="text-xs text-muted-foreground/80 leading-tight truncate" title={play.album}>
                 {play.album}
                 {releaseYear && ` • ${releaseYear}`}
@@ -143,7 +159,7 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
             )}
 
             {/* Badges */}
-            {size !== 'compact' && (
+            {!isNonTrackPlay && size !== 'compact' && (
               <div className="flex flex-wrap items-center gap-1.5 mt-1">
                 {play.rotation_status && (
                   <span className="text-xs text-muted-foreground">{play.rotation_status}</span>

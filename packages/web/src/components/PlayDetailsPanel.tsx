@@ -114,6 +114,8 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
             ? new Date(play.release_date).getFullYear()
             : null;
 
+          const isNonTrackPlay = !play.song && !play.artist && play.comment;
+
           return (
             <div className="space-y-6">
               {/* Album Art and Info Side by Side */}
@@ -121,7 +123,7 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                 {/* Album Art - Left */}
                 <AlbumArt
                   src={play.image_uri || play.thumbnail_uri}
-                  alt={`${play.album} by ${play.artist}`}
+                  alt={isNonTrackPlay ? "Special program segment" : `${play.album} by ${play.artist}`}
                   size={400}
                   className="shrink-0 w-full sm:w-auto rounded-lg"
                 />
@@ -130,17 +132,30 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                 <div className="flex-1 space-y-4">
                   {/* Title and Artist Info */}
                   <div className="space-y-2">
-                    <h1 className="text-3xl sm:text-4xl font-bold">
-                      {play.song || "Untitled"}
-                    </h1>
-                    <h2 className="text-xl sm:text-2xl text-muted-foreground">
-                      {play.artist || "Unknown Artist"}
-                    </h2>
-                    {play.album && (
-                      <p className="text-base text-muted-foreground/80">
-                        {play.album}
-                        {releaseYear && ` • ${releaseYear}`}
-                      </p>
+                    {isNonTrackPlay ? (
+                      <>
+                        <div className="text-xs text-muted-foreground/60 uppercase tracking-wider mb-1">
+                          Special Program Segment
+                        </div>
+                        <h1 className="text-2xl sm:text-3xl font-bold leading-tight">
+                          {play.comment}
+                        </h1>
+                      </>
+                    ) : (
+                      <>
+                        <h1 className="text-3xl sm:text-4xl font-bold">
+                          {play.song || "Untitled"}
+                        </h1>
+                        <h2 className="text-xl sm:text-2xl text-muted-foreground">
+                          {play.artist || "Unknown Artist"}
+                        </h2>
+                        {play.album && (
+                          <p className="text-base text-muted-foreground/80">
+                            {play.album}
+                            {releaseYear && ` • ${releaseYear}`}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -166,35 +181,35 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                   <dt className="text-muted-foreground">Play ID</dt>
                   <dd className="font-mono">{play.id}</dd>
 
-                  {play.rotation_status && (
+                  {!isNonTrackPlay && play.rotation_status && (
                     <>
                       <dt className="text-muted-foreground">Rotation</dt>
                       <dd>{play.rotation_status}</dd>
                     </>
                   )}
 
-                  {play.labels && play.labels.length > 0 && (
+                  {!isNonTrackPlay && play.labels && play.labels.length > 0 && (
                     <>
                       <dt className="text-muted-foreground">Labels</dt>
                       <dd>{play.labels.join(", ")}</dd>
                     </>
                   )}
 
-                  {play.is_local && (
+                  {!isNonTrackPlay && play.is_local && (
                     <>
                       <dt className="text-muted-foreground">Origin</dt>
                       <dd>Local</dd>
                     </>
                   )}
 
-                  {play.is_request && (
+                  {!isNonTrackPlay && play.is_request && (
                     <>
                       <dt className="text-muted-foreground">Type</dt>
                       <dd>Listener Request</dd>
                     </>
                   )}
 
-                  {play.is_live && (
+                  {!isNonTrackPlay && play.is_live && (
                     <>
                       <dt className="text-muted-foreground">Performance</dt>
                       <dd>Live</dd>
@@ -202,7 +217,7 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                   )}
                 </dl>
 
-                {play.comment && (
+                {!isNonTrackPlay && play.comment && (
                   <div className="mt-4 pt-4 border-t border-border">
                     <h4 className="text-sm font-medium text-muted-foreground mb-2">
                       Comment
