@@ -130,7 +130,9 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
     yield* Effect.log(
       "Initializing TimelineKVS: Reconstructing chunk from all plays"
     );
-    yield* reconstructChunkFromAllPlays();
+    const initialChunk = yield* reconstructChunkFromAllPlays();
+    const playCount = Chunk.size(initialChunk);
+    yield* Effect.log(`TimelineKVS initialized with ${playCount} plays from cache`);
 
     // Store a play by ID and maintain HashSet for fast lookups
     // The chunk is always reconstructed from the HashSet, so we only update the HashSet here
@@ -262,12 +264,13 @@ export const FetchLatestLive = Effect.gen(function* () {
   const client = yield* TimelineClient;
   const timelineKVS = yield* TimelineKVS;
 
-  // Fetch latest 50 plays on every request to ensure we don't miss any due to ordering changes
+  // Fetch latest 200 plays on every request to ensure we don't miss any due to ordering changes
   // This guarantees we're in sync even if the order of recent plays changes
-  yield* Effect.log("Fetching latest 50 plays to ensure sync");
+  // Larger limit helps recover from cache clears due to schema version bumps
+  yield* Effect.log("Fetching latest 200 plays to ensure sync");
 
   const latestTimeline = yield* client.timeline.getTimeline({
-    urlParams: { limit: 50 },
+    urlParams: { limit: 200 },
   });
 
   if (latestTimeline.results.length > 0) {

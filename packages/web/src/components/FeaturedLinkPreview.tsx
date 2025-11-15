@@ -20,7 +20,7 @@ import { useAtomValue } from "@effect-atom/atom-react"
 import { Option } from "effect"
 import { featuredLinkAtom } from "@/atoms/link-atoms"
 import { ExtractedLink } from "@/lib/links/models"
-import { ExternalLink, Music, Newspaper, Globe } from "lucide-react"
+import { Music, Newspaper, Globe } from "lucide-react"
 
 export function FeaturedLinkPreview({ playId }: { playId: number }) {
   const featuredLink = useAtomValue(featuredLinkAtom(playId))
@@ -66,28 +66,26 @@ interface YoutubeThumbnailProps {
 
 function YoutubeThumbnail({ thumbnail }: YoutubeThumbnailProps) {
   return (
-    <div className="youtube-preview group inline-flex items-center gap-2 px-2 py-1.5 rounded-lg bg-accent/5 border border-accent/20 transition-all duration-300 motion-safe:hover:shadow-md motion-safe:hover:shadow-accent/15 hover:border-accent/30">
-      {/* Compact thumbnail */}
-      <div className="relative w-12 h-9 rounded overflow-hidden shrink-0">
+    <div className="youtube-preview group inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/[0.03] border border-accent/10 transition-all duration-200 motion-safe:hover:bg-accent/[0.06] motion-safe:hover:border-accent/20">
+      {/* Very compact high-res thumbnail */}
+      <div className="relative w-8 h-6 rounded overflow-hidden shrink-0">
         <img
           src={thumbnail}
           alt="Music video preview"
-          className="w-full h-full object-cover motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover:scale-105"
+          className="w-full h-full object-cover"
         />
-        {/* Subtle play icon overlay */}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-          <svg className="w-4 h-4 text-white drop-shadow" viewBox="0 0 24 24" fill="currentColor">
+        {/* Very subtle play indicator */}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/15">
+          <svg className="w-2.5 h-2.5 text-white drop-shadow-sm" viewBox="0 0 24 24" fill="currentColor">
             <path d="M8 5v14l11-7z"/>
           </svg>
         </div>
       </div>
 
       {/* Minimal text */}
-      <span className="text-xs font-medium text-accent/80 group-hover:text-accent motion-safe:transition-colors">
+      <span className="text-[10px] font-medium text-muted-foreground/60 group-hover:text-accent/80 motion-safe:transition-colors uppercase tracking-wide">
         Video
       </span>
-
-      <ExternalLink className="w-3 h-3 text-accent/50 group-hover:text-accent motion-safe:transition-all motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
     </div>
   )
 }
@@ -102,12 +100,11 @@ interface SoundCloudPreviewProps {
 
 function SoundCloudPreview(_props: SoundCloudPreviewProps) {
   return (
-    <div className="soundcloud-preview group inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/5 border border-accent/20 transition-all duration-300 motion-safe:hover:shadow-md motion-safe:hover:shadow-accent/15 hover:border-accent/30">
-      <Music className="w-4 h-4 text-accent/90 group-hover:text-accent motion-safe:transition-colors" />
-      <span className="text-xs font-medium text-accent/80 group-hover:text-accent motion-safe:transition-colors">
-        SoundCloud
+    <div className="soundcloud-preview group inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/[0.03] border border-accent/10 transition-all duration-200 motion-safe:hover:bg-accent/[0.06] motion-safe:hover:border-accent/20">
+      <Music className="w-3 h-3 text-muted-foreground/50 group-hover:text-accent/80 motion-safe:transition-colors" />
+      <span className="text-[10px] font-medium text-muted-foreground/60 group-hover:text-accent/80 motion-safe:transition-colors uppercase tracking-wide">
+        Audio
       </span>
-      <ExternalLink className="w-3 h-3 text-accent/50 group-hover:text-accent motion-safe:transition-all motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
     </div>
   )
 }
@@ -122,12 +119,11 @@ interface KexpBadgeProps {
 
 function KexpBadge({ isBlog }: KexpBadgeProps) {
   return (
-    <div className="kexp-preview group inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/5 border border-accent/20 transition-all duration-300 motion-safe:hover:shadow-md motion-safe:hover:shadow-accent/15 hover:border-accent/30">
-      <Newspaper className="w-4 h-4 text-accent/90 group-hover:text-accent motion-safe:transition-colors" />
-      <span className="text-xs font-medium text-accent/80 group-hover:text-accent motion-safe:transition-colors">
-        {isBlog ? "Blog" : "KEXP"}
+    <div className="kexp-preview group inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/[0.03] border border-accent/10 transition-all duration-200 motion-safe:hover:bg-accent/[0.06] motion-safe:hover:border-accent/20">
+      <Newspaper className="w-3 h-3 text-muted-foreground/50 group-hover:text-accent/80 motion-safe:transition-colors" />
+      <span className="text-[10px] font-medium text-muted-foreground/60 group-hover:text-accent/80 motion-safe:transition-colors uppercase tracking-wide">
+        {isBlog ? "Blog" : "Link"}
       </span>
-      <ExternalLink className="w-3 h-3 text-accent/50 group-hover:text-accent motion-safe:transition-all motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
     </div>
   )
 }
@@ -140,34 +136,14 @@ interface GenericLinkBadgeProps {
   category: "Social" | "News" | "Website" | "Other"
 }
 
-function GenericLinkBadge({ domain, category }: GenericLinkBadgeProps) {
-  const icon = getCategoryIcon(category)
-
+function GenericLinkBadge({ domain }: GenericLinkBadgeProps) {
   return (
-    <div className="generic-preview group inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/5 border border-accent/20 transition-all duration-300 motion-safe:hover:shadow-md motion-safe:hover:shadow-accent/15 hover:border-accent/30">
-      {icon}
-      <span className="text-xs font-medium truncate max-w-[120px] text-accent/80 group-hover:text-accent motion-safe:transition-colors">
+    <div className="generic-preview group inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/[0.03] border border-accent/10 transition-all duration-200 motion-safe:hover:bg-accent/[0.06] motion-safe:hover:border-accent/20">
+      <Globe className="w-3 h-3 text-muted-foreground/50 group-hover:text-accent/80 motion-safe:transition-colors" />
+      <span className="text-[10px] font-medium truncate max-w-[80px] text-muted-foreground/60 group-hover:text-accent/80 motion-safe:transition-colors">
         {domain}
       </span>
-      <ExternalLink className="w-3 h-3 text-accent/50 group-hover:text-accent motion-safe:transition-all motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
     </div>
   )
 }
 
-/**
- * Get category icon - consistent styling
- */
-function getCategoryIcon(category: "Social" | "News" | "Website" | "Other") {
-  const iconClass = "w-4 h-4 text-accent/90 group-hover:text-accent motion-safe:transition-colors"
-
-  switch (category) {
-    case "Social":
-      return <ExternalLink className={iconClass} />
-    case "News":
-      return <Newspaper className={iconClass} />
-    case "Website":
-      return <Globe className={iconClass} />
-    default:
-      return <ExternalLink className={iconClass} />
-  }
-}

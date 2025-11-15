@@ -32,8 +32,8 @@ export function LinksByCategory({ playId }: { playId: number }) {
   if (HashMap.isEmpty(byCategory)) return null
 
   return (
-    <div className="links-section space-y-6">
-      <h3 className="text-2xl font-bold mb-6" style={{ fontFamily: 'var(--font-family-display)', letterSpacing: '-0.02em' }}>
+    <div className="links-section space-y-5">
+      <h3 className="text-lg font-semibold mb-4 text-muted-foreground/80" style={{ fontFamily: 'var(--font-family-display)', letterSpacing: '-0.01em' }}>
         Links
       </h3>
       {Array.from(HashMap.toEntries(byCategory)).map(([category, links]) => (

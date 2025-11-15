@@ -20,24 +20,6 @@ import { cn } from "@/lib/utils";
 import { CommentWithLinks } from "./CommentWithLinks";
 import { LinksByCategory } from "./LinksByCategory";
 
-// Era calculation for release year - Temporal Design System
-function getEraCategory(releaseYear: number | null): {
-  category: 'modern' | 'contemporary' | 'recent' | 'classic' | 'vintage' | 'golden' | null
-  label: string
-} {
-  if (!releaseYear) return { category: null, label: '' }
-
-  const currentYear = new Date().getFullYear()
-  const age = currentYear - releaseYear
-
-  if (age <= 5) return { category: 'modern', label: '2020s' }
-  if (age <= 15) return { category: 'contemporary', label: '2010s' }
-  if (age <= 25) return { category: 'recent', label: '2000s' }
-  if (age <= 35) return { category: 'classic', label: '1990s' }
-  if (age <= 45) return { category: 'vintage', label: '1980s' }
-  return { category: 'golden', label: `${Math.floor(releaseYear / 10) * 10}s` }
-}
-
 export function PlayDetailsPanel() {
   const [selectedId, setSelectedId] = useAtom(selectedPlayIdAtom);
 
@@ -134,9 +116,6 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
 
           const isNonTrackPlay = !play.song && !play.artist && play.comment;
 
-          // Calculate era for temporal design
-          const era = getEraCategory(releaseYear);
-
           return (
             <div className="space-y-8">
               {/* Album Art and Info Side by Side */}
@@ -201,23 +180,16 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                           {play.artist || "Unknown Artist"}
                         </h2>
                         {play.album && (
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <p
-                              className="text-base sm:text-lg"
-                              style={{
-                                fontFamily: 'var(--font-family-body)',
-                                fontWeight: 'var(--weight-artist)',
-                                color: 'hsl(var(--foreground) / 0.55)'
-                              }}
-                            >
-                              {play.album}
-                            </p>
-                            {releaseYear && era.category && (
-                              <span className={cn("era-badge text-sm px-3 py-1.5", `era-${era.category}`)}>
-                                {releaseYear} • {era.label}
-                              </span>
-                            )}
-                          </div>
+                          <p
+                            className="text-base sm:text-lg"
+                            style={{
+                              fontFamily: 'var(--font-family-body)',
+                              fontWeight: 'var(--weight-artist)',
+                              color: 'hsl(var(--foreground) / 0.55)'
+                            }}
+                          >
+                            {play.album}
+                          </p>
                         )}
                       </>
                     )}
@@ -263,6 +235,21 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                     Play ID
                   </dt>
                   <dd className="font-mono text-accent font-medium">{play.id}</dd>
+
+                  {!isNonTrackPlay && releaseYear && (
+                    <>
+                      <dt
+                        className="uppercase tracking-wider font-medium"
+                        style={{
+                          fontSize: 'var(--font-time)',
+                          color: 'hsl(var(--foreground) / 0.5)'
+                        }}
+                      >
+                        Released
+                      </dt>
+                      <dd className="font-mono font-medium">{releaseYear}</dd>
+                    </>
+                  )}
 
                   {!isNonTrackPlay && play.rotation_status && (
                     <>
@@ -349,23 +336,24 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                 {!isNonTrackPlay && play.comment && (
                   <div className="mt-6 pt-6 border-t border-border/50">
                     <h4
-                      className="font-semibold mb-3"
+                      className="font-semibold mb-4 text-lg"
                       style={{
                         fontFamily: 'var(--font-family-display)',
-                        fontSize: 'var(--font-artist)',
                         letterSpacing: '-0.01em',
-                        color: 'hsl(var(--foreground) / 0.7)'
+                        color: 'hsl(var(--foreground) / 0.8)'
                       }}
                     >
                       DJ Comment
                     </h4>
-                    <CommentWithLinks playId={play.id} comment={play.comment} variant="details" />
+                    <div className="text-base leading-relaxed">
+                      <CommentWithLinks playId={play.id} comment={play.comment} variant="details" />
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Links Section */}
-              <div className="space-y-5 border-t border-border/50 pt-6">
+              {/* Links Section - More subtle */}
+              <div className="space-y-4 border-t border-border/30 pt-6 opacity-90">
                 <LinksByCategory playId={play.id} />
               </div>
 
