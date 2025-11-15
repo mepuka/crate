@@ -8,7 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/codebase-scanner.sh"
 
 # Check for error eating patterns
-COLLAPSED_ERRORS=$(grep -r "catchAll.*new.*Error" --include="*.ts" --include="*.tsx" . 2>/dev/null | wc -l)
+COLLAPSED_ERRORS=$(grep -r "catchAll.*new.*Error" --include="*.ts" --include="*.tsx" \
+  --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist --exclude-dir=.worktrees \
+  . 2>/dev/null | wc -l)
 
 if [[ $COLLAPSED_ERRORS -gt 0 ]]; then
   cat <<EOF
@@ -34,7 +36,9 @@ EOF
 fi
 
 # Check for untyped promises
-UNTYPED_PROMISES=$(grep -r "Effect\.promise\s*(" --include="*.ts" --include="*.tsx" . 2>/dev/null | wc -l)
+UNTYPED_PROMISES=$(grep -r "Effect\.promise\s*(" --include="*.ts" --include="*.tsx" \
+  --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist --exclude-dir=.worktrees \
+  . 2>/dev/null | wc -l)
 
 if [[ $UNTYPED_PROMISES -gt 0 ]]; then
   cat <<EOF

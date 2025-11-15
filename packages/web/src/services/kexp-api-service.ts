@@ -65,15 +65,13 @@ export const KexpApiServiceLive = Layer.effect(
           )
         ),
         Effect.retry(retryPolicy),
-        Effect.catchAll((error) =>
-          Effect.fail(
-            error instanceof ParseError
-              ? error
-              : new NetworkError({
-                  url: `${BASE_URL}/programs/?format=json`,
-                  cause: error,
-                })
-          )
+        Effect.mapError((error) =>
+          error instanceof ParseError
+            ? error
+            : new NetworkError({
+                url: `${BASE_URL}/programs/?format=json`,
+                cause: error,
+              })
         )
       );
 
@@ -97,15 +95,13 @@ export const KexpApiServiceLive = Layer.effect(
           )
         ),
         Effect.retry(retryPolicy),
-        Effect.catchAll((error) =>
-          Effect.fail(
-            error instanceof ParseError
-              ? error
-              : new NetworkError({
-                  url: `${BASE_URL}/shows/?format=json&limit=${limit}`,
-                  cause: error,
-                })
-          )
+        Effect.mapError((error) =>
+          error instanceof ParseError
+            ? error
+            : new NetworkError({
+                url: `${BASE_URL}/shows/?format=json&limit=${limit}`,
+                cause: error,
+              })
         )
       );
 
