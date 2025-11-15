@@ -23,6 +23,15 @@ else
   exit 1
 fi
 
+# Test 2b: Detect "unbounded" string literal (CRITICAL)
+TEST_CODE='Effect.all(items.map(x => process(x)), { concurrency: "unbounded" })'
+if detect_unbounded_concurrency "$TEST_CODE"; then
+  echo "✓ Test 2b: Unbounded string literal detected"
+else
+  echo "✗ Test 2b: FAILED to detect unbounded string literal"
+  exit 1
+fi
+
 # Test 3: Detect Effect.fork (should use forkScoped)
 TEST_CODE='const fiber = yield* Effect.fork(task)'
 if detect_fork_usage "$TEST_CODE"; then
@@ -32,12 +41,21 @@ else
   exit 1
 fi
 
-# Test 4: Detect error eating
+# Test 4: Detect error eating (BAD - direct instantiation)
 TEST_CODE='Effect.catchAll(e => new MyError(e))'
 if detect_error_eating "$TEST_CODE"; then
   echo "✓ Test 4: Error eating detected"
 else
   echo "✗ Test 4: FAILED to detect error eating"
+  exit 1
+fi
+
+# Test 4b: Allow valid error transformation with Effect.fail (IMPORTANT)
+TEST_CODE='Effect.catchAll(e => Effect.fail(new MyError(e)))'
+if ! detect_error_eating "$TEST_CODE"; then
+  echo "✓ Test 4b: Valid error transformation allowed"
+else
+  echo "✗ Test 4b: FAILED - false positive on valid error transformation"
   exit 1
 fi
 

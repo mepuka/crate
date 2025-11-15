@@ -16,9 +16,14 @@ detect_unbounded_concurrency() {
     return 1  # Not detected (override active)
   fi
 
-  # Pattern: Effect.all( without { concurrency:
+  # Pattern 1: Effect.all( without { concurrency:
   if echo "$code" | grep -q "Effect\.all\s*(" && \
      ! echo "$code" | grep -q "concurrency\s*:"; then
+    return 0  # Detected
+  fi
+
+  # Pattern 2: { concurrency: "unbounded" } string literal
+  if echo "$code" | grep -q 'concurrency\s*:\s*"unbounded"'; then
     return 0  # Detected
   fi
 
@@ -44,8 +49,11 @@ detect_error_eating() {
     return 1
   fi
 
-  # Pattern: catchAll.*new.*Error
-  if echo "$code" | grep -q "catchAll.*new.*Error\s*("; then
+  # Pattern: catchAll with new Error WITHOUT Effect.fail wrapper
+  # This is BAD: catchAll(e => new MyError(e))
+  # This is GOOD: catchAll(e => Effect.fail(new MyError(e)))
+  if echo "$code" | grep -q "catchAll.*new.*Error\s*(" && \
+     ! echo "$code" | grep -q "Effect\.fail"; then
     return 0
   fi
 
