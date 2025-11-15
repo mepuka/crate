@@ -32,8 +32,10 @@ export function LinksByCategory({ playId }: { playId: number }) {
   if (HashMap.isEmpty(byCategory)) return null
 
   return (
-    <div className="links-section">
-      <h3 className="text-lg font-semibold mb-3">Links</h3>
+    <div className="links-section space-y-6">
+      <h3 className="text-2xl font-bold mb-6" style={{ fontFamily: 'var(--font-family-display)', letterSpacing: '-0.02em' }}>
+        Links
+      </h3>
       {Array.from(HashMap.toEntries(byCategory)).map(([category, links]) => (
         <CategorySection
           key={category}
@@ -62,11 +64,21 @@ function CategorySection({ category, links, hoveredLinkId, onHover }: CategorySe
   const count = Chunk.size(links)
 
   return (
-    <div className="category-section mb-4">
-      <div className="category-header flex items-center gap-2 mb-2">
-        {icon}
-        <span className="font-medium">{category}</span>
-        <span className="text-muted-foreground text-sm">({count})</span>
+    <div className="category-section mb-6">
+      <div className="category-header flex items-center gap-3 mb-3 pb-2 border-b border-border/50">
+        <div className="p-1.5 rounded-lg bg-accent/10">{icon}</div>
+        <span
+          className="font-semibold text-base"
+          style={{ fontFamily: 'var(--font-family-display)', letterSpacing: '-0.01em' }}
+        >
+          {category}
+        </span>
+        <span
+          className="text-muted-foreground font-medium tabular-nums"
+          style={{ fontSize: 'var(--font-time)', letterSpacing: '0.05em' }}
+        >
+          {count}
+        </span>
       </div>
       <div className="category-links space-y-2">
         {Chunk.toReadonlyArray(links).map((link) => (
@@ -99,8 +111,13 @@ function LinkItem({ link, isHovered, onHover, onLeave }: LinkItemProps) {
       href={link.normalizedUrl}
       data-link-id={link.id}
       className={cn(
-        "link-item flex items-center gap-3 p-2 rounded hover:bg-accent transition-colors border border-transparent",
-        isHovered && "link-active bg-accent border-primary/20"
+        "link-item flex items-center gap-3 p-3 rounded-lg transition-all duration-300",
+        "border border-border/50 hover:border-accent/40",
+        "bg-gradient-to-br from-card/50 to-card/30",
+        "hover:from-accent/5 hover:to-accent/10",
+        "hover:shadow-lg hover:shadow-accent/10",
+        "group",
+        isHovered && "link-active border-accent/60 shadow-xl shadow-accent/20"
       )}
       onMouseEnter={onHover}
       onMouseLeave={onLeave}
@@ -120,55 +137,77 @@ function renderLinkContent(link: ExtractedLink) {
     case "Youtube":
       return (
         <>
-          <img
-            src={link.thumbnailUrl}
-            alt="YouTube thumbnail"
-            className="link-thumbnail w-20 h-14 object-cover rounded flex-shrink-0"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="font-medium">YouTube Video</div>
-            <div className="text-sm text-muted-foreground truncate">{link.videoId}</div>
+          <div className="relative flex-shrink-0 overflow-hidden rounded-lg">
+            <img
+              src={link.thumbnailUrl}
+              alt="YouTube thumbnail"
+              className="link-thumbnail w-24 h-16 object-cover transition-transform duration-300 group-hover:scale-110"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-red-600/30 to-transparent" />
           </div>
-          <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-red-500 group-hover:text-red-400 transition-colors" style={{ fontFamily: 'var(--font-family-body)' }}>
+              YouTube Video
+            </div>
+            <div className="text-xs text-muted-foreground/70 truncate mt-0.5" style={{ fontSize: 'var(--font-time)' }}>
+              {link.videoId}
+            </div>
+          </div>
+          <ExternalLink className="w-4 h-4 text-accent flex-shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
         </>
       )
     case "SoundCloud":
       return (
         <>
-          <div className="flex items-center justify-center w-12 h-12 rounded bg-orange-500/20 flex-shrink-0">
-            <Music className="w-6 h-6 text-orange-500" />
+          <div className="flex items-center justify-center w-14 h-14 rounded-lg bg-gradient-to-br from-orange-500/20 to-orange-600/10 border border-orange-500/20 flex-shrink-0 group-hover:shadow-lg group-hover:shadow-orange-500/20 transition-all">
+            <Music className="w-7 h-7 text-orange-500 group-hover:text-orange-400 transition-colors" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-medium">SoundCloud</div>
-            <div className="text-sm text-muted-foreground truncate">{link.domain}</div>
+            <div className="font-semibold text-orange-500 group-hover:text-orange-400 transition-colors" style={{ fontFamily: 'var(--font-family-body)' }}>
+              SoundCloud
+            </div>
+            <div className="text-xs text-muted-foreground/70 truncate mt-0.5" style={{ fontSize: 'var(--font-time)' }}>
+              {link.domain}
+            </div>
           </div>
-          <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <ExternalLink className="w-4 h-4 text-accent flex-shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
         </>
       )
     case "Kexp":
       return (
         <>
-          <div className="flex items-center justify-center w-12 h-12 rounded bg-blue-500/20 flex-shrink-0">
-            <Newspaper className="w-6 h-6 text-blue-500" />
+          <div className="flex items-center justify-center w-14 h-14 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/20 flex-shrink-0 group-hover:shadow-lg group-hover:shadow-blue-500/20 transition-all">
+            <Newspaper className="w-7 h-7 text-blue-500 group-hover:text-blue-400 transition-colors" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-medium">{link.isBlog ? "KEXP Blog" : "KEXP.org"}</div>
-            <div className="text-sm text-muted-foreground truncate">{link.path}</div>
+            <div className="font-semibold text-blue-500 group-hover:text-blue-400 transition-colors" style={{ fontFamily: 'var(--font-family-body)' }}>
+              {link.isBlog ? "KEXP Blog" : "KEXP.org"}
+            </div>
+            <div className="text-xs text-muted-foreground/70 truncate mt-0.5" style={{ fontSize: 'var(--font-time)' }}>
+              {link.path}
+            </div>
           </div>
-          <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <ExternalLink className="w-4 h-4 text-accent flex-shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
         </>
       )
     case "Generic":
       return (
         <>
-          <div className={cn("flex items-center justify-center w-12 h-12 rounded flex-shrink-0", getGenericBgColor(link.category))}>
+          <div className={cn(
+            "flex items-center justify-center w-14 h-14 rounded-lg border flex-shrink-0 transition-all group-hover:shadow-lg",
+            getGenericBgColor(link.category)
+          )}>
             {getGenericIcon(link.category)}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-medium truncate">{link.domain}</div>
-            <div className="text-sm text-muted-foreground">{link.category}</div>
+            <div className="font-semibold truncate group-hover:text-accent transition-colors" style={{ fontFamily: 'var(--font-family-body)' }}>
+              {link.domain}
+            </div>
+            <div className="text-xs text-muted-foreground/70 mt-0.5" style={{ fontSize: 'var(--font-time)' }}>
+              {link.category}
+            </div>
           </div>
-          <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <ExternalLink className="w-4 h-4 text-accent flex-shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
         </>
       )
   }
@@ -213,17 +252,17 @@ function getGenericIcon(category: "Social" | "News" | "Website" | "Other") {
 }
 
 /**
- * Get background color for generic link category
+ * Get background color for generic link category - enhanced gradients
  */
 function getGenericBgColor(category: "Social" | "News" | "Website" | "Other") {
   switch (category) {
     case "Social":
-      return "bg-purple-500/20"
+      return "bg-gradient-to-br from-purple-500/20 to-purple-600/10 border-purple-500/20 group-hover:shadow-purple-500/20"
     case "News":
-      return "bg-blue-500/20"
+      return "bg-gradient-to-br from-blue-500/20 to-blue-600/10 border-blue-500/20 group-hover:shadow-blue-500/20"
     case "Website":
-      return "bg-green-500/20"
+      return "bg-gradient-to-br from-green-500/20 to-green-600/10 border-green-500/20 group-hover:shadow-green-500/20"
     default:
-      return "bg-gray-500/20"
+      return "bg-gradient-to-br from-gray-500/20 to-gray-600/10 border-gray-500/20 group-hover:shadow-gray-500/20"
   }
 }

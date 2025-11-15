@@ -30,13 +30,22 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
 
-    /* Typography System - Phase 1.1 */
-    --font-title: 16px;
-    --font-artist: 14px;
-    --font-time: 12px;
-    --weight-title: 600;
-    --weight-artist: 400;
-    --weight-time: 500;
+    /* Typography System - "Late Night Radio Broadcast" Aesthetic */
+    /* Extreme size contrasts (3x+) for visual impact */
+    --font-display: 48px;           /* Hero/Featured displays */
+    --font-title: 18px;             /* Track titles */
+    --font-artist: 14px;            /* Artists/metadata */
+    --font-time: 11px;              /* Timestamps/small text */
+
+    /* Extreme weight contrasts (200 vs 700) */
+    --weight-display: 700;          /* Bold display text */
+    --weight-title: 600;            /* Medium titles */
+    --weight-artist: 300;           /* Light body text */
+    --weight-time: 500;             /* Medium small text */
+
+    /* Font families - distinctive choices */
+    --font-family-display: 'Space Grotesk', sans-serif;
+    --font-family-body: 'IBM Plex Sans', sans-serif;
 
     /* Shadow System - Phase 2.1 */
     --shadow-near: 0 2px 8px rgba(0, 0, 0, 0.15);
@@ -78,8 +87,8 @@
     --popover: 222.2 84% 9%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 27 96% 54%;                /* Radio dial orange #F58216 */
-    --primary-foreground: 210 40% 98%;
+    --primary: 27 96% 54%;                /* Radio dial orange #F58216 - THE STAR */
+    --primary-foreground: 222.2 84% 7%;
 
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -87,21 +96,26 @@
     --muted: 217.2 32.6% 17.5%;           /* Less harsh muted */
     --muted-foreground: 215 20.2% 65.1%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 180 85% 60%;                /* Teal/cyan for links - strategic pop */
+    --accent-foreground: 222.2 84% 7%;
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
 
     --border: 217.2 32.6% 17.5%;          /* Subtle separation */
     --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --ring: 27 96% 54%;                   /* Orange ring for focus states */
 
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+
+    /* Broadcast glow effect - radio dial warmth */
+    --glow-orange: 27 96% 54%;
+    --glow-teal: 180 85% 60%;
+    --glow-purple: 265 85% 65%;
   }
 }
 
@@ -111,53 +125,84 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-family-body);
+    font-weight: var(--weight-artist);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-family-display);
+    font-weight: var(--weight-display);
+    letter-spacing: -0.02em;
   }
 }
 
 @layer components {
-  /* Typography System - Phase 1.1 */
+  /* Typography System - "Late Night Radio Broadcast" Aesthetic */
   .track-title {
+    font-family: var(--font-family-display);
     font-size: var(--font-title);
     font-weight: var(--weight-title);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
     line-height: 1.3;
+    color: hsl(var(--foreground));
   }
 
   .artist-name {
+    font-family: var(--font-family-body);
     font-size: var(--font-artist);
     font-weight: var(--weight-artist);
-    opacity: 0.7;
-    margin-top: 2px;
+    opacity: 0.75;
+    margin-top: 4px;
+    letter-spacing: 0.01em;
   }
 
   .timestamp {
+    font-family: var(--font-family-body);
     font-size: var(--font-time);
     font-weight: var(--weight-time);
-    font-variant-numeric: tabular-nums; /* Aligns times vertically */
-    opacity: 0.5;
-    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.55;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
   }
 
-  /* Border Radius & Block Refinement - Phase 1.2 
-     OPTIMIZED: Removed expensive pseudo-elements for performance */
+  /* Play Card - Refined "Late Night Broadcast" Aesthetic */
   .play-card {
     position: relative;
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
-    /* Simple subtle border instead of complex gradient */
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    /* Direct background instead of backdrop-filter pseudo-element */
-    background: rgba(255, 255, 255, 0.03);
+    /* Refined border with warm undertone */
+    border: 1px solid rgba(245, 130, 22, 0.1);
+    /* Subtle warm background glow */
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.04) 0%,
+      rgba(255, 255, 255, 0.02) 100%
+    );
     /* GPU optimization */
     transform: translateZ(0);
+    /* Refined shadow with warmth */
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      0 0 0 1px rgba(245, 130, 22, 0.05) inset;
   }
 
-  /* Subtle glass effect on hover only - better performance */
+  /* Enhanced hover with "radio glow" */
   .play-card:hover {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.12);
+    background: linear-gradient(
+      135deg,
+      rgba(245, 130, 22, 0.08) 0%,
+      rgba(245, 130, 22, 0.04) 100%
+    );
+    border-color: rgba(245, 130, 22, 0.2);
+    box-shadow:
+      0 4px 16px rgba(245, 130, 22, 0.15),
+      0 0 20px rgba(245, 130, 22, 0.1),
+      0 0 0 1px rgba(245, 130, 22, 0.1) inset;
   }
 
   /* Disable all expensive effects during scroll */
@@ -169,15 +214,27 @@
     background: rgba(255, 255, 255, 0.03);
   }
 
-  /* Shadow System - Phase 2.1 */
-  /* Real album art gets depth */
+  /* Shadow System - Enhanced depth */
+  /* Real album art gets pronounced depth */
   .play-card.has-art {
-    box-shadow: var(--shadow-near);
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(245, 130, 22, 0.08) inset;
   }
 
-  /* Placeholders are flatter */
+  .play-card.has-art:hover {
+    box-shadow:
+      0 8px 24px rgba(245, 130, 22, 0.2),
+      0 0 30px rgba(245, 130, 22, 0.15),
+      0 0 0 1px rgba(245, 130, 22, 0.15) inset;
+  }
+
+  /* Placeholders are flatter with subtle styling */
   .play-card.is-placeholder {
-    box-shadow: var(--shadow-placeholder);
+    box-shadow:
+      0 1px 4px rgba(0, 0, 0, 0.2),
+      0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    opacity: 0.7;
   }
 
   /* Recency Indicators - Phase 2.3 */
@@ -462,34 +519,45 @@
   }
 
   /* ========================================
-     LINK DISPLAY SYSTEM
+     LINK DISPLAY SYSTEM - Teal Accent Strategy
      Highlights, hover coordination, previews
      ======================================== */
 
   /* Comment with links - base styling */
   .comment-text {
-    line-height: 1.6;
+    font-family: var(--font-family-body);
+    line-height: 1.7;
+    font-size: var(--font-artist);
+    color: hsl(var(--foreground) / 0.85);
   }
 
-  /* Link highlight in comment text */
+  /* Link highlight in comment text - TEAL ACCENT */
   .link-highlight {
     position: relative;
-    padding: 0 2px;
-    border-radius: 3px;
-    transition: all 0.2s ease;
-    color: hsl(var(--primary));
+    padding: 1px 4px;
+    border-radius: 4px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    color: hsl(var(--accent));
+    text-decoration: underline;
+    text-decoration-color: hsl(var(--accent) / 0.3);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    font-weight: 500;
   }
 
   .link-highlight:hover {
-    background: hsl(var(--primary) / 0.1);
-    text-decoration-color: hsl(var(--primary));
+    background: hsl(var(--accent) / 0.12);
+    text-decoration-color: hsl(var(--accent));
+    color: hsl(var(--accent));
+    box-shadow: 0 0 12px hsl(var(--accent) / 0.2);
   }
 
   /* Active state for hover coordination */
   .link-highlight.link-active,
   .link-item.link-active {
-    background: hsl(var(--primary) / 0.15);
-    border-color: hsl(var(--primary) / 0.3);
+    background: hsl(var(--accent) / 0.18);
+    border-color: hsl(var(--accent) / 0.4);
+    box-shadow: 0 0 16px hsl(var(--accent) / 0.3);
   }
 
   /* Featured link preview */
@@ -574,6 +642,52 @@
     }
   }
 
+  /* Broadcast Pulse - Radio Signal Effect */
+  @keyframes broadcastPulse {
+    0%, 100% {
+      opacity: 1;
+      box-shadow:
+        0 0 0 0 rgba(245, 130, 22, 0.4),
+        0 0 0 0 rgba(245, 130, 22, 0.2);
+    }
+    50% {
+      opacity: 0.95;
+      box-shadow:
+        0 0 0 8px rgba(245, 130, 22, 0.1),
+        0 0 0 16px rgba(245, 130, 22, 0.05);
+    }
+  }
+
+  .animate-broadcast-pulse {
+    animation: broadcastPulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Staggered Fade In - Timeline Reveals */
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+
+  /* Stagger delays for timeline items */
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.1s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.2s; }
+  .stagger-5 { animation-delay: 0.25s; }
+  .stagger-6 { animation-delay: 0.3s; }
+  .stagger-7 { animation-delay: 0.35s; }
+  .stagger-8 { animation-delay: 0.4s; }
+
   /* Pulse animation for loading state */
   @keyframes pulse-slow {
     0%, 100% {
@@ -586,6 +700,20 @@
 
   .animate-pulse-slow {
     animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Radio Glow - Subtle ambient effect */
+  @keyframes radioGlow {
+    0%, 100% {
+      filter: brightness(1) saturate(1);
+    }
+    50% {
+      filter: brightness(1.05) saturate(1.1);
+    }
+  }
+
+  .animate-radio-glow {
+    animation: radioGlow 3s ease-in-out infinite;
   }
 
 
