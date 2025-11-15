@@ -1,0 +1,207 @@
+installHook.js:1 KEXP Data Worker error: ErrorEvent {isTrusted: true, message: 'Uncaught TypeError: Class extends value undefined is not a constructor or null', filename: 'http://localhost:5173/node_modules/.vite/deps/fast-csv.js?v=763900e6', lineno: 500, colno: 53, …}isTrusted: truebubbles: falsecancelBubble: falsecancelable: truecolno: 53composed: falsecurrentTarget: Window {window: Window, self: Window, document: document, name: '', location: Location, …}defaultPrevented: falseerror: nulleventPhase: 0filename: "http://localhost:5173/node_modules/.vite/deps/fast-csv.js?v=763900e6"lineno: 500message: "Uncaught TypeError: Class extends value undefined is not a constructor or null"returnValue: truesrcElement: Window {window: Window, self: Window, document: document, name: '', location: Location, …}target: Window {window: Window, self: Window, document: document, name: '', location: Location, …}timeStamp: 1279.4000000059605type: "error"[[Prototype]]: ErrorEvent
+overrideMethod @ installHook.js:1
+KexpDataClient.worker.onerror @ kexp-data-client.ts:78
+CsvFormatterStream.ts:6 Uncaught TypeError: Class extends value undefined is not a constructor or null
+    at ../../node_modules/.pnpm/@fast-csv+format@5.0.5/node_modules/@fast-csv/format/build/src/CsvFormatterStream.js (CsvFormatterStream.ts:6:71)
+    at __require (chunk-DP4XHQAG.js:12:50)
+    at ../../node_modules/.pnpm/@fast-csv+format@5.0.5/node_modules/@fast-csv/format/build/src/index.js (index.ts:6:1)
+    at __require (chunk-DP4XHQAG.js:12:50)
+    at ../../node_modules/.pnpm/fast-csv@5.0.5/node_modules/fast-csv/build/src/index.js (index.ts:1:1)
+    at __require (chunk-DP4XHQAG.js:12:50)
+    at index.ts:25:20
+../../node_modules/.pnpm/@fast-csv+format@5.0.5/node_modules/@fast-csv/format/build/src/CsvFormatterStream.js @ CsvFormatterStream.ts:6
+__require @ chunk-DP4XHQAG.js:12
+../../node_modules/.pnpm/@fast-csv+format@5.0.5/node_modules/@fast-csv/format/build/src/index.js @ index.ts:6
+__require @ chunk-DP4XHQAG.js:12
+../../node_modules/.pnpm/fast-csv@5.0.5/node_modules/fast-csv/build/src/index.js @ index.ts:1
+__require @ chunk-DP4XHQAG.js:12
+(anonymous) @ index.ts:25
+kexp-data-client.ts:81 Uncaught (in promise) Error: Worker error: Uncaught TypeError: Class extends value undefined is not a constructor or null
+    at KexpDataClient.worker.onerror (kexp-data-client.ts:81:24)
+KexpDataClient.worker.onerror @ kexp-data-client.ts:81
+kexp-data-client.ts:81 Uncaught (in promise) Error: Worker error: Uncaught TypeError: Class extends value undefined is not a constructor or null
+    at KexpDataClient.worker.onerror (kexp-data-client.ts:81:24)
+KexpDataClient.worker.onerror @ kexp-data-client.ts:81
+(index):1 Access to fetch at 'https://www.kexp.org/filer/canonical/1588181844/22496/' from origin 'http://localhost:5173' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+ScrollingAlbumBar.tsx:153  GET https://www.kexp.org/filer/canonical/1588181844/22496/ net::ERR_FAILED 302 (Found)
+onSuccess @ ScrollingAlbumBar.tsx:153
+await in onSuccess
+(anonymous) @ Result.ts:525
+(anonymous) @ Function.ts:245
+(anonymous) @ ScrollingAlbumBar.tsx:136
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+commitRootImpl @ react-dom.development.js:26974
+commitRoot @ react-dom.development.js:26721
+performSyncWorkOnRoot @ react-dom.development.js:26156
+flushSyncCallbacks @ react-dom.development.js:12042
+(anonymous) @ react-dom.development.js:25690
+installHook.js:1 Failed to load image for play 3577904: TypeError: Failed to fetch
+    at Object.onSuccess (ScrollingAlbumBar.tsx:153:36)
+overrideMethod @ installHook.js:1
+onSuccess @ ScrollingAlbumBar.tsx:165
+await in onSuccess
+(anonymous) @ Result.ts:525
+(anonymous) @ Function.ts:245
+(anonymous) @ ScrollingAlbumBar.tsx:136
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+commitRootImpl @ react-dom.development.js:26974
+commitRoot @ react-dom.development.js:26721
+performSyncWorkOnRoot @ react-dom.development.js:26156
+flushSyncCallbacks @ react-dom.development.js:12042
+(anonymous) @ react-dom.development.js:25690
+(index):1 Access to fetch at 'https://www.kexp.org/filer/canonical/1588181844/22496/' from origin 'http://localhost:5173' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+ScrollingAlbumBar.tsx:153  GET https://www.kexp.org/filer/canonical/1588181844/22496/ net::ERR_FAILED 302 (Found)
+onSuccess @ ScrollingAlbumBar.tsx:153
+await in onSuccess
+(anonymous) @ Result.ts:525
+(anonymous) @ Function.ts:245
+(anonymous) @ ScrollingAlbumBar.tsx:136
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+commitRootImpl @ react-dom.development.js:26974
+commitRoot @ react-dom.development.js:26721
+performSyncWorkOnRoot @ react-dom.development.js:26156
+flushSyncCallbacks @ react-dom.development.js:12042
+(anonymous) @ react-dom.development.js:25690
+installHook.js:1 Failed to load image for play 3577801: TypeError: Failed to fetch
+    at Object.onSuccess (ScrollingAlbumBar.tsx:153:36)
+overrideMethod @ installHook.js:1
+onSuccess @ ScrollingAlbumBar.tsx:165
+await in onSuccess
+(anonymous) @ Result.ts:525
+(anonymous) @ Function.ts:245
+(anonymous) @ ScrollingAlbumBar.tsx:136
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+commitRootImpl @ react-dom.development.js:26974
+commitRoot @ react-dom.development.js:26721
+performSyncWorkOnRoot @ react-dom.development.js:26156
+flushSyncCallbacks @ react-dom.development.js:12042
+(anonymous) @ react-dom.development.js:25690
+(index):1 Access to fetch at 'https://www.kexp.org/filer/canonical/1588181844/22496/' from origin 'http://localhost:5173' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+ScrollingAlbumBar.tsx:153  GET https://www.kexp.org/filer/canonical/1588181844/22496/ net::ERR_FAILED 302 (Found)
+onSuccess @ ScrollingAlbumBar.tsx:153
+await in onSuccess
+(anonymous) @ Result.ts:525
+(anonymous) @ Function.ts:245
+(anonymous) @ ScrollingAlbumBar.tsx:136
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+commitRootImpl @ react-dom.development.js:26974
+commitRoot @ react-dom.development.js:26721
+performSyncWorkOnRoot @ react-dom.development.js:26156
+flushSyncCallbacks @ react-dom.development.js:12042
+(anonymous) @ react-dom.development.js:25690
+installHook.js:1 Failed to load image for play 3577904: TypeError: Failed to fetch
+    at Object.onSuccess (ScrollingAlbumBar.tsx:153:36)
+overrideMethod @ installHook.js:1
+onSuccess @ ScrollingAlbumBar.tsx:165
+await in onSuccess
+(anonymous) @ Result.ts:525
+(anonymous) @ Function.ts:245
+(anonymous) @ ScrollingAlbumBar.tsx:136
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+commitRootImpl @ react-dom.development.js:26974
+commitRoot @ react-dom.development.js:26721
+performSyncWorkOnRoot @ react-dom.development.js:26156
+flushSyncCallbacks @ react-dom.development.js:12042
+(anonymous) @ react-dom.development.js:25690
+
+
+
+installHook.js:1 KEXP Data Worker error: ErrorEvent {isTrusted: true, message: 'Uncaught TypeError: Class extends value undefined is not a constructor or null', filename: 'http://localhost:5173/node_modules/.vite/deps/fast-csv.js?v=763900e6', lineno: 500, colno: 53, …}
+overrideMethod @ installHook.js:1
+KexpDataClient.worker.onerror @ kexp-data-client.ts:78
+kexp-data-client.ts:81 Uncaught (in promise) Error: Worker error: Uncaught TypeError: Class extends value undefined is not a constructor or null
+    at KexpDataClient.worker.onerror (kexp-data-client.ts:81:24)
+KexpDataClient.worker.onerror @ kexp-data-client.ts:81
+kexp-data-client.ts:81 Uncaught (in promise) Error: Worker error: Uncaught TypeError: Class extends value undefined is not a constructor or null
+    at KexpDataClient.worker.onerror (kexp-data-client.ts:81:24)
+KexpDataClient.worker.onerror @ kexp-data-client.ts:81
+CsvFormatterStream.ts:6 Uncaught TypeError: Class extends value undefined is not a constructor or null
+    at ../../node_modules/.pnpm/@fast-csv+format@5.0.5/node_modules/@fast-csv/format/build/src/CsvFormatterStream.js (CsvFormatterStream.ts:6:71)
+    at __require (chunk-DP4XHQAG.js:12:50)
+    at ../../node_modules/.pnpm/@fast-csv+format@5.0.5/node_modules/@fast-csv/format/build/src/index.js (index.ts:6:1)
+    at __require (chunk-DP4XHQAG.js:12:50)
+    at ../../node_modules/.pnpm/fast-csv@5.0.5/node_modules/fast-csv/build/src/index.js (index.ts:1:1)
+    at __require (chunk-DP4XHQAG.js:12:50)
+    at index.ts:25:20
+../../node_modules/.pnpm/@fast-csv+format@5.0.5/node_modules/@fast-csv/format/build/src/CsvFormatterStream.js @ CsvFormatterStream.ts:6
+__require @ chunk-DP4XHQAG.js:12
+../../node_modules/.pnpm/@fast-csv+format@5.0.5/node_modules/@fast-csv/format/build/src/index.js @ index.ts:6
+__require @ chunk-DP4XHQAG.js:12
+../../node_modules/.pnpm/fast-csv@5.0.5/node_modules/fast-csv/build/src/index.js @ index.ts:1
+__require @ chunk-DP4XHQAG.js:12
+(anonymous) @ index.ts:25
+(index):1 Access to fetch at 'https://www.kexp.org/filer/canonical/1588181844/22496/' from origin 'http://localhost:5173' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+ScrollingAlbumBar.tsx:153  GET https://www.kexp.org/filer/canonical/1588181844/22496/ net::ERR_FAILED 302 (Found)
+onSuccess @ ScrollingAlbumBar.tsx:153
+await in onSuccess
+(anonymous) @ Result.ts:525
+(anonymous) @ Function.ts:245
+(anonymous) @ ScrollingAlbumBar.tsx:136
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+commitRootImpl @ react-dom.development.js:26974
+commitRoot @ react-dom.development.js:26721
+performSyncWorkOnRoot @ react-dom.development.js:26156
+flushSyncCallbacks @ react-dom.development.js:12042
+(anonymous) @ react-dom.development.js:25690
+installHook.js:1 Failed to load image for play 3577904: TypeError: Failed to fetch
+    at Object.onSuccess (ScrollingAlbumBar.tsx:153:36)
+overrideMethod @ installHook.js:1
+onSuccess @ ScrollingAlbumBar.tsx:165
+await in onSuccess
+(anonymous) @ Result.ts:525
+(anonymous) @ Function.ts:245
+(anonymous) @ ScrollingAlbumBar.tsx:136
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+commitRootImpl @ react-dom.development.js:26974
+commitRoot @ react-dom.development.js:26721
+performSyncWorkOnRoot @ react-dom.development.js:26156
+flushSyncCallbacks @ react-dom.development.js:12042
+(anonymous) @ react-dom.development.js:25690
