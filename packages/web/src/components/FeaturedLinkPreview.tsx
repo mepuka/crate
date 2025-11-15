@@ -20,8 +20,7 @@ import { useAtomValue } from "@effect-atom/atom-react"
 import { Option } from "effect"
 import { featuredLinkAtom } from "@/atoms/link-atoms"
 import { ExtractedLink } from "@/lib/links/models"
-import { ExternalLink, Music, Newspaper, Globe } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { Music, Newspaper, Globe } from "lucide-react"
 
 export function FeaturedLinkPreview({ playId }: { playId: number }) {
   const featuredLink = useAtomValue(featuredLinkAtom(playId))
@@ -57,130 +56,94 @@ function renderLinkPreview(link: ExtractedLink) {
 }
 
 /**
- * YouTube thumbnail preview
+ * YouTube thumbnail preview - Compact inline with subtle video indicator
+ * Philosophy: Compact, inline badge with thumbnail - video icon as subtle indicator
  */
 interface YoutubeThumbnailProps {
   videoId: string
   thumbnail: string
 }
 
-function YoutubeThumbnail({ videoId, thumbnail }: YoutubeThumbnailProps) {
+function YoutubeThumbnail({ thumbnail }: YoutubeThumbnailProps) {
   return (
-    <div className="youtube-preview flex items-center gap-3 p-2 rounded bg-accent/50 border border-primary/20">
-      <img
-        src={thumbnail}
-        alt={`YouTube video ${videoId}`}
-        className="w-20 h-14 object-cover rounded"
-      />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">YouTube Video</div>
-        <div className="text-xs text-muted-foreground truncate">{videoId}</div>
+    <div className="youtube-preview group inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/[0.03] border border-accent/10 transition-all duration-200 motion-safe:hover:bg-accent/[0.06] motion-safe:hover:border-accent/20">
+      {/* Very compact high-res thumbnail */}
+      <div className="relative w-8 h-6 rounded overflow-hidden shrink-0">
+        <img
+          src={thumbnail}
+          alt="Music video preview"
+          className="w-full h-full object-cover"
+        />
+        {/* Very subtle play indicator */}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/15">
+          <svg className="w-2.5 h-2.5 text-white drop-shadow-sm" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+        </div>
       </div>
-      <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+
+      {/* Minimal text */}
+      <span className="text-[10px] font-medium text-muted-foreground/60 group-hover:text-accent/80 motion-safe:transition-colors uppercase tracking-wide">
+        Video
+      </span>
     </div>
   )
 }
 
 /**
- * SoundCloud preview badge
+ * SoundCloud preview badge - Minimal, uses accent color
  */
 interface SoundCloudPreviewProps {
   trackId: string
   domain: string
 }
 
-function SoundCloudPreview({ domain }: SoundCloudPreviewProps) {
+function SoundCloudPreview(_props: SoundCloudPreviewProps) {
   return (
-    <div className="soundcloud-preview flex items-center gap-3 p-2 rounded bg-accent/50 border border-primary/20">
-      <div className="flex items-center justify-center w-10 h-10 rounded bg-orange-500/20">
-        <Music className="w-5 h-5 text-orange-500" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium">SoundCloud</div>
-        <div className="text-xs text-muted-foreground truncate">{domain}</div>
-      </div>
-      <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+    <div className="soundcloud-preview group inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/[0.03] border border-accent/10 transition-all duration-200 motion-safe:hover:bg-accent/[0.06] motion-safe:hover:border-accent/20">
+      <Music className="w-3 h-3 text-muted-foreground/50 group-hover:text-accent/80 motion-safe:transition-colors" />
+      <span className="text-[10px] font-medium text-muted-foreground/60 group-hover:text-accent/80 motion-safe:transition-colors uppercase tracking-wide">
+        Audio
+      </span>
     </div>
   )
 }
 
 /**
- * KEXP badge (blog or main site)
+ * KEXP badge (blog or main site) - Uses accent color
  */
 interface KexpBadgeProps {
   path: string
   isBlog: boolean
 }
 
-function KexpBadge({ path, isBlog }: KexpBadgeProps) {
+function KexpBadge({ isBlog }: KexpBadgeProps) {
   return (
-    <div className="kexp-preview flex items-center gap-3 p-2 rounded bg-accent/50 border border-primary/20">
-      <div className="flex items-center justify-center w-10 h-10 rounded bg-blue-500/20">
-        <Newspaper className="w-5 h-5 text-blue-500" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium">{isBlog ? "KEXP Blog" : "KEXP.org"}</div>
-        <div className="text-xs text-muted-foreground truncate">{path}</div>
-      </div>
-      <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+    <div className="kexp-preview group inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/[0.03] border border-accent/10 transition-all duration-200 motion-safe:hover:bg-accent/[0.06] motion-safe:hover:border-accent/20">
+      <Newspaper className="w-3 h-3 text-muted-foreground/50 group-hover:text-accent/80 motion-safe:transition-colors" />
+      <span className="text-[10px] font-medium text-muted-foreground/60 group-hover:text-accent/80 motion-safe:transition-colors uppercase tracking-wide">
+        {isBlog ? "Blog" : "Link"}
+      </span>
     </div>
   )
 }
 
 /**
- * Generic link badge with category-based icon
+ * Generic link badge - Uses accent color consistently
  */
 interface GenericLinkBadgeProps {
   domain: string
   category: "Social" | "News" | "Website" | "Other"
 }
 
-function GenericLinkBadge({ domain, category }: GenericLinkBadgeProps) {
-  const icon = getCategoryIcon(category)
-  const color = getCategoryColor(category)
-
+function GenericLinkBadge({ domain }: GenericLinkBadgeProps) {
   return (
-    <div className="generic-preview flex items-center gap-3 p-2 rounded bg-accent/50 border border-primary/20">
-      <div className={cn("flex items-center justify-center w-10 h-10 rounded", color.bg)}>
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">{domain}</div>
-        <div className="text-xs text-muted-foreground">{category}</div>
-      </div>
-      <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+    <div className="generic-preview group inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/[0.03] border border-accent/10 transition-all duration-200 motion-safe:hover:bg-accent/[0.06] motion-safe:hover:border-accent/20">
+      <Globe className="w-3 h-3 text-muted-foreground/50 group-hover:text-accent/80 motion-safe:transition-colors" />
+      <span className="text-[10px] font-medium truncate max-w-[80px] text-muted-foreground/60 group-hover:text-accent/80 motion-safe:transition-colors">
+        {domain}
+      </span>
     </div>
   )
 }
 
-/**
- * Get icon component for category
- */
-function getCategoryIcon(category: string) {
-  switch (category) {
-    case "Social":
-      return <ExternalLink className="w-5 h-5 text-purple-500" />
-    case "News":
-      return <Newspaper className="w-5 h-5 text-blue-500" />
-    case "Website":
-      return <Globe className="w-5 h-5 text-green-500" />
-    default:
-      return <ExternalLink className="w-5 h-5 text-gray-500" />
-  }
-}
-
-/**
- * Get background color for category
- */
-function getCategoryColor(category: string) {
-  switch (category) {
-    case "Social":
-      return { bg: "bg-purple-500/20" }
-    case "News":
-      return { bg: "bg-blue-500/20" }
-    case "Website":
-      return { bg: "bg-green-500/20" }
-    default:
-      return { bg: "bg-gray-500/20" }
-  }
-}

@@ -52,6 +52,7 @@ function getAgeCategory(airdate: Date | null): 'recent' | 'older' | 'old' {
   return 'old'
 }
 
+
 export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
   ({ play, variant, size, isFocused, className }, ref) => {
     const imageSize = size === 'compact' ? 80 : size === 'expanded' ? 160 : 120
@@ -113,7 +114,7 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           }
         />
 
-        <div className="relative z-10 flex gap-3 py-2 pointer-events-none">
+        <div className="relative z-10 flex gap-3 py-2 pointer-events-none min-h-[146px]">
           {/* Album Art */}
           <AlbumArt
             src={play.thumbnail_uri || play.image_uri}
@@ -150,12 +151,20 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
               </p>
             )}
 
-            {/* Album & Year */}
-            {!isNonTrackPlay && play.album && (
-              <p className="text-xs text-muted-foreground/80 leading-tight truncate" title={play.album}>
-                {play.album}
-                {releaseYear && ` • ${releaseYear}`}
-              </p>
+            {/* Album & Release Year */}
+            {!isNonTrackPlay && (play.album || releaseYear) && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {play.album && (
+                  <p className="text-xs text-muted-foreground/80 leading-tight truncate flex-1 min-w-0" title={play.album}>
+                    {play.album}
+                  </p>
+                )}
+                {releaseYear && (
+                  <span className="text-xs text-muted-foreground/70 shrink-0 font-mono">
+                    {releaseYear}
+                  </span>
+                )}
+              </div>
             )}
 
             {/* Badges */}

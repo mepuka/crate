@@ -13,7 +13,7 @@ import { selectedPlayIdAtom } from "@/atoms/play-details";
 import { playAtom } from "@/atoms/timeline";
 import { Option } from "effect";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatPlayTime, formatRelativeTime } from "@/lib/date-utils";
+import { formatPlayTime } from "@/lib/date-utils";
 import { AlbumArt } from "./AlbumArt";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -189,36 +189,24 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                             }}
                           >
                             {play.album}
-                            {releaseYear && (
-                              <span className="text-primary font-medium"> • {releaseYear}</span>
-                            )}
                           </p>
                         )}
                       </>
                     )}
                   </div>
 
-                  {/* Play Time Info - Enhanced with broadcast aesthetic */}
+                  {/* Play Time - Temporal indicator in orange */}
                   {play.airdate && (
-                    <div className="space-y-2 pt-4 px-4 py-3 rounded-xl bg-primary/5 border border-primary/10">
-                      <p
-                        className="text-sm font-medium"
+                    <div className="pt-4">
+                      <time
+                        className="text-sm font-medium font-mono"
+                        dateTime={play.airdate.toISOString()}
                         style={{
-                          fontFamily: 'var(--font-family-body)',
                           color: 'hsl(var(--primary))'
                         }}
                       >
-                        Played {formatRelativeTime(play.airdate)}
-                      </p>
-                      <p
-                        className="text-xs uppercase tracking-wider tabular-nums"
-                        style={{
-                          fontSize: 'var(--font-time)',
-                          color: 'hsl(var(--foreground) / 0.5)'
-                        }}
-                      >
                         {formatPlayTime(play.airdate)}
-                      </p>
+                      </time>
                     </div>
                   )}
                 </div>
@@ -247,6 +235,21 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                     Play ID
                   </dt>
                   <dd className="font-mono text-accent font-medium">{play.id}</dd>
+
+                  {!isNonTrackPlay && releaseYear && (
+                    <>
+                      <dt
+                        className="uppercase tracking-wider font-medium"
+                        style={{
+                          fontSize: 'var(--font-time)',
+                          color: 'hsl(var(--foreground) / 0.5)'
+                        }}
+                      >
+                        Released
+                      </dt>
+                      <dd className="font-mono font-medium">{releaseYear}</dd>
+                    </>
+                  )}
 
                   {!isNonTrackPlay && play.rotation_status && (
                     <>
@@ -333,23 +336,24 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                 {!isNonTrackPlay && play.comment && (
                   <div className="mt-6 pt-6 border-t border-border/50">
                     <h4
-                      className="font-semibold mb-3"
+                      className="font-semibold mb-4 text-lg"
                       style={{
                         fontFamily: 'var(--font-family-display)',
-                        fontSize: 'var(--font-artist)',
                         letterSpacing: '-0.01em',
-                        color: 'hsl(var(--foreground) / 0.7)'
+                        color: 'hsl(var(--foreground) / 0.8)'
                       }}
                     >
                       DJ Comment
                     </h4>
-                    <CommentWithLinks playId={play.id} comment={play.comment} variant="details" />
+                    <div className="text-base leading-relaxed">
+                      <CommentWithLinks playId={play.id} comment={play.comment} variant="details" />
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Links Section */}
-              <div className="space-y-5 border-t border-border/50 pt-6">
+              {/* Links Section - More subtle */}
+              <div className="space-y-4 border-t border-border/30 pt-6 opacity-90">
                 <LinksByCategory playId={play.id} />
               </div>
 

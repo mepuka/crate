@@ -116,6 +116,20 @@
     --glow-orange: 27 96% 54%;
     --glow-teal: 180 85% 60%;
     --glow-purple: 265 85% 65%;
+
+    /* Temporal Design System - "When Was This?" Aesthetic */
+    /* Era-based color tokens for release year indicators */
+    --era-modern: 180 85% 60%;           /* 2020s - Teal/Cyan (current accent) */
+    --era-contemporary: 220 70% 60%;     /* 2010s - Cool blue */
+    --era-recent: 265 65% 60%;           /* 2000s - Purple */
+    --era-classic: 27 70% 55%;           /* 1990s - Warm orange */
+    --era-vintage: 35 80% 50%;           /* 1980s - Amber */
+    --era-golden: 45 70% 45%;            /* 1970s and earlier - Deep gold */
+
+    /* Recency indicators for play time (on timeline) */
+    --play-recent: 27 96% 54%;           /* Last 30min - Primary orange */
+    --play-fresh: 27 80% 48%;            /* Last 3hr - Muted orange */
+    --play-older: 220 20% 40%;           /* Older - Cool gray */
   }
 }
 
@@ -285,15 +299,15 @@
   }
 
   /* ========================================
-     CRATE-STYLE GLASSMORPHISM - TIMELINE CONTAINER
-     Philosophy: Minimal, transparent, let album art breathe
-     Performance-optimized with single backdrop-filter layer
+     STREAMLINED TIMELINE CONTAINER
+     Philosophy: Ultra-minimal, breathable, album art speaks
+     Refined glass with barely-there presence
      ======================================== */
-  
+
   .timeline-container {
     position: relative;
     isolation: isolate;
-    border-radius: 16px;
+    border-radius: 20px;
     overflow: visible;
     background: transparent;
     border: none;
@@ -302,16 +316,16 @@
     transform: translateZ(0);
   }
 
-  /* Subtle glass layer - lets album canvas show through naturally */
+  /* Whisper-light glass layer - maximum transparency */
   .timeline-backdrop {
     content: "";
     position: absolute;
     inset: 0;
-    /* Lighter, more transparent background (Crate philosophy) */
-    background: rgba(8, 10, 15, 0.50);
-    backdrop-filter: blur(16px) saturate(130%);
-    -webkit-backdrop-filter: blur(16px) saturate(130%);
-    border-radius: 16px;
+    /* Ultra-light background - barely tinted */
+    background: rgba(8, 10, 15, 0.30);
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    border-radius: 20px;
     pointer-events: none;
     z-index: 0;
     /* GPU optimization */
@@ -319,15 +333,15 @@
     will-change: transform;
   }
 
-  /* Minimal edge treatment - subtle border only */
+  /* Barely-there edge treatment */
   .timeline-backdrop-edge {
     position: absolute;
     inset: 0;
-    border-radius: 16px;
-    /* Very subtle border - barely visible */
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    /* Minimal shadow for depth */
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    border-radius: 20px;
+    /* Whisper border */
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    /* Minimal shadow */
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
     pointer-events: none;
     z-index: 1;
   }
@@ -348,12 +362,91 @@
 
   /* CRITICAL: Disable expensive effects during scroll for smooth performance */
   .scrolling .timeline-backdrop {
-    backdrop-filter: blur(8px) saturate(120%);
-    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    backdrop-filter: blur(6px) saturate(110%);
+    -webkit-backdrop-filter: blur(6px) saturate(110%);
   }
 
   .scrolling .timeline-backdrop-edge {
-    opacity: 0.7;
+    opacity: 0.5;
+  }
+
+  /* ========================================
+     TEMPORAL DESIGN COMPONENTS
+     Visual language for "when was this?"
+     ======================================== */
+
+  /* Era badge - subtle decade indicator */
+  .era-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: var(--font-time);
+    font-weight: var(--weight-time);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: all 0.2s ease;
+  }
+
+  /* Era-specific styling */
+  .era-modern {
+    background: linear-gradient(135deg, hsl(var(--era-modern) / 0.15), hsl(var(--era-modern) / 0.08));
+    color: hsl(var(--era-modern));
+    border: 1px solid hsl(var(--era-modern) / 0.2);
+  }
+
+  .era-contemporary {
+    background: linear-gradient(135deg, hsl(var(--era-contemporary) / 0.15), hsl(var(--era-contemporary) / 0.08));
+    color: hsl(var(--era-contemporary));
+    border: 1px solid hsl(var(--era-contemporary) / 0.2);
+  }
+
+  .era-recent {
+    background: linear-gradient(135deg, hsl(var(--era-recent) / 0.15), hsl(var(--era-recent) / 0.08));
+    color: hsl(var(--era-recent));
+    border: 1px solid hsl(var(--era-recent) / 0.2);
+  }
+
+  .era-classic {
+    background: linear-gradient(135deg, hsl(var(--era-classic) / 0.15), hsl(var(--era-classic) / 0.08));
+    color: hsl(var(--era-classic));
+    border: 1px solid hsl(var(--era-classic) / 0.2);
+  }
+
+  .era-vintage {
+    background: linear-gradient(135deg, hsl(var(--era-vintage) / 0.15), hsl(var(--era-vintage) / 0.08));
+    color: hsl(var(--era-vintage));
+    border: 1px solid hsl(var(--era-vintage) / 0.2);
+  }
+
+  .era-golden {
+    background: linear-gradient(135deg, hsl(var(--era-golden) / 0.15), hsl(var(--era-golden) / 0.08));
+    color: hsl(var(--era-golden));
+    border: 1px solid hsl(var(--era-golden) / 0.2);
+  }
+
+  /* Subtle era glow on play cards */
+  .play-card[data-era="modern"]:hover {
+    box-shadow:
+      0 4px 16px hsl(var(--era-modern) / 0.12),
+      0 0 20px hsl(var(--era-modern) / 0.08),
+      0 0 0 1px hsl(var(--era-modern) / 0.1) inset;
+  }
+
+  .play-card[data-era="vintage"]:hover {
+    box-shadow:
+      0 4px 16px hsl(var(--era-vintage) / 0.12),
+      0 0 20px hsl(var(--era-vintage) / 0.08),
+      0 0 0 1px hsl(var(--era-vintage) / 0.1) inset;
+  }
+
+  .play-card[data-era="golden"]:hover {
+    box-shadow:
+      0 4px 16px hsl(var(--era-golden) / 0.12),
+      0 0 20px hsl(var(--era-golden) / 0.08),
+      0 0 0 1px hsl(var(--era-golden) / 0.1) inset;
   }
 
   /* ========================================
@@ -519,8 +612,9 @@
   }
 
   /* ========================================
-     LINK DISPLAY SYSTEM - Teal Accent Strategy
-     Highlights, hover coordination, previews
+     REFINED LINK DISPLAY SYSTEM
+     Philosophy: Thumbnails speak, minimal text, cohesive colors
+     Integrated with radio broadcast aesthetic
      ======================================== */
 
   /* Comment with links - base styling */
@@ -531,25 +625,25 @@
     color: hsl(var(--foreground) / 0.85);
   }
 
-  /* Link highlight in comment text - TEAL ACCENT */
+  /* Link highlight in comment text - SUBTLE TEAL */
   .link-highlight {
     position: relative;
     padding: 1px 4px;
     border-radius: 4px;
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    color: hsl(var(--accent));
+    color: hsl(var(--accent) / 0.85);
     text-decoration: underline;
-    text-decoration-color: hsl(var(--accent) / 0.3);
+    text-decoration-color: hsl(var(--accent) / 0.25);
     text-decoration-thickness: 1px;
     text-underline-offset: 2px;
-    font-weight: 500;
+    font-weight: 450;
   }
 
   .link-highlight:hover {
-    background: hsl(var(--accent) / 0.12);
-    text-decoration-color: hsl(var(--accent));
+    background: hsl(var(--accent) / 0.08);
+    text-decoration-color: hsl(var(--accent) / 0.6);
     color: hsl(var(--accent));
-    box-shadow: 0 0 12px hsl(var(--accent) / 0.2);
+    box-shadow: 0 0 8px hsl(var(--accent) / 0.15);
   }
 
   /* Active state for hover coordination */
