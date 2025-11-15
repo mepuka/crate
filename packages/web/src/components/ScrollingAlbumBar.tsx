@@ -179,7 +179,7 @@ export function ScrollingAlbumBar() {
     const canvas = canvasRef.current;
     if (!canvas || !isLoadingComplete || imagesRef.current.length === 0) return;
 
-    const ctx = canvas.getContext("2d", { alpha: true });
+    const ctx = canvas.getContext("2d", { alpha: true, willReadFrequently: true });
     if (!ctx) return;
 
     const images = imagesRef.current;
