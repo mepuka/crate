@@ -3,6 +3,9 @@
 
 set -e
 
+# Get absolute path to hook before changing directory
+HOOK_SCRIPT="$(cd "$(dirname "$0")/.." && pwd)/effect-stop-validation.sh"
+
 # Create test codebase with error eating
 mkdir -p /tmp/test-codebase
 cat > /tmp/test-codebase/bad-service.ts <<'EOF'
@@ -19,12 +22,13 @@ TEST_INPUT='{
   "hook_event_name": "Stop"
 }'
 
-RESULT=$(echo "$TEST_INPUT" | "$(dirname "$0")/../effect-stop-validation.sh" 2>/dev/null || true)
+RESULT=$(echo "$TEST_INPUT" | "$HOOK_SCRIPT" 2>&1)
 
 if echo "$RESULT" | jq -e '.decision == "block"' >/dev/null 2>&1; then
   echo "✓ Test 1: Blocked on error eating"
 else
   echo "✗ Test 1: Should block on error eating"
+  echo "Got: $RESULT"
   rm -rf /tmp/test-codebase
   exit 1
 fi
@@ -40,7 +44,7 @@ EOF
 
 # Test hook (should continue)
 cd /tmp/test-codebase
-RESULT=$(echo "$TEST_INPUT" | "$(dirname "$0")/../effect-stop-validation.sh")
+RESULT=$(echo "$TEST_INPUT" | "$HOOK_SCRIPT")
 
 if echo "$RESULT" | jq -e '.continue == true' >/dev/null; then
   echo "✓ Test 2: Allowed clean code"
