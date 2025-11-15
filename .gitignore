@@ -5,7 +5,6 @@ node_modules/
 tmp/
 dist/
 build/
-docs/
 .worktrees/
 scratchpad/*
 !scratchpad/tsconfig.json
