@@ -1,6 +1,23 @@
 import { Schema } from "effect"
 
 /**
+ * Safe date parser that handles invalid date strings gracefully.
+ * Converts invalid dates to null instead of creating invalid Date objects.
+ */
+const SafeDateFromString = Schema.transform(
+  Schema.String,
+  Schema.NullOr(Schema.DateFromSelf),
+  {
+    decode: (s) => {
+      const date = new Date(s);
+      // Check if the date is valid, return null for invalid dates
+      return isNaN(date.getTime()) ? null : date;
+    },
+    encode: (dateOrNull) => dateOrNull ? dateOrNull.toISOString() : ""
+  }
+);
+
+/**
  * PlayResult schema - matches FastAPI backend PlayResult model exactly.
  *
  * Represents a single play (track) with metadata and similarity score.
@@ -16,7 +33,7 @@ export class PlayResult extends Schema.Class<PlayResult>("PlayResult")({
   // Metadata
   album: Schema.NullOr(Schema.String),
   airdate: Schema.DateFromString, // Always present - automatically transforms ISO 8601 strings to Date objects
-  release_date: Schema.NullOr(Schema.DateFromString), // Album/track release date (optional)
+  release_date: Schema.optional(SafeDateFromString), // Album/track release date (optional - can be missing, null, or invalid - safely converts to null)
   labels: Schema.Array(Schema.String),
   rotation_status: Schema.NullOr(Schema.String),
   is_local: Schema.Boolean,

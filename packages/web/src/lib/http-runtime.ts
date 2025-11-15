@@ -43,6 +43,18 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
   effect: Effect.gen(function* () {
     const kvs = yield* KeyValueStore.KeyValueStore;
 
+    // Schema version for cache invalidation
+    const SCHEMA_VERSION = 3; // Increment when PlayResult schema changes (v3: SafeDateFromString for release_date)
+    const versionStore = kvs.forSchema(Schema.Number);
+
+    // Check schema version and clear cache if outdated
+    const currentVersion = yield* versionStore.get("timeline:schema_version");
+    if (Option.isNone(currentVersion) || currentVersion.value !== SCHEMA_VERSION) {
+      yield* Effect.log(`Schema version mismatch (current: ${Option.getOrElse(currentVersion, () => 0)}, expected: ${SCHEMA_VERSION}). Clearing cache...`);
+      yield* kvs.clear;
+      yield* versionStore.set("timeline:schema_version", SCHEMA_VERSION);
+    }
+
     // Create schema-based stores
     const playStore = kvs.forSchema(PlayResult);
     const lastSeenIdStore = kvs.forSchema(Schema.Number);
@@ -146,6 +158,9 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
 
           // Persist HashSet - chunk will be reconstructed when needed
           yield* playIdsHashSetStore.set("timeline:play_ids_set", newHashSet);
+
+          // Delete cached chunk to force reconstruction on next read
+          yield* kvs.remove("timeline:plays_chunk");
         }
 
         // Always invalidate reactivity keys, even for metadata updates to existing plays
