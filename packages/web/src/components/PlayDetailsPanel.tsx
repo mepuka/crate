@@ -13,7 +13,7 @@ import { selectedPlayIdAtom } from "@/atoms/play-details";
 import { playAtom } from "@/atoms/timeline";
 import { Option } from "effect";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatPlayTime, formatRelativeTime } from "@/lib/date-utils";
+import { formatPlayTime } from "@/lib/date-utils";
 import { AlbumArt } from "./AlbumArt";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -223,27 +223,18 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                     )}
                   </div>
 
-                  {/* Play Time Info - Enhanced with broadcast aesthetic */}
+                  {/* Play Time - Temporal indicator in orange */}
                   {play.airdate && (
-                    <div className="space-y-2 pt-4 px-4 py-3 rounded-xl bg-primary/5 border border-primary/10">
-                      <p
-                        className="text-sm font-medium"
+                    <div className="pt-4">
+                      <time
+                        className="text-sm font-medium font-mono"
+                        dateTime={play.airdate.toISOString()}
                         style={{
-                          fontFamily: 'var(--font-family-body)',
                           color: 'hsl(var(--primary))'
                         }}
                       >
-                        Played {formatRelativeTime(play.airdate)}
-                      </p>
-                      <p
-                        className="text-xs uppercase tracking-wider tabular-nums"
-                        style={{
-                          fontSize: 'var(--font-time)',
-                          color: 'hsl(var(--foreground) / 0.5)'
-                        }}
-                      >
                         {formatPlayTime(play.airdate)}
-                      </p>
+                      </time>
                     </div>
                   )}
                 </div>

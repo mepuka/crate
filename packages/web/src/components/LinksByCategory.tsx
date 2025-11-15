@@ -153,64 +153,67 @@ function renderLinkContent(link: ExtractedLink) {
     case "Youtube":
       return (
         <div className="relative w-full overflow-hidden rounded-lg group">
-          {/* Full-width thumbnail with overlay */}
+          {/* Larger thumbnail for details view */}
           <img
             src={link.thumbnailUrl}
-            alt="YouTube video"
-            className="link-thumbnail w-full h-32 object-cover transition-transform duration-300 group-hover:scale-105"
+            alt="Music video preview"
+            className="link-thumbnail w-full h-40 object-cover motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover:scale-105"
           />
-          {/* Gradient overlay for text contrast */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+          {/* Subtle gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
-          {/* Minimal text overlay - bottom */}
-          <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end justify-between">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <svg className="w-4 h-4 text-red-500" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                </svg>
-                <span className="text-xs font-medium text-white/90 uppercase tracking-wider">YouTube</span>
-              </div>
-              <div className="text-xs text-white/60 font-mono truncate" style={{ fontSize: 'var(--font-time)' }}>
-                {link.videoId}
-              </div>
+          {/* Subtle play icon indicator - center */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-16 h-16 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/60 motion-safe:transition-colors">
+              <svg className="w-8 h-8 text-white drop-shadow-lg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
             </div>
-            <ExternalLink className="w-4 h-4 text-white/70 flex-shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </div>
+
+          {/* Video ID badge - bottom right corner */}
+          <div className="absolute bottom-2 right-2 px-2 py-1 rounded bg-black/50 backdrop-blur-sm">
+            <span className="text-xs font-mono text-white/80" style={{ fontSize: 'var(--font-time)' }}>
+              {link.videoId}
+            </span>
+          </div>
+
+          {/* External link icon - top right */}
+          <ExternalLink className="absolute top-2 right-2 w-4 h-4 text-white/70 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
         </div>
       )
     case "SoundCloud":
       return (
         <>
-          <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-gradient-to-br from-orange-500/15 to-orange-600/8 border border-orange-500/25 flex-shrink-0 group-hover:shadow-md group-hover:shadow-orange-500/20 transition-all">
-            <Music className="w-6 h-6 text-orange-500/90 group-hover:text-orange-400 transition-colors" />
+          <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-accent/10 border border-accent/25 flex-shrink-0 group-hover:shadow-md group-hover:shadow-accent/20 motion-safe:transition-all">
+            <Music className="w-6 h-6 text-accent/90 group-hover:text-accent motion-safe:transition-colors" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-orange-500/90 group-hover:text-orange-400 transition-colors" style={{ fontFamily: 'var(--font-family-body)' }}>
+            <div className="text-sm font-medium text-accent/90 group-hover:text-accent motion-safe:transition-colors" style={{ fontFamily: 'var(--font-family-body)' }}>
               SoundCloud
             </div>
             <div className="text-xs text-muted-foreground/60 truncate mt-0.5" style={{ fontSize: 'var(--font-time)' }}>
               {link.domain}
             </div>
           </div>
-          <ExternalLink className="w-3.5 h-3.5 text-orange-500/50 flex-shrink-0 transition-all group-hover:text-orange-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          <ExternalLink className="w-3.5 h-3.5 text-accent/50 flex-shrink-0 motion-safe:transition-all group-hover:text-accent motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
         </>
       )
     case "Kexp":
       return (
         <>
-          <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500/15 to-blue-600/8 border border-blue-500/25 flex-shrink-0 group-hover:shadow-md group-hover:shadow-blue-500/20 transition-all">
-            <Newspaper className="w-6 h-6 text-blue-500/90 group-hover:text-blue-400 transition-colors" />
+          <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-accent/10 border border-accent/25 flex-shrink-0 group-hover:shadow-md group-hover:shadow-accent/20 motion-safe:transition-all">
+            <Newspaper className="w-6 h-6 text-accent/90 group-hover:text-accent motion-safe:transition-colors" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-blue-500/90 group-hover:text-blue-400 transition-colors" style={{ fontFamily: 'var(--font-family-body)' }}>
+            <div className="text-sm font-medium text-accent/90 group-hover:text-accent motion-safe:transition-colors" style={{ fontFamily: 'var(--font-family-body)' }}>
               {link.isBlog ? "KEXP Blog" : "KEXP.org"}
             </div>
             <div className="text-xs text-muted-foreground/60 truncate mt-0.5" style={{ fontSize: 'var(--font-time)' }}>
               {link.path}
             </div>
           </div>
-          <ExternalLink className="w-3.5 h-3.5 text-blue-500/50 flex-shrink-0 transition-all group-hover:text-blue-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          <ExternalLink className="w-3.5 h-3.5 text-accent/50 flex-shrink-0 motion-safe:transition-all group-hover:text-accent motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
         </>
       )
     case "Generic":
@@ -237,55 +240,50 @@ function renderLinkContent(link: ExtractedLink) {
 }
 
 /**
- * Get category icon for header
+ * Get category icon for header - uses accent color consistently
  */
 function getCategoryIcon(category: string) {
+  const iconClass = "w-5 h-5 text-accent"
+
   switch (category) {
     case "Youtube":
-      return <Video className="w-5 h-5 text-red-500" />
+      return <Video className={iconClass} />
     case "SoundCloud":
-      return <Music className="w-5 h-5 text-orange-500" />
+      return <Music className={iconClass} />
     case "Kexp":
-      return <Newspaper className="w-5 h-5 text-blue-500" />
+      return <Newspaper className={iconClass} />
     case "Social":
-      return <ExternalLink className="w-5 h-5 text-purple-500" />
+      return <ExternalLink className={iconClass} />
     case "News":
-      return <Newspaper className="w-5 h-5 text-blue-500" />
+      return <Newspaper className={iconClass} />
     case "Website":
-      return <Globe className="w-5 h-5 text-green-500" />
+      return <Globe className={iconClass} />
     default:
-      return <ExternalLink className="w-5 h-5 text-gray-500" />
+      return <ExternalLink className={iconClass} />
   }
 }
 
 /**
- * Get icon for generic link category - REFINED
+ * Get icon for generic link category - uses accent color
  */
 function getGenericIcon(category: "Social" | "News" | "Website" | "Other") {
+  const iconClass = "w-5 h-5 text-accent/90 group-hover:text-accent motion-safe:transition-colors"
+
   switch (category) {
     case "Social":
-      return <ExternalLink className="w-5 h-5 text-purple-500/90 group-hover:text-purple-400 transition-colors" />
+      return <ExternalLink className={iconClass} />
     case "News":
-      return <Newspaper className="w-5 h-5 text-blue-500/90 group-hover:text-blue-400 transition-colors" />
+      return <Newspaper className={iconClass} />
     case "Website":
-      return <Globe className="w-5 h-5 text-green-500/90 group-hover:text-green-400 transition-colors" />
+      return <Globe className={iconClass} />
     default:
-      return <ExternalLink className="w-5 h-5 text-gray-500/90 group-hover:text-accent transition-colors" />
+      return <ExternalLink className={iconClass} />
   }
 }
 
 /**
- * Get background color for generic link category - REFINED with subtle gradients
+ * Get background color for generic link category - uses accent color consistently
  */
-function getGenericBgColor(category: "Social" | "News" | "Website" | "Other") {
-  switch (category) {
-    case "Social":
-      return "bg-gradient-to-br from-purple-500/15 to-purple-600/8 border-purple-500/25 group-hover:shadow-purple-500/20"
-    case "News":
-      return "bg-gradient-to-br from-blue-500/15 to-blue-600/8 border-blue-500/25 group-hover:shadow-blue-500/20"
-    case "Website":
-      return "bg-gradient-to-br from-green-500/15 to-green-600/8 border-green-500/25 group-hover:shadow-green-500/20"
-    default:
-      return "bg-gradient-to-br from-gray-500/15 to-gray-600/8 border-gray-500/25 group-hover:shadow-gray-500/20"
-  }
+function getGenericBgColor(_category: "Social" | "News" | "Website" | "Other") {
+  return "bg-accent/10 border-accent/25 group-hover:shadow-accent/20"
 }
