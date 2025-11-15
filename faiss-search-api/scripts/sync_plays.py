@@ -41,7 +41,7 @@ import numpy as np
 # Add app directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.kexp_models import TrackPlay, PlayResponse
+from app.kexp_models import TrackPlay, NonTrackPlay, Airbreak, PlayResponse
 
 
 class PlaySyncService:
@@ -127,7 +127,7 @@ class PlaySyncService:
             self._log_error(f"Failed to query last play ID: {e}")
             raise
 
-    def fetch_new_plays(self, last_id: int | None) -> list[TrackPlay]:
+    def fetch_new_plays(self, last_id: int | None) -> list[TrackPlay | NonTrackPlay]:
         """
         Fetch all new plays from KEXP API with continuous pagination and exponential backoff retry.
 
@@ -135,7 +135,7 @@ class PlaySyncService:
             last_id: Last synced play ID, or None to fetch from scratch
 
         Returns:
-            List of new TrackPlay objects (airbreaks filtered out)
+            List of new TrackPlay and NonTrackPlay objects (airbreaks filtered out)
         """
         all_new_plays = []
         url = f"{self.KEXP_API_BASE}/plays/?limit=100"
@@ -156,8 +156,8 @@ class PlaySyncService:
                     has_old_play = False
 
                     for play in play_response.results:
-                        # Skip airbreaks (only process trackplays)
-                        if not isinstance(play, TrackPlay):
+                        # Skip airbreaks (keep trackplays and nontrackplays)
+                        if isinstance(play, Airbreak):
                             continue
 
                         # Check if we've reached plays we already have
@@ -198,14 +198,14 @@ class PlaySyncService:
 
         return all_new_plays
 
-    def insert_plays(self, plays: list[TrackPlay]) -> list[int]:
+    def insert_plays(self, plays: list[TrackPlay | NonTrackPlay]) -> list[int]:
         """
         Insert plays into database with transaction safety.
 
         Uses INSERT OR IGNORE to handle duplicates gracefully.
 
         Args:
-            plays: List of TrackPlay objects to insert
+            plays: List of TrackPlay and NonTrackPlay objects to insert
 
         Returns:
             List of successfully inserted play IDs
@@ -346,9 +346,9 @@ class PlaySyncService:
                 "error": str(e)
             }
 
-    def _play_to_row(self, play: TrackPlay) -> tuple:
+    def _play_to_row(self, play: TrackPlay | NonTrackPlay) -> tuple:
         """
-        Convert TrackPlay object to database row tuple.
+        Convert TrackPlay or NonTrackPlay object to database row tuple.
 
         Handles:
         - UUID to string conversion
@@ -357,7 +357,7 @@ class PlaySyncService:
         - None/null handling
 
         Args:
-            play: TrackPlay object
+            play: TrackPlay or NonTrackPlay object
 
         Returns:
             Tuple of values for database insertion
@@ -371,23 +371,23 @@ class PlaySyncService:
             play.show_uri,
             play.image_uri,
             play.thumbnail_uri,
-            play.song,
-            str(play.track_id) if play.track_id else None,
-            str(play.recording_id) if play.recording_id else None,
-            play.artist,
-            json.dumps([str(uuid) for uuid in play.artist_ids]),
-            play.album,
-            str(play.release_id) if play.release_id else None,
-            str(play.release_group_id) if play.release_group_id else None,
-            json.dumps(play.labels),
-            json.dumps([str(uuid) for uuid in play.label_ids]),
-            play.release_date,
-            play.rotation_status,
-            1 if play.is_local else 0,
-            1 if play.is_request else 0,
-            1 if play.is_live else 0,
+            play.song if isinstance(play, TrackPlay) else "",
+            str(play.track_id) if isinstance(play, TrackPlay) and play.track_id else None,
+            str(play.recording_id) if isinstance(play, TrackPlay) and play.recording_id else None,
+            play.artist if isinstance(play, TrackPlay) else "",
+            json.dumps([str(uuid) for uuid in play.artist_ids]) if isinstance(play, TrackPlay) else json.dumps([]),
+            play.album if isinstance(play, TrackPlay) else "",
+            str(play.release_id) if isinstance(play, TrackPlay) and play.release_id else None,
+            str(play.release_group_id) if isinstance(play, TrackPlay) and play.release_group_id else None,
+            json.dumps(play.labels) if isinstance(play, TrackPlay) else json.dumps([]),
+            json.dumps([str(uuid) for uuid in play.label_ids]) if isinstance(play, TrackPlay) else json.dumps([]),
+            play.release_date if isinstance(play, TrackPlay) else None,
+            play.rotation_status if isinstance(play, TrackPlay) else None,
+            1 if (isinstance(play, TrackPlay) and play.is_local) else 0,
+            1 if (isinstance(play, TrackPlay) and play.is_request) else 0,
+            1 if (isinstance(play, TrackPlay) and play.is_live) else 0,
             play.comment,
-            "trackplay",
+            play.play_type,
             now,
             now
         )
