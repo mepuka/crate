@@ -170,6 +170,7 @@ export const isTrackPlay = (play: KexpPlay): play is KexpTrackPlay => play.play_
 // Type aliases for better readability
 export type KexpPlay = Schema.Schema.Type<typeof KexpPlay>
 export type KexpTrackPlay = Schema.Schema.Type<typeof KexpTrackPlay>
+export type KexpNonTrackPlay = Schema.Schema.Type<typeof KexpNonTrackPlay>
 export type KexpAirbreak = Schema.Schema.Type<typeof KexpAirbreak>
 export type KexpProgram = Schema.Schema.Type<typeof KexpProgram>
 export type KexpTimeslot = Schema.Schema.Type<typeof KexpTimeslot>

@@ -320,7 +320,7 @@ class ShowResponse(PaginatedResponse[Show]):
 
 
 RotationStatus = Literal["Heavy", "Medium", "Light", "Library", "R/N"]
-PlayType = Literal["trackplay", "airbreak"]
+PlayType = Literal["trackplay", "airbreak", "nontrackplay"]
 
 
 class BasePlay(BaseModel):
@@ -401,6 +401,39 @@ class Airbreak(BasePlay):
     comment: str = Field(
         default="",
         description="Usually empty for airbreaks"
+    )
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def validate_comment(cls, v: Any) -> str:
+        """Convert None to empty string for comment."""
+        if v is None:
+            return ""
+        return v
+
+
+class NonTrackPlay(BasePlay):
+    """
+    Non-track play entity.
+
+    Represents non-music content that isn't categorized as an airbreak.
+    Similar to Airbreak but with a different play_type identifier.
+    """
+    play_type: Literal["nontrackplay"] = Field(
+        default="nontrackplay",
+        description="Always 'nontrackplay' for this entity type"
+    )
+    image_uri: str = Field(
+        default="",
+        description="Always empty for non-track plays"
+    )
+    thumbnail_uri: str = Field(
+        default="",
+        description="Always empty for non-track plays"
+    )
+    comment: str = Field(
+        default="",
+        description="Usually empty for non-track plays"
     )
 
     @field_validator("comment", mode="before")
@@ -586,7 +619,7 @@ class TrackPlay(BasePlay):
 
 
 # Union type for all play types
-Play = TrackPlay | Airbreak
+Play = TrackPlay | Airbreak | NonTrackPlay
 
 
 class PlayResponse(PaginatedResponse[Play]):
@@ -815,6 +848,7 @@ __all__ = [
     "BasePlay",
     "TrackPlay",
     "Airbreak",
+    "NonTrackPlay",
     "Play",
     "PlayResponse",
     "PlayList",
