@@ -52,6 +52,24 @@ function getAgeCategory(airdate: Date | null): 'recent' | 'older' | 'old' {
   return 'old'
 }
 
+// Era calculation for release year - Temporal Design System
+function getEraCategory(releaseYear: number | null): {
+  category: 'modern' | 'contemporary' | 'recent' | 'classic' | 'vintage' | 'golden' | null
+  label: string
+} {
+  if (!releaseYear) return { category: null, label: '' }
+
+  const currentYear = new Date().getFullYear()
+  const age = currentYear - releaseYear
+
+  if (age <= 5) return { category: 'modern', label: '2020s' }
+  if (age <= 15) return { category: 'contemporary', label: '2010s' }
+  if (age <= 25) return { category: 'recent', label: '2000s' }
+  if (age <= 35) return { category: 'classic', label: '1990s' }
+  if (age <= 45) return { category: 'vintage', label: '1980s' }
+  return { category: 'golden', label: `${Math.floor(releaseYear / 10) * 10}s` }
+}
+
 export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
   ({ play, variant, size, isFocused, className }, ref) => {
     const imageSize = size === 'compact' ? 80 : size === 'expanded' ? 160 : 120
@@ -68,6 +86,9 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
 
     // Calculate age category for recency indicators
     const ageCategory = getAgeCategory(play.airdate)
+
+    // Calculate era category for release year - Temporal Design
+    const era = getEraCategory(releaseYear)
 
     // Handle click to open play details panel
     const handleClick = () => {
@@ -94,6 +115,7 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           className
         )}
         data-age={ageCategory}
+        data-era={era.category || undefined}
         role="article"
         aria-label={isNonTrackPlay
           ? `${play.comment} - Special program segment played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`
@@ -150,12 +172,20 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
               </p>
             )}
 
-            {/* Album & Year */}
-            {!isNonTrackPlay && play.album && (
-              <p className="text-xs text-muted-foreground/80 leading-tight truncate" title={play.album}>
-                {play.album}
-                {releaseYear && ` • ${releaseYear}`}
-              </p>
+            {/* Album & Era Badge */}
+            {!isNonTrackPlay && (play.album || era.category) && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {play.album && (
+                  <p className="text-xs text-muted-foreground/80 leading-tight truncate flex-1 min-w-0" title={play.album}>
+                    {play.album}
+                  </p>
+                )}
+                {era.category && releaseYear && (
+                  <span className={cn("era-badge shrink-0", `era-${era.category}`)}>
+                    {releaseYear}
+                  </span>
+                )}
+              </div>
             )}
 
             {/* Badges */}

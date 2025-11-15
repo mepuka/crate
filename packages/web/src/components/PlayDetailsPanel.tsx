@@ -20,6 +20,24 @@ import { cn } from "@/lib/utils";
 import { CommentWithLinks } from "./CommentWithLinks";
 import { LinksByCategory } from "./LinksByCategory";
 
+// Era calculation for release year - Temporal Design System
+function getEraCategory(releaseYear: number | null): {
+  category: 'modern' | 'contemporary' | 'recent' | 'classic' | 'vintage' | 'golden' | null
+  label: string
+} {
+  if (!releaseYear) return { category: null, label: '' }
+
+  const currentYear = new Date().getFullYear()
+  const age = currentYear - releaseYear
+
+  if (age <= 5) return { category: 'modern', label: '2020s' }
+  if (age <= 15) return { category: 'contemporary', label: '2010s' }
+  if (age <= 25) return { category: 'recent', label: '2000s' }
+  if (age <= 35) return { category: 'classic', label: '1990s' }
+  if (age <= 45) return { category: 'vintage', label: '1980s' }
+  return { category: 'golden', label: `${Math.floor(releaseYear / 10) * 10}s` }
+}
+
 export function PlayDetailsPanel() {
   const [selectedId, setSelectedId] = useAtom(selectedPlayIdAtom);
 
@@ -116,6 +134,9 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
 
           const isNonTrackPlay = !play.song && !play.artist && play.comment;
 
+          // Calculate era for temporal design
+          const era = getEraCategory(releaseYear);
+
           return (
             <div className="space-y-8">
               {/* Album Art and Info Side by Side */}
@@ -180,19 +201,23 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                           {play.artist || "Unknown Artist"}
                         </h2>
                         {play.album && (
-                          <p
-                            className="text-base sm:text-lg"
-                            style={{
-                              fontFamily: 'var(--font-family-body)',
-                              fontWeight: 'var(--weight-artist)',
-                              color: 'hsl(var(--foreground) / 0.55)'
-                            }}
-                          >
-                            {play.album}
-                            {releaseYear && (
-                              <span className="text-primary font-medium"> • {releaseYear}</span>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <p
+                              className="text-base sm:text-lg"
+                              style={{
+                                fontFamily: 'var(--font-family-body)',
+                                fontWeight: 'var(--weight-artist)',
+                                color: 'hsl(var(--foreground) / 0.55)'
+                              }}
+                            >
+                              {play.album}
+                            </p>
+                            {releaseYear && era.category && (
+                              <span className={cn("era-badge text-sm px-3 py-1.5", `era-${era.category}`)}>
+                                {releaseYear} • {era.label}
+                              </span>
                             )}
-                          </p>
+                          </div>
                         )}
                       </>
                     )}
