@@ -2,6 +2,9 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 from contextlib import asynccontextmanager
 import time
 import logging
@@ -65,6 +68,62 @@ async def lifespan(app: FastAPI):
         db_service.close()
 
 
+class CacheHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware to add cache headers and security headers to responses.
+
+    Cache strategy:
+    - Health endpoint: 30 seconds (dynamic health status)
+    - Search endpoint: 1 week (deterministic results, static data)
+    - Timeline endpoint: 1 week (historical data is static)
+    - Single play endpoint: 1 week (play data doesn't change)
+    - OpenAPI/Docs: 1 hour (metadata endpoints)
+    """
+
+    # Cache durations in seconds
+    CACHE_DURATIONS = {
+        "/api/health": 30,                    # 30 seconds - health should be fresh
+        "/api/search": 604800,                # 1 week (7 days)
+        "/api/plays/timeline": 604800,        # 1 week
+        "/api/plays/": 604800,                # 1 week (for /api/plays/{id} pattern)
+        "/openapi.json": 3600,                # 1 hour
+        "/docs": 3600,                        # 1 hour
+        "/redoc": 3600,                       # 1 hour
+    }
+
+    async def dispatch(self, request: Request, call_next):
+        """Process request and add headers to response."""
+        # Get response from endpoint
+        response: Response = await call_next(request)
+
+        # Determine cache duration based on path
+        cache_max_age = None
+        path = request.url.path
+
+        # Check exact matches first
+        if path in self.CACHE_DURATIONS:
+            cache_max_age = self.CACHE_DURATIONS[path]
+        # Check pattern matches (e.g., /api/plays/{id})
+        elif path.startswith("/api/plays/") and path != "/api/plays/timeline":
+            cache_max_age = self.CACHE_DURATIONS["/api/plays/"]
+
+        # Add Cache-Control header if we have a duration
+        if cache_max_age is not None:
+            # Use 'public' for GET requests (cacheable by browsers and CDNs)
+            # For POST requests, still add cache headers but browsers typically won't cache
+            cache_directive = f"public, max-age={cache_max_age}"
+            response.headers["Cache-Control"] = cache_directive
+
+            # Add Vary header to ensure proper caching with gzip
+            response.headers["Vary"] = "Accept-Encoding"
+
+        # Add security headers to all responses
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+
+        return response
+
+
 # Create app
 app = FastAPI(
     title="KEXP Music Search API",
@@ -77,6 +136,9 @@ app = FastAPI(
 )
 
 # Middleware
+# Note: Middleware is applied in reverse order (last added = first executed)
+# Order: Cache Headers -> GZip -> CORS
+
 # CORS Configuration:
 # allow_credentials MUST be False because nginx.conf sets wildcard CORS headers
 # (Access-Control-Allow-Origin: *). The CORS specification forbids combining
@@ -96,6 +158,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(CacheHeadersMiddleware)
 
 
 # Dependency injection

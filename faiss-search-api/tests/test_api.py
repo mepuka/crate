@@ -88,3 +88,70 @@ def test_get_play_endpoint(mock_services):
     data = response.json()
     assert data['id'] == 1
     assert data['artist'] == 'Test'
+
+
+def test_cache_headers_health_endpoint(mock_services):
+    """Test cache headers on health endpoint (30 seconds)."""
+    from app.main import app
+    client = TestClient(app)
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert "Cache-Control" in response.headers
+    assert response.headers["Cache-Control"] == "public, max-age=30"
+    assert response.headers["Vary"] == "Accept-Encoding"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+
+
+def test_cache_headers_search_endpoint(mock_services):
+    """Test cache headers on search endpoint (1 week)."""
+    from app.main import app
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/search",
+        json={"query": "test", "limit": 10, "offset": 0}
+    )
+
+    assert response.status_code == 200
+    assert "Cache-Control" in response.headers
+    assert response.headers["Cache-Control"] == "public, max-age=604800"
+    assert response.headers["Vary"] == "Accept-Encoding"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+
+
+def test_cache_headers_play_endpoint(mock_services):
+    """Test cache headers on single play endpoint (1 week)."""
+    from app.main import app
+    client = TestClient(app)
+
+    response = client.get("/api/plays/1")
+
+    assert response.status_code == 200
+    assert "Cache-Control" in response.headers
+    assert response.headers["Cache-Control"] == "public, max-age=604800"
+    assert response.headers["Vary"] == "Accept-Encoding"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+
+
+def test_security_headers_all_endpoints(mock_services):
+    """Test that security headers are applied to all endpoints."""
+    from app.main import app
+    client = TestClient(app)
+
+    endpoints = [
+        ("/api/health", "get"),
+        ("/api/plays/1", "get"),
+    ]
+
+    for endpoint, method in endpoints:
+        if method == "get":
+            response = client.get(endpoint)
+
+        assert response.status_code == 200
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert response.headers["X-Frame-Options"] == "DENY"
