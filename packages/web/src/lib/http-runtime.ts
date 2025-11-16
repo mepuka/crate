@@ -44,7 +44,7 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
     const kvs = yield* KeyValueStore.KeyValueStore;
 
     // Schema version for cache invalidation
-    const SCHEMA_VERSION = 3; // Increment when PlayResult schema changes (v3: SafeDateFromString for release_date)
+    const SCHEMA_VERSION = 4; // Increment when PlayResult schema changes (v4: StringOrNull for empty strings)
     const versionStore = kvs.forSchema(Schema.Number);
 
     // Check schema version and clear cache if outdated
@@ -269,16 +269,33 @@ export const FetchLatestLive = Effect.gen(function* () {
   // Larger limit helps recover from cache clears due to schema version bumps
   yield* Effect.log("Fetching latest 200 plays to ensure sync");
 
-  const latestTimeline = yield* client.timeline.getTimeline({
-    urlParams: { limit: 200 },
-  });
+  const result = yield* Effect.either(
+    client.timeline.getTimeline({
+      urlParams: { limit: 200 },
+    })
+  );
+
+  if (result._tag === "Left") {
+    yield* Effect.logError(`ERROR fetching timeline: ${result.left}`);
+    return;
+  }
+
+  const latestTimeline = result.right;
+  yield* Effect.log(`Received ${latestTimeline.results.length} plays from API`);
 
   if (latestTimeline.results.length > 0) {
     // Store all fetched plays (storePlay handles deduplication via HashSet)
-    yield* Effect.all(
-      latestTimeline.results.map((play) => timelineKVS.storePlay(play)),
-      { concurrency: "unbounded" }
+    const storeResult = yield* Effect.either(
+      Effect.all(
+        latestTimeline.results.map((play) => timelineKVS.storePlay(play)),
+        { concurrency: 50 }
+      )
     );
+
+    if (storeResult._tag === "Left") {
+      yield* Effect.logError(`ERROR storing plays: ${storeResult.left}`);
+      return;
+    }
 
     // Get the latest play (first in the results, sorted by airdate newest first)
     const latestPlay = latestTimeline.results[0];
