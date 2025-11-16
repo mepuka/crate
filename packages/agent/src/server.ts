@@ -1,59 +1,27 @@
 /**
- * HTTP Server for Agent Service
+ * HTTP Server Entry Point
  *
- * Provides /enrich endpoint for triggering play enrichments
+ * Composes all layers and runs the HTTP server
  */
 
-import { Effect, Layer } from "effect"
-import { HttpRouter, HttpServer, HttpServerResponse, HttpServerRequest } from "@effect/platform"
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
-import { createServer } from "node:http"
-import { AgentAppLive } from "./index.js"
-import { MusicAgent } from "./MusicAgent.js"
-import { EnrichmentTrigger } from "@crate/domain/faiss/schemas"
+import { Layer } from "effect";
+import { HttpServer } from "@effect/platform";
+import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
+import { createServer } from "node:http";
+import { router } from "./router.js";
+import { AgentAppLive } from "./index.js";
 
-// Create router with /enrich endpoint
-const router = HttpRouter.empty.pipe(
-  HttpRouter.post("/enrich",
-    Effect.gen(function* () {
-      // Parse request body
-      const body = yield* HttpServerRequest.schemaBodyJson(EnrichmentTrigger)
+// Create the NodeHttpServer layer first
+const ServerLive = NodeHttpServer.layer(() => createServer(), { port: 8080 });
 
-      yield* Effect.log(`Received enrichment request for ${body.play_ids.length} plays`)
+// Create the HTTP server layer
+// Pattern: router.pipe(HttpServer.serve, HttpServer.withLogAddress, Layer.provideMerge(deps))
+const HttpLive = router.pipe(
+  HttpServer.serve(), // Converts router to a Layer requiring HttpServer + router deps
+  HttpServer.withLogAddress, // Logs the server address on startup
+  Layer.provideMerge(ServerLive), // Provides HttpServer + HttpPlatform
+  Layer.provideMerge(AgentAppLive) // Provides MusicAgent + FaissClient + HttpClient + Config
+);
 
-      // Get agent and trigger enrichment (fire and forget)
-      const agent = yield* MusicAgent
-      yield* Effect.forkDaemon(agent.enrichPlays([...body.play_ids]))
-
-      // Return immediately (async processing)
-      return yield* HttpServerResponse.json({
-        status: "processing",
-        play_ids: body.play_ids
-      })
-    })
-  ),
-  HttpRouter.get("/health",
-    Effect.gen(function* () {
-      return yield* HttpServerResponse.json({ status: "ok" })
-    })
-  )
-)
-
-// Create server layer
-const ServerLive = HttpServer.serve(router).pipe(
-  Layer.provide(NodeHttpServer.layer(() => createServer(), { port: 8080 }))
-)
-
-// Main program
-const program = Effect.gen(function* () {
-  yield* Effect.log("Starting agent HTTP server on port 8080...")
-  yield* Effect.never
-})
-
-// Run server with all dependencies
-NodeRuntime.runMain(
-  program.pipe(
-    Effect.provide(ServerLive),
-    Effect.provide(AgentAppLive)
-  )
-)
+// Launch the server as a layer
+NodeRuntime.runMain(Layer.launch(HttpLive));

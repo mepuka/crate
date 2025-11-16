@@ -1,0 +1,30 @@
+# Exclude large directories first
+docs/
+docs/effect-source/
+faiss-search-api/
+data/
+.git/
+.worktrees/
+.claude/
+
+# Exclude node_modules at root and in packages
+node_modules/
+packages/*/node_modules/
+
+# Exclude build artifacts
+packages/*/build/
+packages/*/dist/
+packages/*/.tsbuildinfo/
+
+# Exclude other packages (not needed for agent)
+packages/web/
+packages/api/
+packages/server/
+packages/shared/
+packages/claude_effect_docs/
+
+# Exclude logs and temp files
+*.log
+.DS_Store
+.env
+.env.local

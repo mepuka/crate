@@ -478,30 +478,6 @@ async def get_timeline(
         )
 
 
-@app.get(
-    "/api/plays/{play_id}",
-    response_model=PlayResult,
-    tags=["plays"],
-    summary="Get play by ID",
-    responses={
-        200: {"description": "Play found"},
-        404: {"description": "Play not found"}
-    }
-)
-async def get_play(
-    play_id: int,
-    db_svc: DatabaseService = Depends(get_db_service)
-) -> PlayResult:
-    """Get single play by ID."""
-    play = db_svc.get_play_by_id(play_id)
-    if not play:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Play {play_id} not found"
-        )
-    return PlayResult(**play, similarity=0.0)
-
-
 # Enrichment endpoints
 
 @app.get(
@@ -559,6 +535,30 @@ async def get_plays_batch(
             status_code=500,
             detail=f"Batch fetch failed: {str(e)}"
         )
+
+
+@app.get(
+    "/api/plays/{play_id}",
+    response_model=PlayResult,
+    tags=["plays"],
+    summary="Get play by ID",
+    responses={
+        200: {"description": "Play found"},
+        404: {"description": "Play not found"}
+    }
+)
+async def get_play(
+    play_id: int,
+    db_svc: DatabaseService = Depends(get_db_service)
+) -> PlayResult:
+    """Get single play by ID."""
+    play = db_svc.get_play_by_id(play_id)
+    if not play:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Play {play_id} not found"
+        )
+    return PlayResult(**play, similarity=0.0)
 
 
 @app.post(
