@@ -78,6 +78,8 @@ const AlbumArtworkServiceLive = Layer.succeed(
           song: play.song,
           width: 300,
           height: 300,
+          airdate: play.airdate,
+          comment: play.comment,
         }));
 
         // Data is already in correct format for postMessage (plain objects)

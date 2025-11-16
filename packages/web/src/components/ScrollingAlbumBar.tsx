@@ -1,6 +1,7 @@
 import { useAtomValue, Result } from "@effect-atom/atom-react";
 import { useEffect, useRef, useState } from "react";
 import { recentAlbumArtAtom, type AlbumArtworkData } from "@/atoms/album-bar";
+import { isNewMusic } from "@/lib/new-music-utils";
 
 /**
  * Configuration for the static background album grid
@@ -185,6 +186,17 @@ export function ScrollingAlbumBar() {
     const images = imagesRef.current;
     const tileWidth = CONFIG.TILE_SIZE + CONFIG.TILE_GAP;
 
+    // Get artwork data for new music detection
+    let artworkDataArray: readonly AlbumArtworkData[] = [];
+    Result.matchWithWaiting(albumArtResult, {
+      onWaiting: () => {},
+      onSuccess: (s) => {
+        artworkDataArray = s.value as readonly AlbumArtworkData[];
+      },
+      onError: () => {},
+      onDefect: () => {},
+    });
+
     const renderGrid = () => {
       const canvasWidth = window.innerWidth;
       const canvasHeight = window.innerHeight;
@@ -210,7 +222,7 @@ export function ScrollingAlbumBar() {
         // Start column offset for even rows to fill left edge
         const startCol = row % 2 === 1 ? -1 : 0;
         const endCol = cols + (row % 2 === 1 ? 0 : 1);
-        
+
         for (let col = startCol; col < endCol; col++) {
           // Clean brick pattern position (no jitter)
           const x = col * tileWidth + (row % 2 === 1 ? CONFIG.ROW_OFFSET : 0);
@@ -218,7 +230,15 @@ export function ScrollingAlbumBar() {
 
           // Get image (cycle through available images)
           const img = images[imageIndex % images.length];
+          const artworkIndex = imageIndex % images.length;
           imageIndex++;
+
+          // Check if this tile is new music
+          const artwork = artworkDataArray[artworkIndex];
+          const isNew = artwork ? isNewMusic({
+            airdate: artwork.airdate,
+            comment: artwork.comment,
+          } as any) : false;
 
           // Apply subtle visual defects (analog imperfections)
           ctx.save();
@@ -252,7 +272,25 @@ export function ScrollingAlbumBar() {
           
           // Apply granular per-tile defects (vignette, grain, color shifts)
           applyTileDefects(ctx, row, col, CONFIG.TILE_SIZE);
-          
+
+          // Apply new music highlight if applicable
+          if (isNew) {
+            // Teal glow effect for new music
+            ctx.strokeStyle = 'rgba(94, 234, 212, 0.5)'; // Teal color (matches --new-music-glow)
+            ctx.lineWidth = 3;
+            ctx.shadowColor = 'rgba(94, 234, 212, 0.4)';
+            ctx.shadowBlur = 12;
+
+            // Draw rounded rectangle border
+            const path = new Path2D();
+            path.roundRect(1, 1, CONFIG.TILE_SIZE - 2, CONFIG.TILE_SIZE - 2, CONFIG.TILE_RADIUS);
+            ctx.stroke(path);
+
+            // Reset shadow for next tile
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+          }
+
           ctx.restore();
         }
       }

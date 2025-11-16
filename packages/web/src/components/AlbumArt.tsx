@@ -6,6 +6,7 @@ interface AlbumArtProps {
   alt: string
   size?: number
   className?: string
+  isNewMusic?: boolean
 }
 
 // Generate organic gradient based on alt text hash
@@ -43,7 +44,7 @@ function generateOrganicGradient(seed: string): string {
   return `linear-gradient(${angle}deg, ${palette[0]}, ${palette[1]})`
 }
 
-export function AlbumArt({ src, alt, size = 120, className }: AlbumArtProps) {
+export function AlbumArt({ src, alt, size = 120, className, isNewMusic = false }: AlbumArtProps) {
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(false)
 
@@ -52,7 +53,8 @@ export function AlbumArt({ src, alt, size = 120, className }: AlbumArtProps) {
 
   return (
     <div
-      className={cn("relative rounded overflow-hidden shrink-0", className)}
+      className={cn("album-art relative rounded overflow-hidden shrink-0", className)}
+      data-new-music={isNewMusic ? "new" : undefined}
       style={{
         width: size,
         height: size,
