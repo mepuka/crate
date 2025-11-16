@@ -2,18 +2,33 @@ import { Schema } from "effect"
 
 /**
  * Safe date parser that handles invalid date strings gracefully.
- * Converts invalid dates to null instead of creating invalid Date objects.
+ * Converts invalid dates and empty strings to null instead of creating invalid Date objects.
  */
 const SafeDateFromString = Schema.transform(
   Schema.String,
   Schema.NullOr(Schema.DateFromSelf),
   {
     decode: (s) => {
+      // Treat empty strings as null
+      if (s === "") return null;
       const date = new Date(s);
       // Check if the date is valid, return null for invalid dates
       return isNaN(date.getTime()) ? null : date;
     },
     encode: (dateOrNull) => dateOrNull ? dateOrNull.toISOString() : ""
+  }
+);
+
+/**
+ * String that normalizes empty strings to null.
+ * KEXP API sometimes returns empty strings instead of null for missing data.
+ */
+const StringOrNull = Schema.transform(
+  Schema.String,
+  Schema.NullOr(Schema.String),
+  {
+    decode: (s) => s === "" ? null : s,
+    encode: (s) => s ?? ""
   }
 );
 
@@ -31,9 +46,9 @@ export class PlayResult extends Schema.Class<PlayResult>("PlayResult")({
   similarity: Schema.Number,
 
   // Metadata
-  album: Schema.NullOr(Schema.String),
+  album: StringOrNull, // Normalize empty strings to null
   airdate: Schema.DateFromString, // Always present - automatically transforms ISO 8601 strings to Date objects
-  release_date: Schema.optional(SafeDateFromString), // Album/track release date (optional - can be missing, null, or invalid - safely converts to null)
+  release_date: Schema.NullOr(SafeDateFromString), // Album/track release date (can be null, empty string, or invalid - safely converts to null)
   labels: Schema.Array(Schema.String),
   rotation_status: Schema.NullOr(Schema.String),
   is_local: Schema.Boolean,
@@ -42,9 +57,9 @@ export class PlayResult extends Schema.Class<PlayResult>("PlayResult")({
   comment: Schema.NullOr(Schema.String),
   show: Schema.Number,
 
-  // Album artwork
-  image_uri: Schema.NullOr(Schema.String),
-  thumbnail_uri: Schema.NullOr(Schema.String),
+  // Album artwork - normalize empty strings to null
+  image_uri: StringOrNull,
+  thumbnail_uri: StringOrNull,
 
   // MusicBrainz IDs
   artist_mbid: Schema.Array(Schema.String), // Always an array, never null (can be empty)
@@ -84,3 +99,6 @@ export class SearchResponse extends Schema.Class<SearchResponse>("SearchResponse
 export type Play = typeof PlayResult.Type
 export type Timeline = typeof TimelineResponse.Type
 export type SearchResult = typeof SearchResponse.Type
+
+// Export parameter schemas
+export * from "./params.js"

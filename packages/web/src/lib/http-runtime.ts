@@ -49,8 +49,13 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
 
     // Check schema version and clear cache if outdated
     const currentVersion = yield* versionStore.get("timeline:schema_version");
-    if (Option.isNone(currentVersion) || currentVersion.value !== SCHEMA_VERSION) {
-      yield* Effect.log(`Schema version mismatch (current: ${Option.getOrElse(currentVersion, () => 0)}, expected: ${SCHEMA_VERSION}). Clearing cache...`);
+    if (
+      Option.isNone(currentVersion) ||
+      currentVersion.value !== SCHEMA_VERSION
+    ) {
+      yield* Effect.log(
+        `Schema version mismatch (current: ${Option.getOrElse(currentVersion, () => 0)}, expected: ${SCHEMA_VERSION}). Clearing cache...`
+      );
       yield* kvs.clear;
       yield* versionStore.set("timeline:schema_version", SCHEMA_VERSION);
     }
@@ -132,7 +137,9 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
     );
     const initialChunk = yield* reconstructChunkFromAllPlays();
     const playCount = Chunk.size(initialChunk);
-    yield* Effect.log(`TimelineKVS initialized with ${playCount} plays from cache`);
+    yield* Effect.log(
+      `TimelineKVS initialized with ${playCount} plays from cache`
+    );
 
     // Store a play by ID and maintain HashSet for fast lookups
     // The chunk is always reconstructed from the HashSet, so we only update the HashSet here
@@ -169,7 +176,7 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
         // This ensures chunk atoms stay in sync with KV store (artist corrections, enrichment, etc.)
         yield* Reactivity.invalidate([
           "timeline:plays_chunk",
-          `timeline:play:${play.id}`
+          `timeline:play:${play.id}`,
         ]);
       });
 
@@ -203,21 +210,27 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
     const getPlayIds = () =>
       Effect.gen(function* () {
         // Try to read from cached chunk first
-        const cachedChunkOption = yield* playsChunkStore.get("timeline:plays_chunk");
+        const cachedChunkOption = yield* playsChunkStore.get(
+          "timeline:plays_chunk"
+        );
 
         const chunk = yield* Option.match(cachedChunkOption, {
           // Cache hit - use stored chunk
           onSome: (cachedChunk) =>
             Effect.gen(function* () {
-              yield* Effect.logDebug(`Using cached chunk with ${Chunk.size(cachedChunk)} plays`);
+              yield* Effect.logDebug(
+                `Using cached chunk with ${Chunk.size(cachedChunk)} plays`
+              );
               return cachedChunk;
             }),
           // Cache miss - reconstruct and store
           onNone: () =>
             Effect.gen(function* () {
-              yield* Effect.logInfo("Cache miss for plays_chunk, reconstructing from all plays");
+              yield* Effect.logInfo(
+                "Cache miss for plays_chunk, reconstructing from all plays"
+              );
               return yield* reconstructChunkFromAllPlays();
-            })
+            }),
         });
 
         // Extract IDs from Chunk in order (newest first)
@@ -229,21 +242,27 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
     const getPlaysChunk = () =>
       Effect.gen(function* () {
         // Try to read from cached chunk first
-        const cachedChunkOption = yield* playsChunkStore.get("timeline:plays_chunk");
+        const cachedChunkOption = yield* playsChunkStore.get(
+          "timeline:plays_chunk"
+        );
 
         return yield* Option.match(cachedChunkOption, {
           // Cache hit - use stored chunk
           onSome: (cachedChunk) =>
             Effect.gen(function* () {
-              yield* Effect.logDebug(`Using cached chunk with ${Chunk.size(cachedChunk)} plays`);
+              yield* Effect.logDebug(
+                `Using cached chunk with ${Chunk.size(cachedChunk)} plays`
+              );
               return cachedChunk;
             }),
           // Cache miss - reconstruct and store
           onNone: () =>
             Effect.gen(function* () {
-              yield* Effect.logInfo("Cache miss for plays_chunk, reconstructing from all plays");
+              yield* Effect.logInfo(
+                "Cache miss for plays_chunk, reconstructing from all plays"
+              );
               return yield* reconstructChunkFromAllPlays();
-            })
+            }),
         });
       });
 
@@ -329,7 +348,6 @@ export const TimelineRuntime = Atom.runtime(
     AlbumBarWorkerClient.Default
   )
 );
-
 
 /**
  * Type-safe KEXP API client.

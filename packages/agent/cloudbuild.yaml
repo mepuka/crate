@@ -1,0 +1,48 @@
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/crate-agent:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/crate-agent:latest'
+      - '-f'
+      - 'packages/agent/Dockerfile'
+      - '.'
+
+  # Push the image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/crate-agent:$COMMIT_SHA'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'crate-agent'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/crate-agent:$COMMIT_SHA'
+      - '--region'
+      - 'us-west1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+      - '--max-instances'
+      - '10'
+      - '--set-env-vars'
+      - 'FAISS_API_URL=${_FAISS_API_URL}'
+
+images:
+  - 'gcr.io/$PROJECT_ID/crate-agent:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/crate-agent:latest'
+
+substitutions:
+  _FAISS_API_URL: 'https://your-faiss-api.example.com'

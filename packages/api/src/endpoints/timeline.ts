@@ -1,6 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiError } from "@effect/platform"
 import { TimelineParams } from "../schemas/SearchParams.js"
-import { TimelineResponse } from "../schemas/Play.js"
+import { TimelineResponse } from "@crate/domain/faiss/schemas"
 
 /**
  * Timeline API Endpoints

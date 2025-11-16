@@ -1,5 +1,5 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiError } from "@effect/platform"
-import { PlayResult } from "../schemas/Play.js"
+import { PlayResult } from "@crate/domain/faiss/schemas"
 import { Schema } from "effect"
 
 /**

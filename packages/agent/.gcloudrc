@@ -1,0 +1,36 @@
+# Google Cloud Configuration for crate-agent
+# This file documents the current GCP setup
+
+# Project Information
+GCP_PROJECT_ID=gen-lang-client-0874846742
+GCP_PROJECT_NUMBER=$(gcloud projects describe gen-lang-client-0874846742 --format="value(projectNumber)")
+
+# Region Configuration
+GCP_REGION=us-west1
+GCP_ZONE=us-west1-b
+
+# Cloud Run Configuration
+CLOUD_RUN_SERVICE_NAME=crate-agent
+CLOUD_RUN_REGION=us-west1
+CLOUD_RUN_MEMORY=512Mi
+CLOUD_RUN_CPU=1
+CLOUD_RUN_MAX_INSTANCES=10
+CLOUD_RUN_MIN_INSTANCES=0
+
+# Container Registry
+CONTAINER_REGISTRY=gcr.io
+IMAGE_NAME=${CONTAINER_REGISTRY}/${GCP_PROJECT_ID}/crate-agent
+
+# Artifact Registry (alternative to GCR)
+ARTIFACT_REGISTRY_REGION=us-west1
+ARTIFACT_REGISTRY_REPO=crate
+ARTIFACT_IMAGE=us-west1-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPO}/crate-agent
+
+# Environment Variables for Cloud Run
+FAISS_API_URL=http://localhost:8000  # Update this with your actual FAISS API URL
+
+# APIs Enabled
+# ✓ Cloud Run API (run.googleapis.com)
+# ✓ Cloud Build API (cloudbuild.googleapis.com)
+# ✓ Container Registry API (containerregistry.googleapis.com)
+# ✓ Artifact Registry API (artifactregistry.googleapis.com)

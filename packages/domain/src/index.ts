@@ -1,6 +1,9 @@
 // KEXP types and schemas
 export * as Kexp from "./kexp/schemas.js"
 
+// FAISS API types and schemas
+export * as Faiss from "./faiss/schemas.js"
+
 // NLP
 export * as Nlp from "./nlp/index.js"
 

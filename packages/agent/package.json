@@ -1,13 +1,13 @@
 {
-  "name": "@crate/api",
+  "name": "@crate/agent",
   "version": "0.0.0",
   "type": "module",
   "license": "MIT",
-  "description": "KEXP Radio Crate API Client (HttpApi)",
+  "description": "AI Agent for interacting with FAISS search API",
   "repository": {
     "type": "git",
     "url": "https://github.com/mkessy/crate",
-    "directory": "packages/api"
+    "directory": "packages/agent"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,12 +18,17 @@
     }
   },
   "scripts": {
-    "build": "tsc",
-    "check": "tsc --noEmit"
+    "build": "tsc -b tsconfig.build.json",
+    "check": "tsc -b tsconfig.json",
+    "dev": "bun --watch src/examples/basic.ts"
   },
   "dependencies": {
+    "@crate/api": "workspace:^",
     "@crate/domain": "workspace:^",
+    "@effect/ai": "^0.32.1",
+    "@effect/ai-openai": "^0.32.1",
     "@effect/platform": "^0.93.0",
+    "@effect/platform-node": "^0.73.0",
     "effect": "^3.19.3"
   },
   "devDependencies": {

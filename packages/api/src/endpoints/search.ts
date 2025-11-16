@@ -1,6 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiError } from "@effect/platform"
 import { SearchParams } from "../schemas/SearchParams.js"
-import { SearchResponse } from "../schemas/Play.js"
+import { SearchResponse } from "@crate/domain/faiss/schemas"
 
 /**
  * Search API Endpoints

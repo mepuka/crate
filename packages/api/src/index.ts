@@ -14,9 +14,9 @@ export { SearchApi } from "./endpoints/search.js"
 export { TimelineApi } from "./endpoints/timeline.js"
 export { PlayApi } from "./endpoints/play.js"
 
-// Schemas - Play types
-export { PlayResult, TimelineResponse, SearchResponse } from "./schemas/Play.js"
-export type { Play, Timeline, SearchResult } from "./schemas/Play.js"
+// Schemas - Play types (re-exported from @crate/domain for convenience)
+export { PlayResult, TimelineResponse, SearchResponse } from "@crate/domain/faiss/schemas"
+export type { Play, Timeline, SearchResult } from "@crate/domain/faiss/schemas"
 
 // Schemas - Health
 export { HealthResponse } from "./schemas/Health.js"
