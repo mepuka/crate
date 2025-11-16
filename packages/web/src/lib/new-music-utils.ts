@@ -9,6 +9,7 @@
  * enhance the "late night radio broadcast" aesthetic.
  */
 
+import { Array, Duration, Option } from "effect";
 import type { Play } from "@crate/domain/faiss/schemas";
 
 /**
@@ -16,16 +17,21 @@ import type { Play } from "@crate/domain/faiss/schemas";
  */
 
 /**
- * Time window (in milliseconds) for considering a play as "new music".
+ * Time window for considering a play as "new music".
  * Set to 30 days (approximately one month).
+ *
+ * Pattern: data-duration.mdx
+ * Using Duration for type-safe, human-readable time intervals.
  */
-const NEW_MUSIC_TIME_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+const NEW_MUSIC_TIME_WINDOW = Duration.days(30);
 
 /**
  * Keywords that indicate new music in DJ comments.
  * Case-insensitive matching.
+ *
+ * Using readonly array for immutability and type safety.
  */
-const NEW_MUSIC_KEYWORDS = ["new music", "brand new", "fresh release"];
+const NEW_MUSIC_KEYWORDS = ["new music", "brand new", "fresh release"] as const;
 
 /**
  * Core Detection Functions
@@ -34,28 +40,36 @@ const NEW_MUSIC_KEYWORDS = ["new music", "brand new", "fresh release"];
 /**
  * Check if a play's airdate is within the new music time window.
  *
+ * Pattern: data-duration.mdx
+ * Uses Duration API for type-safe time calculations instead of raw milliseconds.
+ *
  * @param airdate - The date the track was played
  * @returns true if the play is within one month of the current date
  *
  * @example
  * ```ts
- * const recentPlay = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+ * const recentPlay = new Date(Date.now() - Duration.toMillis(Duration.days(7)));
  * isWithinOneMonth(recentPlay); // true
  *
- * const oldPlay = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000); // 60 days ago
+ * const oldPlay = new Date(Date.now() - Duration.toMillis(Duration.days(60)));
  * isWithinOneMonth(oldPlay); // false
  * ```
  */
 export const isWithinOneMonth = (airdate: Date): boolean => {
   const now = Date.now();
   const playTime = airdate.getTime();
-  const timeDiff = now - playTime;
-  return timeDiff >= 0 && timeDiff <= NEW_MUSIC_TIME_WINDOW_MS;
+  const timeDiff = Duration.millis(now - playTime);
+
+  return Duration.greaterThanOrEqualTo(timeDiff, Duration.zero) &&
+         Duration.lessThanOrEqualTo(timeDiff, NEW_MUSIC_TIME_WINDOW);
 };
 
 /**
  * Check if a DJ comment contains new music keywords.
  * Performs case-insensitive matching.
+ *
+ * Pattern: data-option.mdx
+ * Uses Option.fromNullable for type-safe nullable handling.
  *
  * @param comment - The DJ comment text (nullable)
  * @returns true if the comment contains any new music keywords
@@ -68,10 +82,14 @@ export const isWithinOneMonth = (airdate: Date): boolean => {
  * ```
  */
 export const commentContainsNewMusic = (comment: string | null): boolean => {
-  if (!comment) return false;
-
-  const lowerComment = comment.toLowerCase();
-  return NEW_MUSIC_KEYWORDS.some((keyword) => lowerComment.includes(keyword));
+  return Option.fromNullable(comment).pipe(
+    Option.map((text) => text.toLowerCase()),
+    Option.exists((lowerComment) =>
+      Array.some(NEW_MUSIC_KEYWORDS, (keyword) =>
+        lowerComment.includes(keyword)
+      )
+    )
+  );
 };
 
 /**

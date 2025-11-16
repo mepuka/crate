@@ -188,11 +188,11 @@ export function ScrollingAlbumBar() {
 
     // Get artwork data for new music detection
     let artworkDataArray: readonly AlbumArtworkData[] = [];
-    Result.match(albumArtResult, {
+    Result.matchWithWaiting(albumArtResult, {
+      onWaiting: () => {},
       onSuccess: (s) => {
         artworkDataArray = s.value as readonly AlbumArtworkData[];
       },
-      onWaiting: () => {},
       onError: () => {},
       onDefect: () => {},
     });
