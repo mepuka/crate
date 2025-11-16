@@ -41,4 +41,4 @@ ENV NODE_ENV=production
 ENV FAISS_API_URL=http://localhost:8000
 
 # Run agent
-CMD ["node", "dist/examples/basic.js"]
+CMD ["node", "dist/server.js"]

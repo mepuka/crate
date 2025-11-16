@@ -102,3 +102,6 @@ export type SearchResult = typeof SearchResponse.Type
 
 // Export parameter schemas
 export * from "./params.js"
+
+// Export enrichment schemas
+export * from "./enrichment.js"

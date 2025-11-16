@@ -5,8 +5,13 @@
  * Simple implementation that directly searches FAISS API.
  */
 
-import { Effect } from "effect"
-import { SearchParams } from "@crate/domain/faiss/schemas"
+import { DateTime, Effect } from "effect"
+import {
+  EnrichmentItem,
+  EnrichmentRequest,
+  HelloWorldEnrichment,
+  SearchParams
+} from "@crate/domain/faiss/schemas"
 import { FaissClient } from "./FaissClient.js"
 
 /**
@@ -54,8 +59,43 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             .join("\n")
 
           return `Found ${results.results.length} tracks matching "${question}":\n\n${formatted}\n\n(Query took ${results.query_time_ms}ms)`
+        }),
+
+      /**
+       * Enrich plays with hello world data
+       */
+      enrichPlays: (playIds: number[]) =>
+        Effect.gen(function* () {
+          yield* Effect.log(`Starting enrichment for ${playIds.length} plays`)
+
+          // 1. Fetch play data from FAISS API
+          const { plays } = yield* faissClient.getPlaysBatch(playIds)
+
+          // 2. Generate hello world enrichments
+          const enrichments = plays.map((play: any) =>
+            new EnrichmentItem({
+              play_id: play.id,
+              data: new HelloWorldEnrichment({
+                status: "processed",
+                timestamp: DateTime.formatIsoDateUtc(DateTime.unsafeNow()),
+                message: "Hello from Cloud Run agent!",
+                agent_version: "0.1.0"
+              })
+            })
+          )
+
+          // 3. POST enrichments back to FAISS API
+          const response = yield* faissClient.postEnrichments(
+            new EnrichmentRequest({
+              enrichment_type: "hello_world",
+              enrichments
+            })
+          )
+
+          yield* Effect.log(`Successfully enriched ${response.count} plays`)
+          return response
         })
-    }
+    } as const
   }),
   dependencies: [FaissClient.Default]
 }) {}

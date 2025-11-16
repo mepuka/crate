@@ -115,3 +115,31 @@ class TimelineResponse(BaseModel):
         None,
         description="Index of anchor play in results (only for anchor-based queries)"
     )
+
+
+# Enrichment models
+class EnrichmentItem(BaseModel):
+    """Single play enrichment item."""
+
+    play_id: int
+    data: dict  # JSON blob - flexible structure
+
+
+class EnrichmentRequest(BaseModel):
+    """Request to create enrichments from agent."""
+
+    enrichment_type: str
+    enrichments: List[EnrichmentItem]
+
+
+class EnrichmentResponse(BaseModel):
+    """Response from enrichment creation."""
+
+    status: str
+    count: int
+
+
+class BatchPlaysResponse(BaseModel):
+    """Response for batch play fetch."""
+
+    plays: List[PlayResult]

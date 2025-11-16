@@ -9,6 +9,9 @@ import { Config, Data, Effect, Schema } from "effect"
 import { HttpBody, HttpClient, HttpClientRequest, HttpClientResponse } from "@effect/platform"
 import { NodeHttpClient } from "@effect/platform-node"
 import {
+  BatchPlaysResponse,
+  EnrichmentRequest,
+  EnrichmentResponse,
   PlayResult as PlayResultSchema,
   SearchParams,
   SearchResponse as SearchResponseSchema,
@@ -114,6 +117,38 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
           Effect.mapError((error) =>
             new FaissApiError({
               message: "Health check failed",
+              cause: error
+            })
+          )
+        ),
+
+      /**
+       * Fetch multiple plays by IDs
+       */
+      getPlaysBatch: (playIds: number[]) =>
+        client.get("/api/plays/batch", {
+          urlParams: { play_ids: playIds.join(",") }
+        }).pipe(
+          Effect.flatMap(HttpClientResponse.schemaBodyJson(BatchPlaysResponse)),
+          Effect.mapError((error) =>
+            new FaissApiError({
+              message: "Batch fetch failed",
+              cause: error
+            })
+          )
+        ),
+
+      /**
+       * POST enrichments back to FAISS API
+       */
+      postEnrichments: (request: EnrichmentRequest) =>
+        client.post("/api/enrichments", {
+          body: HttpBody.unsafeJson(request)
+        }).pipe(
+          Effect.flatMap(HttpClientResponse.schemaBodyJson(EnrichmentResponse)),
+          Effect.mapError((error) =>
+            new FaissApiError({
+              message: "Post enrichments failed",
               cause: error
             })
           )

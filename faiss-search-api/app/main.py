@@ -13,8 +13,14 @@ import anyio
 
 from .services.search_service import FAISSSearchService
 from .services.db_service import DatabaseService
-from .models import SearchRequest, SearchResponse, HealthResponse, PlayResult, TimelineResponse
+from .models import (
+    SearchRequest, SearchResponse, HealthResponse, PlayResult, TimelineResponse,
+    EnrichmentRequest, EnrichmentResponse, BatchPlaysResponse
+)
 from .config import settings
+import json
+import os
+from fastapi import Header
 
 # Logging
 logging.basicConfig(
@@ -493,3 +499,142 @@ async def get_play(
             detail=f"Play {play_id} not found"
         )
     return PlayResult(**play, similarity=0.0)
+
+
+# Enrichment endpoints
+
+@app.get(
+    "/api/plays/batch",
+    response_model=BatchPlaysResponse,
+    tags=["enrichments"],
+    summary="Get multiple plays by IDs",
+    description="Fetch multiple plays in a single request using comma-separated IDs",
+    responses={
+        200: {"description": "Plays retrieved successfully"},
+        400: {"description": "Invalid play IDs format"},
+        500: {"description": "Batch fetch failed"}
+    }
+)
+async def get_plays_batch(
+    play_ids: str,
+    db_svc: DatabaseService = Depends(get_db_service)
+) -> BatchPlaysResponse:
+    """
+    Fetch multiple plays by comma-separated IDs.
+
+    Used by the agent to fetch play data for enrichment.
+    """
+    try:
+        # Parse comma-separated IDs
+        ids = [int(id.strip()) for id in play_ids.split(",")]
+
+        if not ids:
+            raise HTTPException(
+                status_code=400,
+                detail="No play IDs provided"
+            )
+
+        # Fetch plays from database
+        plays_dict = db_svc.get_plays_by_ids(ids)
+
+        # Convert to list maintaining order
+        plays = []
+        for play_id in ids:
+            play_data = plays_dict.get(play_id)
+            if play_data:
+                plays.append(PlayResult(**play_data, similarity=1.0))
+
+        logger.info(f"Fetched {len(plays)} plays for batch request")
+        return BatchPlaysResponse(plays=plays)
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid play IDs format: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Batch fetch failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Batch fetch failed: {str(e)}"
+        )
+
+
+@app.post(
+    "/api/enrichments",
+    response_model=EnrichmentResponse,
+    tags=["enrichments"],
+    summary="Store enrichments from agent",
+    description="Store play enrichments sent from the Cloud Run agent",
+    responses={
+        200: {"description": "Enrichments stored successfully"},
+        401: {"description": "Invalid or missing API key"},
+        400: {"description": "Invalid enrichment type"},
+        500: {"description": "Failed to store enrichments"}
+    }
+)
+async def create_enrichments(
+    request: EnrichmentRequest,
+    db_svc: DatabaseService = Depends(get_db_service),
+    x_api_key: Optional[str] = Header(None)
+) -> EnrichmentResponse:
+    """
+    Store enrichments from agent.
+
+    Requires X-API-Key header for authentication.
+    """
+    # Validate API key
+    expected_key = os.getenv("FAISS_API_KEY")
+    if expected_key:
+        if not x_api_key or x_api_key != expected_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing API key"
+            )
+
+    try:
+        cursor = db_svc.conn.cursor()
+
+        # Get enrichment type ID
+        cursor.execute(
+            "SELECT id FROM enrichment_types WHERE name = ?",
+            (request.enrichment_type,)
+        )
+        type_row = cursor.fetchone()
+
+        if not type_row:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown enrichment type: {request.enrichment_type}"
+            )
+
+        enrichment_type_id = type_row[0]
+
+        # Insert or update enrichments
+        count = 0
+        for item in request.enrichments:
+            data_json = json.dumps(item.data)
+
+            cursor.execute("""
+                INSERT INTO enrichments (play_id, enrichment_type_id, data, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(play_id, enrichment_type_id)
+                DO UPDATE SET
+                    data = excluded.data,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (item.play_id, enrichment_type_id, data_json))
+
+            count += 1
+
+        db_svc.conn.commit()
+
+        logger.info(f"Stored {count} enrichments of type '{request.enrichment_type}'")
+        return EnrichmentResponse(status="success", count=count)
+
+    except Exception as e:
+        db_svc.conn.rollback()
+        logger.error(f"Failed to store enrichments: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to store enrichments: {str(e)}"
+        )
