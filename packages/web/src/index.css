@@ -136,6 +136,64 @@
     --new-music-primary: 180 85% 60%;    /* Teal accent - matches link color */
     --new-music-glow: 180 85% 60%;       /* Teal glow for highlights */
     --new-music-border: 180 85% 60%;     /* Teal border accent */
+
+    /* ========================================
+       LIVE UPDATE STATES - Enrichment Streaming
+       Philosophy: Whisper discoveries, don't shout
+       Coordinated with teal accent for consistency
+       ======================================== */
+
+    /* Enrichment state colors */
+    --color-enrichment-pending: 180 60% 50%;      /* Teal (muted) - waiting */
+    --color-enrichment-streaming: 180 80% 55%;    /* Teal (vibrant) - arriving */
+    --color-enrichment-complete: 180 100% 50%;    /* Teal (full accent) - complete */
+    --color-enrichment-error: 0 70% 55%;          /* Red (muted) - error */
+
+    /* Enrichment type indicators */
+    --color-type-link: 180 100% 50%;              /* Teal - discovered link */
+    --color-type-text: 210 30% 70%;               /* Cool gray - text snippet */
+    --color-type-connection: 270 60% 60%;         /* Purple - related play */
+    --color-type-insight: 45 85% 55%;             /* Amber - agentic insight */
+
+    /* Glow effects for enrichments */
+    --glow-enrichment-subtle: 0 0 8px hsl(180deg 100% 50% / 0.15);
+    --glow-enrichment-active: 0 0 16px hsl(180deg 100% 50% / 0.25);
+    --glow-enrichment-pulse: 0 0 24px hsl(180deg 100% 50% / 0.35);
+
+    /* Opacity levels for streaming states */
+    --opacity-enrichment-ghost: 0;           /* Before arrival */
+    --opacity-enrichment-arriving: 0.3;      /* Fading in */
+    --opacity-enrichment-settling: 0.7;      /* Becoming solid */
+    --opacity-enrichment-complete: 1;        /* Fully visible */
+    --opacity-enrichment-background: 0.4;    /* Backgrounded during scroll */
+
+    /* Animation durations */
+    --duration-enrichment-arrive: 600ms;        /* Fade in */
+    --duration-enrichment-expand: 400ms;        /* Height expansion */
+    --duration-enrichment-settle: 300ms;        /* Final positioning */
+    --duration-enrichment-pulse: 2000ms;        /* Attention pulse (once) */
+    --duration-enrichment-shimmer: 1200ms;      /* Shimmer sweep */
+
+    /* Stagger delays */
+    --delay-enrichment-stagger-base: 150ms;     /* Between items */
+    --delay-enrichment-stagger-max: 800ms;      /* Max accumulated delay */
+
+    /* Spacing tokens */
+    --space-enrichment-margin-top: 8px;         /* Above enrichment block */
+    --space-enrichment-padding: 12px;           /* Internal padding */
+    --space-enrichment-gap: 6px;                /* Between items */
+    --space-enrichment-indent: 16px;            /* Indent from main content */
+
+    /* Typography for enrichments */
+    --font-enrichment-size: 12px;               /* Slightly smaller than body */
+    --font-enrichment-weight: 400;              /* Regular (vs 300 body) */
+    --font-enrichment-line-height: 1.5;         /* Readable line spacing */
+    --font-enrichment-letter-spacing: 0.01em;   /* Subtle spacing */
+
+    /* Labels */
+    --font-enrichment-label-size: 10px;         /* Tiny uppercase labels */
+    --font-enrichment-label-weight: 600;        /* Semi-bold */
+    --font-enrichment-label-spacing: 0.08em;    /* Wide letter spacing */
   }
 }
 
@@ -840,6 +898,292 @@
       animation: none;
     }
   }
+
+  /* ========================================
+     LIVE ENRICHMENT COMPONENTS
+     Philosophy: Whisper discoveries, subtle animations
+     Fits "Late Night Radio Broadcast" aesthetic
+     ======================================== */
+
+  /* Enrichment Container */
+  .enrichment-container {
+    margin-top: var(--space-enrichment-margin-top);
+    padding: var(--space-enrichment-padding);
+
+    background: rgba(8, 10, 15, 0.20);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 12px;
+    border-top: 1px solid hsl(var(--color-enrichment-complete) / 0.1);
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-enrichment-gap);
+
+    /* Smooth height changes as items arrive */
+    transition:
+      max-height var(--duration-enrichment-expand) cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 0.3s ease;
+
+    /* Hide when empty */
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+  }
+
+  .enrichment-container[data-has-items="true"] {
+    max-height: 600px; /* Practical max, adjust as needed */
+    opacity: 1;
+  }
+
+  .enrichment-container[data-streaming="true"] {
+    border-top-color: hsl(var(--color-enrichment-streaming) / 0.2);
+    box-shadow: var(--glow-enrichment-subtle);
+  }
+
+  /* Enrichment Item */
+  .enrichment-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px;
+    border-radius: 8px;
+
+    font-size: var(--font-enrichment-size);
+    font-weight: var(--font-enrichment-weight);
+    line-height: var(--font-enrichment-line-height);
+    letter-spacing: var(--font-enrichment-letter-spacing);
+
+    /* Initial state: invisible */
+    opacity: 0;
+    transform: translateY(10px);
+
+    transition:
+      opacity var(--duration-enrichment-arrive) ease-out,
+      transform var(--duration-enrichment-arrive) cubic-bezier(0.16, 1, 0.3, 1),
+      background-color 0.2s ease;
+  }
+
+  /* Arrived state */
+  .enrichment-item[data-state="complete"] {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Streaming state */
+  .enrichment-item[data-state="streaming"] {
+    opacity: var(--opacity-enrichment-settling);
+  }
+
+  /* Arriving animation */
+  .enrichment-item[data-state="arriving"] {
+    animation:
+      enrichmentArrive var(--duration-enrichment-arrive) cubic-bezier(0.16, 1, 0.3, 1) forwards,
+      attentionPulse var(--duration-enrichment-pulse) ease-out 0.7s;
+  }
+
+  .enrichment-item:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+    transform: translateY(-1px);
+  }
+
+  /* Type-specific icon colors */
+  .enrichment-item[data-type="link"] .enrichment-icon {
+    color: hsl(var(--color-type-link));
+  }
+
+  .enrichment-item[data-type="connection"] .enrichment-icon {
+    color: hsl(var(--color-type-connection));
+  }
+
+  .enrichment-item[data-type="insight"] .enrichment-icon {
+    color: hsl(var(--color-type-insight));
+  }
+
+  .enrichment-item[data-type="text"] .enrichment-icon {
+    color: hsl(var(--color-type-text));
+  }
+
+  /* Enrichment Icon */
+  .enrichment-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+  }
+
+  /* Enrichment Content */
+  .enrichment-content {
+    flex: 1;
+    min-width: 0; /* Enable text truncation */
+  }
+
+  /* Enrichment Timestamp */
+  .enrichment-timestamp {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+
+    font-size: var(--font-enrichment-label-size);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+
+    color: hsl(var(--foreground) / 0.4);
+  }
+
+  .enrichment-timestamp-separator {
+    color: hsl(var(--foreground) / 0.2);
+  }
+
+  .enrichment-timestamp-type {
+    text-transform: uppercase;
+    letter-spacing: var(--font-enrichment-label-spacing);
+    color: hsl(var(--foreground) / 0.5);
+  }
+
+  /* Streaming Indicator */
+  .streaming-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+
+    font-size: var(--font-enrichment-label-size);
+    font-weight: var(--font-enrichment-label-weight);
+    letter-spacing: var(--font-enrichment-label-spacing);
+    text-transform: uppercase;
+
+    color: hsl(var(--color-enrichment-streaming) / 0.6);
+
+    opacity: 0;
+    animation: fadeIn 0.3s ease-out forwards;
+  }
+
+  .streaming-indicator-dots {
+    display: flex;
+    gap: 4px;
+  }
+
+  .streaming-indicator-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background-color: hsl(var(--color-enrichment-streaming));
+
+    animation: dotPulse 1.4s ease-in-out infinite;
+  }
+
+  .streaming-indicator-dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .streaming-indicator-dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  /* Related Play Card (Mini) */
+  .related-play-mini {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .related-play-mini:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+    border-color: hsl(var(--accent) / 0.3);
+    box-shadow: var(--glow-enrichment-subtle);
+  }
+
+  .related-play-mini-art {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    flex-shrink: 0;
+
+    background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(0,0,0,0.1));
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .related-play-mini-content {
+    flex: 1;
+    min-width: 0; /* Enable text truncation */
+  }
+
+  .related-play-mini-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .related-play-mini-album {
+    font-size: 10px;
+    font-weight: 400;
+    color: hsl(var(--foreground) / 0.6);
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Streaming Text with Cursor */
+  .streaming-text {
+    position: relative;
+  }
+
+  .streaming-text::after {
+    content: '▋';
+    color: hsl(var(--color-enrichment-streaming));
+    animation: cursorBlink 1s step-end infinite;
+    margin-left: 2px;
+  }
+
+  .streaming-text[data-complete="true"]::after {
+    display: none;
+  }
+
+  /* Scroll-aware pause */
+  .enrichment-item[data-paused="true"] {
+    /* Pause animations */
+    animation-play-state: paused;
+    transition: none;
+  }
+
+  .scrolling .enrichment-container {
+    transition: none;
+  }
+
+  /* Reduced motion support */
+  @media (prefers-reduced-motion: reduce) {
+    .enrichment-item {
+      animation: none !important;
+      transition: opacity 0.1s ease, background-color 0.2s ease;
+    }
+
+    .enrichment-container {
+      transition: opacity 0.2s ease;
+    }
+
+    .streaming-indicator-dot {
+      animation: none;
+      opacity: 0.6;
+    }
+
+    .streaming-text::after {
+      animation: none;
+      opacity: 0.6;
+    }
+  }
 }
 
 @layer utilities {
@@ -937,6 +1281,78 @@
     }
     100% {
       transform: translateX(200%) rotate(-45deg);
+    }
+  }
+
+  /* ========================================
+     ENRICHMENT ANIMATIONS
+     Subtle, whispered discoveries
+     ======================================== */
+
+  /* Enrichment arrival animation */
+  @keyframes enrichmentArrive {
+    0% {
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+    }
+    50% {
+      opacity: 0.7;
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Single attention pulse (not infinite) */
+  @keyframes attentionPulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 hsl(var(--color-enrichment-complete) / 0);
+    }
+    50% {
+      box-shadow: 0 0 12px 4px hsl(var(--color-enrichment-complete) / 0.15);
+    }
+  }
+
+  /* Shimmer sweep (single pass) */
+  @keyframes shimmerOnce {
+    0% {
+      background-position: -100% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  /* Streaming indicator dot pulse */
+  @keyframes dotPulse {
+    0%, 60%, 100% {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+    30% {
+      opacity: 1;
+      transform: scale(1.2);
+    }
+  }
+
+  /* Cursor blink for streaming text */
+  @keyframes cursorBlink {
+    0%, 50% {
+      opacity: 1;
+    }
+    51%, 100% {
+      opacity: 0;
+    }
+  }
+
+  /* Fade in animation */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
     }
   }
 
