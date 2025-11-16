@@ -153,18 +153,19 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
 
             {/* Album & Release Year */}
             {!isNonTrackPlay && (play.album || releaseYear) && (
-              <div className="flex items-center gap-2 flex-wrap">
-                {play.album && (
-                  <p className="text-xs text-muted-foreground/80 leading-tight truncate flex-1 min-w-0" title={play.album}>
+              <p className="text-xs text-muted-foreground/80 leading-tight truncate" title={play.album || undefined}>
+                {play.album && releaseYear ? (
+                  <>
                     {play.album}
-                  </p>
-                )}
-                {releaseYear && (
-                  <span className="text-xs text-muted-foreground/70 shrink-0 font-mono">
-                    {releaseYear}
-                  </span>
-                )}
-              </div>
+                    <span className="text-muted-foreground/60"> • </span>
+                    <span className="text-muted-foreground/70 font-mono">{releaseYear}</span>
+                  </>
+                ) : play.album ? (
+                  play.album
+                ) : releaseYear ? (
+                  <span className="text-muted-foreground/70 font-mono">{releaseYear}</span>
+                ) : null}
+              </p>
             )}
 
             {/* Badges */}
