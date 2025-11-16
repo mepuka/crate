@@ -143,3 +143,21 @@ class BatchPlaysResponse(BaseModel):
     """Response for batch play fetch."""
 
     plays: List[PlayResult]
+
+
+class EnrichmentData(BaseModel):
+    """Single enrichment with metadata."""
+
+    id: int
+    play_id: int
+    enrichment_type: str
+    data: dict
+    created_at: str
+    updated_at: str
+
+
+class GetEnrichmentsResponse(BaseModel):
+    """Response for fetching enrichments."""
+
+    enrichments: List[EnrichmentData]
+    total: int

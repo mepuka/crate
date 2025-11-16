@@ -15,7 +15,8 @@ from .services.search_service import FAISSSearchService
 from .services.db_service import DatabaseService
 from .models import (
     SearchRequest, SearchResponse, HealthResponse, PlayResult, TimelineResponse,
-    EnrichmentRequest, EnrichmentResponse, BatchPlaysResponse
+    EnrichmentRequest, EnrichmentResponse, BatchPlaysResponse,
+    EnrichmentData, GetEnrichmentsResponse
 )
 from .config import settings
 import json
@@ -637,4 +638,90 @@ async def create_enrichments(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to store enrichments: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/enrichments",
+    response_model=GetEnrichmentsResponse,
+    summary="Get enrichments",
+    description="Fetch enrichments with optional filtering by play_id and enrichment_type",
+    responses={
+        200: {"description": "Enrichments retrieved successfully"},
+        500: {"description": "Failed to fetch enrichments"}
+    }
+)
+async def get_enrichments(
+    play_id: Optional[int] = None,
+    enrichment_type: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    db_svc: DatabaseService = Depends(get_db_service)
+) -> GetEnrichmentsResponse:
+    """
+    Fetch enrichments from database.
+
+    Query parameters:
+    - play_id: Filter by specific play ID
+    - enrichment_type: Filter by enrichment type name
+    - limit: Maximum number of results (default 100)
+    - offset: Pagination offset (default 0)
+    """
+    try:
+        cursor = db_svc.conn.cursor()
+
+        # Build query with optional filters
+        query = """
+            SELECT
+                e.id,
+                e.play_id,
+                et.name as enrichment_type,
+                e.data,
+                e.created_at,
+                e.updated_at
+            FROM enrichments e
+            JOIN enrichment_types et ON e.enrichment_type_id = et.id
+            WHERE 1=1
+        """
+        params = []
+
+        if play_id is not None:
+            query += " AND e.play_id = ?"
+            params.append(play_id)
+
+        if enrichment_type is not None:
+            query += " AND et.name = ?"
+            params.append(enrichment_type)
+
+        # Count total matching records
+        count_query = f"SELECT COUNT(*) FROM ({query}) as filtered"
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()[0]
+
+        # Add pagination
+        query += " ORDER BY e.updated_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        enrichments = []
+        for row in rows:
+            enrichments.append(EnrichmentData(
+                id=row[0],
+                play_id=row[1],
+                enrichment_type=row[2],
+                data=json.loads(row[3]),
+                created_at=row[4],
+                updated_at=row[5]
+            ))
+
+        logger.info(f"Retrieved {len(enrichments)} enrichments (total: {total})")
+        return GetEnrichmentsResponse(enrichments=enrichments, total=total)
+
+    except Exception as e:
+        logger.error(f"Failed to fetch enrichments: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch enrichments: {str(e)}"
         )
