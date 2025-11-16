@@ -2,6 +2,7 @@ import { Play } from '@/domain'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 import { formatPlayTime, formatRelativeTime } from '@/lib/date-utils'
+import { getNewMusicDataAttr, isNewMusic } from '@/lib/new-music-utils'
 import { forwardRef } from 'react'
 import { AlbumArt } from './AlbumArt'
 import { useAtom } from '@effect-atom/atom-react'
@@ -70,6 +71,10 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
     // Calculate age category for recency indicators
     const ageCategory = getAgeCategory(play.airdate)
 
+    // Detect if this play is new music
+    const newMusicIndicator = getNewMusicDataAttr(play)
+    const isNewRelease = isNewMusic(play)
+
     // Handle click to open play details panel
     const handleClick = () => {
       setSelectedId(Option.some(play.id))
@@ -95,6 +100,7 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           className
         )}
         data-age={ageCategory}
+        data-new-music={newMusicIndicator}
         role="article"
         aria-label={isNonTrackPlay
           ? `${play.comment} - Special program segment played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`
@@ -120,6 +126,7 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
             src={play.thumbnail_uri || play.image_uri}
             alt={`${play.album} by ${play.artist}`}
             size={imageSize}
+            isNewMusic={isNewRelease}
           />
 
           {/* Metadata */}
@@ -170,6 +177,10 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
             {/* Badges */}
             {!isNonTrackPlay && size !== 'compact' && (
               <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                {/* New Music Badge - appears first if applicable */}
+                {isNewRelease && (
+                  <span className="new-music-badge">New Music</span>
+                )}
                 {play.rotation_status && (
                   <span className="text-xs text-muted-foreground">{play.rotation_status}</span>
                 )}

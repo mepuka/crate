@@ -22,6 +22,9 @@ export const AlbumArtworkData = Schema.Struct({
   // Image dimensions (useful for rendering)
   width: Schema.optionalWith(Schema.Number, { default: () => 300 }),
   height: Schema.optionalWith(Schema.Number, { default: () => 300 }),
+  // New music detection fields
+  airdate: Schema.DateFromString,
+  comment: Schema.NullOr(Schema.String),
 });
 
 export type AlbumArtworkData = typeof AlbumArtworkData.Type;

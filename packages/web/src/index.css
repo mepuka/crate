@@ -130,6 +130,12 @@
     --play-recent: 27 96% 54%;           /* Last 30min - Primary orange */
     --play-fresh: 27 80% 48%;            /* Last 3hr - Muted orange */
     --play-older: 220 20% 40%;           /* Older - Cool gray */
+
+    /* New Music Indicators - "Fresh Release" Aesthetic */
+    /* Subtle teal glow to differentiate from orange recency indicators */
+    --new-music-primary: 180 85% 60%;    /* Teal accent - matches link color */
+    --new-music-glow: 180 85% 60%;       /* Teal glow for highlights */
+    --new-music-border: 180 85% 60%;     /* Teal border accent */
   }
 }
 
@@ -296,6 +302,119 @@
     transform: translateY(-2px) scale(0.97);
     box-shadow: var(--shadow-hover);
     z-index: 10;
+  }
+
+  /* ========================================
+     NEW MUSIC INDICATORS
+     Philosophy: Subtle teal glow to highlight fresh releases
+     Coordinated with comment detection system
+     ======================================== */
+
+  /* Play card with new music - subtle teal accent */
+  .play-card[data-new-music="new"] {
+    border-color: hsl(var(--new-music-border) / 0.25);
+    background: linear-gradient(
+      135deg,
+      hsl(var(--new-music-primary) / 0.06) 0%,
+      hsl(var(--new-music-primary) / 0.03) 100%
+    );
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      0 0 0 1px hsl(var(--new-music-border) / 0.15) inset,
+      0 0 16px hsl(var(--new-music-glow) / 0.08);
+  }
+
+  /* New music hover state - enhanced teal glow */
+  .play-card[data-new-music="new"]:hover {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--new-music-primary) / 0.12) 0%,
+      hsl(var(--new-music-primary) / 0.06) 100%
+    );
+    border-color: hsl(var(--new-music-border) / 0.35);
+    box-shadow:
+      0 4px 16px hsl(var(--new-music-glow) / 0.2),
+      0 0 24px hsl(var(--new-music-glow) / 0.15),
+      0 0 0 1px hsl(var(--new-music-border) / 0.25) inset;
+  }
+
+  /* New music with album art - enhanced depth */
+  .play-card.has-art[data-new-music="new"] {
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.4),
+      0 0 20px hsl(var(--new-music-glow) / 0.12),
+      0 0 0 1px hsl(var(--new-music-border) / 0.2) inset;
+  }
+
+  .play-card.has-art[data-new-music="new"]:hover {
+    box-shadow:
+      0 8px 24px hsl(var(--new-music-glow) / 0.25),
+      0 0 32px hsl(var(--new-music-glow) / 0.2),
+      0 0 0 1px hsl(var(--new-music-border) / 0.3) inset;
+  }
+
+  /* Album art highlight for new music */
+  .album-art[data-new-music="new"] {
+    position: relative;
+  }
+
+  .album-art[data-new-music="new"]::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--new-music-glow) / 0.4),
+      hsl(var(--new-music-glow) / 0.2)
+    );
+    z-index: -1;
+    opacity: 0.6;
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .album-art[data-new-music="new"]:hover::before {
+    opacity: 1;
+  }
+
+  /* New music badge (optional inline indicator) */
+  .new-music-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: var(--font-time);
+    font-weight: var(--weight-time);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--new-music-primary) / 0.2),
+      hsl(var(--new-music-primary) / 0.12)
+    );
+    color: hsl(var(--new-music-primary));
+    border: 1px solid hsl(var(--new-music-border) / 0.3);
+    transition: all 0.2s ease;
+  }
+
+  .new-music-badge:hover {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--new-music-primary) / 0.3),
+      hsl(var(--new-music-primary) / 0.18)
+    );
+    box-shadow: 0 0 12px hsl(var(--new-music-glow) / 0.3);
+  }
+
+  /* Disable new music effects during scroll for performance */
+  .scrolling .play-card[data-new-music="new"] {
+    box-shadow: none;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .scrolling .album-art[data-new-music="new"]::before {
+    opacity: 0;
   }
 
   /* ========================================
