@@ -37,23 +37,26 @@ class FAISSSearchService:
         index_path: Optional[Path] = None,
         metadata_path: Optional[Path] = None,
         nlist: int = 1024,
-        nprobe: int = 10
+        nprobe: int = 10,
+        skip_embeddings_load: bool = True  # FAISS index contains vectors, .npy not needed
     ):
         """
         Initialize the FAISS search service.
 
         Args:
-            embeddings_path: Path to reduced embeddings .npy file (256d)
+            embeddings_path: Path to reduced embeddings .npy file (256d) - OPTIONAL for search
             play_ids_path: Path to play_ids.npy (index-to-ID mapping)
             pca_path: Path to PCA transformer file
-            index_path: Path to FAISS index
+            index_path: Path to FAISS index (contains the vectors internally)
             metadata_path: Path to metadata.json
             nlist: Number of clusters for IVF index
             nprobe: Number of clusters to probe during search
+            skip_embeddings_load: Skip loading .npy file (index contains vectors)
         """
         self.embeddings_path = Path(embeddings_path)
         self.play_ids_path = Path(play_ids_path)
         self.metadata_path = metadata_path or self.embeddings_path.parent / "metadata.json"
+        self.skip_embeddings_load = skip_embeddings_load
 
         # Auto-detect PCA path
         if pca_path:
@@ -88,9 +91,14 @@ class FAISSSearchService:
         return metadata
 
     def load_embeddings(self):
-        """Load reduced embeddings from .npy file."""
+        """Load reduced embeddings from .npy file (optional - index contains vectors)."""
+        if self.skip_embeddings_load:
+            logger.info("Skipping embeddings.npy load (FAISS index contains vectors)")
+            return
+
         if not self.embeddings_path.exists():
-            raise FileNotFoundError(f"Embeddings not found: {self.embeddings_path}")
+            logger.warning(f"Embeddings file not found: {self.embeddings_path} (not required)")
+            return
 
         logger.info(f"Loading embeddings from {self.embeddings_path}")
         self.embeddings = np.load(self.embeddings_path).astype('float32')
@@ -105,8 +113,8 @@ class FAISSSearchService:
         self.play_ids = np.load(self.play_ids_path).astype('int64')
         logger.info(f"✓ Loaded play IDs: {self.play_ids.shape}")
 
-        # Verify alignment
-        if len(self.play_ids) != len(self.embeddings):
+        # Verify alignment (only if embeddings were loaded)
+        if self.embeddings is not None and len(self.play_ids) != len(self.embeddings):
             raise ValueError(
                 f"Mismatch: {len(self.play_ids)} play IDs vs {len(self.embeddings)} embeddings"
             )

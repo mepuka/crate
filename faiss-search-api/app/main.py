@@ -19,6 +19,7 @@ from .models import (
     EnrichmentData, GetEnrichmentsResponse
 )
 from .config import settings
+from .routes import embeddings
 import json
 import os
 from fastapi import Header
@@ -54,7 +55,8 @@ async def lifespan(app: FastAPI):
             index_path=settings.INDEX_PATH,
             metadata_path=settings.METADATA_PATH,
             nlist=settings.FAISS_NLIST,
-            nprobe=settings.FAISS_NPROBE
+            nprobe=settings.FAISS_NPROBE,
+            skip_embeddings_load=True  # FAISS index contains vectors, .npy not needed
         )
         search_service.initialize()
 
@@ -167,6 +169,9 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(CacheHeadersMiddleware)
 
+# Include routers
+app.include_router(embeddings.router)
+
 
 # Dependency injection
 def get_search_service() -> FAISSSearchService:
@@ -224,8 +229,8 @@ async def health_check(
         status="ok" if (search.index is not None and db_connected) else "degraded",
         index_loaded=search.index is not None,
         database_connected=db_connected,
-        total_vectors=len(search.embeddings) if search.embeddings is not None else 0,
-        embedding_dimension=search.embeddings.shape[1] if search.embeddings is not None else 0,
+        total_vectors=search.index.ntotal if search.index is not None else 0,
+        embedding_dimension=256,  # Always 256d after PCA reduction
         memory_usage_mb=memory_mb,
         uptime_seconds=time.time() - startup_time
     )
