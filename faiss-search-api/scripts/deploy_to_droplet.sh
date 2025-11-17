@@ -87,6 +87,8 @@ if [ "$DATA_ONLY" = false ]; then
         --exclude='data/*' \
         --exclude='.git' \
         --exclude='.coverage' \
+        --exclude='nginx*.conf' \
+        --exclude='certbot/' \
         $APP_DIR/ root@$DROPLET_IP:$DEPLOY_DIR/
 
     echo -e "${GREEN}✓ Application files synced${NC}"
