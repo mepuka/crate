@@ -36,6 +36,7 @@
 
 import { Atom } from "@effect-atom/atom-react";
 import { Schema, Option } from "effect";
+import type { TimelineParams } from "@crate/api";
 
 /**
  * URL param atoms for timeline navigation.
@@ -83,6 +84,21 @@ export const anchorIdAtom = Atom.searchParam("anchor_id", {
 });
 
 /**
+ * Helper to remove undefined and empty string values from params.
+ * The API expects params to be omitted entirely, not sent as empty strings.
+ */
+function cleanParams<T extends Record<string, any>>(params: T): Partial<T> {
+  const cleaned: Partial<T> = {};
+  for (const [key, value] of Object.entries(params)) {
+    // Only include defined, non-empty values
+    if (value !== undefined && value !== null && value !== '') {
+      cleaned[key as keyof T] = value;
+    }
+  }
+  return cleaned;
+}
+
+/**
  * Computed atom that derives API call params from URL params.
  *
  * Usage:
@@ -92,14 +108,19 @@ export const anchorIdAtom = Atom.searchParam("anchor_id", {
  * const data = yield* client.timeline.getTimeline({ urlParams: params })
  * ```
  */
-export const timelineParamsAtom = Atom.make((get) => ({
-  limit: Option.getOrElse(get(limitAtom), () => 50),
-  cursor: Option.getOrUndefined(get(cursorAtom)),
-  since: Option.getOrUndefined(get(sinceAtom)),
-  until: Option.getOrUndefined(get(untilAtom)),
-  percentage: Option.getOrUndefined(get(percentageAtom)),
-  anchor_id: Option.getOrUndefined(get(anchorIdAtom)),
-}));
+export const timelineParamsAtom = Atom.make((get) => {
+  const rawParams = {
+    limit: Option.getOrElse(get(limitAtom), () => 50),
+    cursor: Option.getOrUndefined(get(cursorAtom)),
+    since: Option.getOrUndefined(get(sinceAtom)),
+    until: Option.getOrUndefined(get(untilAtom)),
+    percentage: Option.getOrUndefined(get(percentageAtom)),
+    anchor_id: Option.getOrUndefined(get(anchorIdAtom)),
+  };
+
+  // Clean params: remove undefined and empty strings
+  return cleanParams(rawParams) as TimelineParams;
+});
 
 /**
  * Example: Fetch timeline using URL-synchronized params

@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Timeline } from '@/components'
+import { VirtualizedTimeline } from '@/components/VirtualizedTimeline'
 import { PlayDetailsPanel } from '@/components/PlayDetailsPanel'
 
 export const Route = createFileRoute('/')({
@@ -9,7 +9,7 @@ export const Route = createFileRoute('/')({
 function HomePage() {
   return (
     <div className="flex min-h-screen">
-      <Timeline />
+      <VirtualizedTimeline />
       <PlayDetailsPanel />
     </div>
   )

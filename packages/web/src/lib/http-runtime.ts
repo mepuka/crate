@@ -19,13 +19,15 @@ import { AlbumBarWorkerClient } from "@/workers/album-bar-worker-client";
 
 // Combined runtime with configured HTTP client and Reactivity support
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
+
 export class TimelineClient extends AtomHttpApi.Tag<TimelineClient>()(
   "TimelineClient",
   {
     api: KexpApi,
     // Provide a Layer that provides the HttpClient
     httpClient: FetchHttpClient.layer,
-    baseUrl: "/api",
+    baseUrl: API_BASE_URL,
   }
 ) {}
 
@@ -141,8 +143,8 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
       `TimelineKVS initialized with ${playCount} plays from cache`
     );
 
-    // Store a play by ID and maintain HashSet for fast lookups
-    // The chunk is always reconstructed from the HashSet, so we only update the HashSet here
+    // Store a play by ID and maintain both HashSet and cached Chunk
+    // Uses incremental chunk updates instead of full reconstruction for better performance
     const storePlay = (play: PlayResult) =>
       Effect.gen(function* () {
         // Store individual play (single source of truth)
@@ -161,15 +163,55 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
         // Fast O(1) lookup to check if play already exists
         const isNew = !HashSet.has(currentHashSet, play.id);
 
-        if (isNew) {
-          // Add to HashSet (this is the source of truth for which plays exist)
-          const newHashSet = HashSet.add(currentHashSet, play.id);
+        // Get current cached chunk (if exists)
+        const currentChunkOption = yield* playsChunkStore.get(
+          "timeline:plays_chunk"
+        );
 
-          // Persist HashSet - chunk will be reconstructed when needed
+        if (isNew) {
+          // New play - add to HashSet
+          const newHashSet = HashSet.add(currentHashSet, play.id);
           yield* playIdsHashSetStore.set("timeline:play_ids_set", newHashSet);
 
-          // Delete cached chunk to force reconstruction on next read
-          yield* kvs.remove("timeline:plays_chunk");
+          // Incremental update to cached chunk (prepend new play)
+          const currentChunk = Option.getOrElse(currentChunkOption, () =>
+            Chunk.empty<PlayResult>()
+          );
+
+          // Prepend new play and re-sort to maintain newest-first order
+          const updatedChunk = sortPlaysByAirdateDesc(
+            Chunk.prepend(currentChunk, play)
+          );
+
+          // Persist updated chunk
+          yield* playsChunkStore.set("timeline:plays_chunk", updatedChunk);
+
+          yield* Effect.logDebug(
+            `[TimelineKVS] New play added: ${play.id}, chunk now has ${Chunk.size(updatedChunk)} plays`
+          );
+        } else {
+          // Existing play - update in chunk if cached (metadata update, enrichment, etc.)
+          if (Option.isSome(currentChunkOption)) {
+            const currentChunk = currentChunkOption.value;
+
+            // Replace the play in the chunk
+            const updatedChunk = Chunk.map(
+              currentChunk,
+              (p) => (p.id === play.id ? play : p)
+            );
+
+            // Persist updated chunk
+            yield* playsChunkStore.set("timeline:plays_chunk", updatedChunk);
+
+            yield* Effect.logDebug(
+              `[TimelineKVS] Play updated: ${play.id}, chunk size: ${Chunk.size(updatedChunk)}`
+            );
+          } else {
+            // No cached chunk - will be reconstructed on next read
+            yield* Effect.logDebug(
+              `[TimelineKVS] Play updated: ${play.id}, no cached chunk (will reconstruct)`
+            );
+          }
         }
 
         // Always invalidate reactivity keys, even for metadata updates to existing plays
@@ -178,6 +220,10 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
           "timeline:plays_chunk",
           `timeline:play:${play.id}`,
         ]);
+
+        yield* Effect.logTrace(
+          `[TimelineKVS] Reactivity invalidated for play ${play.id}`
+        );
       });
 
     // Get a play by ID (for use in atoms - Effect Atom handles reactivity)
@@ -345,7 +391,8 @@ export const TimelineRuntime = Atom.runtime(
     BrowserKeyValueStore.layerLocalStorage,
     FetchHttpClient.layer,
     TimelineKVS.Default,
-    AlbumBarWorkerClient.Default
+    AlbumBarWorkerClient.Default,
+    TimelineClient.layer
   )
 );
 
