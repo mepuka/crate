@@ -1,6 +1,6 @@
 import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/router-devtools'
-// import { ScrollingAlbumBar } from '@/components/ScrollingAlbumBar' // Disabled for Phase 1
+import { ScrollingAlbumBar } from '@/components/ScrollingAlbumBar'
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -9,8 +9,7 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <>
-      {/* Disabled for Phase 1 stream layer refactoring */}
-      {/* <ScrollingAlbumBar /> */}
+      <ScrollingAlbumBar />
       <Outlet />
       <TanStackRouterDevtools />
     </>
