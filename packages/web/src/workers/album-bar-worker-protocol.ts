@@ -23,7 +23,7 @@ export const AlbumArtworkData = Schema.Struct({
   width: Schema.optionalWith(Schema.Number, { default: () => 300 }),
   height: Schema.optionalWith(Schema.Number, { default: () => 300 }),
   // New music detection fields
-  airdate: Schema.DateFromString,
+  airdate: Schema.DateFromString, // Encodes Date -> string for postMessage
   comment: Schema.NullOr(Schema.String),
 });
 

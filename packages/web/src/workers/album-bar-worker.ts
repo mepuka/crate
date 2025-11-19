@@ -137,10 +137,18 @@ const handleRequest = (request: WorkerRequest) =>
         const plays = yield* Effect.forEach(
           r.plays,
           (play) => Schema.decodeUnknown(PlayResult)(play).pipe(Effect.orDie),
-          { concurrency: "unbounded" }
+          { concurrency: 50 }
         );
 
-        return yield* service.processArtwork(plays, r.maxCount);
+        const artwork = yield* service.processArtwork(plays, r.maxCount);
+
+        // Encode results for postMessage serialization
+        // Pattern: Schema.encode converts Date -> string for DateFromString
+        return yield* Effect.forEach(
+          artwork,
+          (item) => Schema.encode(AlbumArtworkData)(item).pipe(Effect.orDie),
+          { concurrency: 50 }
+        );
       })
     ),
     Match.tag("PreloadImages", (r) =>
