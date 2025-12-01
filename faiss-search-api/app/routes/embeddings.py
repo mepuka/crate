@@ -87,6 +87,23 @@ class IntegrationResponse(BaseModel):
     message: str
 
 
+class AddEmbeddingsRequest(BaseModel):
+    """Request to add embeddings to in-memory FAISS index."""
+    play_ids: List[int] = Field(..., description="List of play IDs")
+    embeddings: List[List[float]] = Field(
+        ...,
+        description="List of embedding vectors (384d each, normalized)"
+    )
+
+
+class AddEmbeddingsResponse(BaseModel):
+    """Response from add embeddings endpoint."""
+    status: str
+    added: int
+    total_vectors: int
+    persisted: bool
+
+
 # Dependency injection
 def get_db_service() -> DatabaseService:
     """Get database service dependency."""
@@ -333,4 +350,80 @@ async def integrate_embeddings(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Integration failed: {str(e)}"
+        )
+
+
+@router.post(
+    "/add",
+    response_model=AddEmbeddingsResponse,
+    summary="Add embeddings to in-memory FAISS index",
+    description="""
+    Add new embeddings directly to the in-memory FAISS index.
+
+    This is designed for incremental updates from the embed_pending cron job.
+    Embeddings are added without index retraining (IVFFlat supports this).
+
+    Memory usage: Minimal - only the batch is held in memory.
+
+    Requires localhost access (cron job runs inside container).
+    """
+)
+async def add_embeddings(
+    request: AddEmbeddingsRequest
+) -> AddEmbeddingsResponse:
+    """
+    Add embeddings to the in-memory FAISS index.
+
+    Args:
+        request: AddEmbeddingsRequest with play_ids and embeddings
+
+    Returns:
+        AddEmbeddingsResponse with status and counts
+    """
+    from ..main import search_service
+
+    if search_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Search service not initialized"
+        )
+
+    try:
+        logger.info(f"Adding {len(request.play_ids)} embeddings to index")
+
+        # Validate counts match
+        if len(request.play_ids) != len(request.embeddings):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Mismatch: {len(request.play_ids)} play_ids vs {len(request.embeddings)} embeddings"
+            )
+
+        # Convert to numpy array
+        import numpy as np
+        embeddings = np.array(request.embeddings, dtype=np.float32)
+
+        # Add to index
+        result = search_service.add_embeddings(
+            play_ids=request.play_ids,
+            embeddings=embeddings
+        )
+
+        return AddEmbeddingsResponse(
+            status="success",
+            added=result["added"],
+            total_vectors=result["total_vectors"],
+            persisted=result["persisted"]
+        )
+
+    except ValueError as e:
+        logger.error(f"Validation error adding embeddings: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Failed to add embeddings: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to add embeddings: {str(e)}"
         )

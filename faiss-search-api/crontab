@@ -1,4 +1,8 @@
-# Sync KEXP plays every 2 minutes
-*/2 * * * * cd /app && /usr/local/bin/python3 /app/scripts/sync_plays.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/sync.log 2>&1
+# Sync KEXP plays every 30 seconds (two offset cron jobs)
+* * * * * cd /app && /usr/local/bin/python3 /app/scripts/sync_plays.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/sync.log 2>&1
+* * * * * sleep 30 && cd /app && /usr/local/bin/python3 /app/scripts/sync_plays.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/sync.log 2>&1
+
+# Generate embeddings for pending plays hourly (at minute 5)
+5 * * * * cd /app && /usr/local/bin/python3 /app/scripts/embed_pending.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/embed.log 2>&1
 
 # Keep a newline at end of file for cron
