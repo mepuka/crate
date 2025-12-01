@@ -1,13 +1,11 @@
 {
   "mcpServers": {
     "effect-docs": {
-      "type": "stdio",
       "command": "npx",
       "args": [
-        "[-y,",
-        "effect-mcp]"
-      ],
-      "env": {}
+        "-y",
+        "effect-mcp@latest"
+      ]
     }
   }
 }
