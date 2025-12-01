@@ -8,6 +8,7 @@ pydantic-settings==2.6.0
 faiss-cpu==1.12.0
 sentence-transformers==3.3.0
 numpy==2.3.4
+rank_bm25==0.2.2  # BM25 for hybrid search
 
 # Database
 # (SQLite is built-in)

@@ -26,8 +26,8 @@ VOLUME ["/app/data"]
 # Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+# Health check (5 min start period for FAISS + BM25 loading)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
   CMD curl -f http://localhost:8000/api/health || exit 1
 
 # Run application with cron

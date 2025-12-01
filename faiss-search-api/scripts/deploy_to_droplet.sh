@@ -52,12 +52,12 @@ if [ "$APP_ONLY" = false ]; then
     echo -e "\n${BLUE}Syncing data files (this may take a while)...${NC}"
 
     # Use rsync for efficient transfer (only changed files)
+    # BGE-small 384d embeddings (no PCA needed)
     rsync -avz --progress \
-        --include='embeddings_256d.npy' \
-        --include='embeddings_256d.index' \
-        --include='pca_transformer_256d.joblib' \
+        --include='embeddings_384d.npy' \
+        --include='embeddings_384d.index' \
         --include='metadata.json' \
-        --include='play_ids_alignment.npy' \
+        --include='play_ids.npy' \
         --exclude='*' \
         $DATA_DIR/ root@$DROPLET_IP:$DEPLOY_DIR/data/
 
@@ -66,9 +66,6 @@ if [ "$APP_ONLY" = false ]; then
     rsync -avz --progress \
         $APP_DIR/data/music_kb.sqlite \
         root@$DROPLET_IP:$DEPLOY_DIR/data/
-
-    # Rename play_ids on remote
-    ssh root@$DROPLET_IP "cd $DEPLOY_DIR/data && [ -f play_ids_alignment.npy ] && mv play_ids_alignment.npy play_ids.npy || true"
 
     echo -e "${GREEN}✓ Data files synced${NC}"
 fi

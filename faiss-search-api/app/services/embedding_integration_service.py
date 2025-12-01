@@ -39,21 +39,24 @@ class EmbeddingIntegrationService:
         embeddings_path: Path,
         play_ids_path: Path,
         index_path: Path,
-        db_path: Path
+        db_path: Path,
+        embedding_dim: int = 384
     ):
         """
         Initialize embedding integration service.
 
         Args:
-            embeddings_path: Path to embeddings_256d.npy
+            embeddings_path: Path to embeddings .npy file
             play_ids_path: Path to play_ids.npy
             index_path: Path to FAISS index file
             db_path: Path to SQLite database
+            embedding_dim: Embedding dimension (384 for BGE-small, 256 for legacy)
         """
         self.embeddings_path = Path(embeddings_path)
         self.play_ids_path = Path(play_ids_path)
         self.index_path = Path(index_path)
         self.db_path = Path(db_path)
+        self.embedding_dim = embedding_dim
 
         # Cached embedded IDs (loaded lazily)
         self._embedded_ids: Optional[Set[int]] = None
@@ -285,14 +288,14 @@ class EmbeddingIntegrationService:
             new_embeddings = np.frombuffer(embeddings_bytes, dtype=np.float32)
 
             # Validate shape
-            expected_size = len(new_ids) * 256
+            expected_size = len(new_ids) * self.embedding_dim
             if len(new_embeddings) != expected_size:
                 raise ValueError(
                     f"Size mismatch: expected {expected_size} values "
-                    f"({len(new_ids)} plays × 256d), got {len(new_embeddings)}"
+                    f"({len(new_ids)} plays × {self.embedding_dim}d), got {len(new_embeddings)}"
                 )
 
-            new_embeddings = new_embeddings.reshape(len(new_ids), 256)
+            new_embeddings = new_embeddings.reshape(len(new_ids), self.embedding_dim)
             logger.info(f"✓ Loaded new embeddings: {new_embeddings.shape}")
 
             # Step 3: Load existing embeddings using mmap (no memory copy)
@@ -304,7 +307,7 @@ class EmbeddingIntegrationService:
                 logger.info(f"✓ Existing embeddings: {existing_embeddings.shape}")
             else:
                 logger.warning("No existing embeddings found, creating new index")
-                existing_embeddings = np.array([], dtype=np.float32).reshape(0, 256)
+                existing_embeddings = np.array([], dtype=np.float32).reshape(0, self.embedding_dim)
                 existing_ids = np.array([], dtype=np.int64)
                 total_before = 0
 
@@ -351,7 +354,7 @@ class EmbeddingIntegrationService:
                 tmp_embeddings_path,
                 mode='w+',
                 dtype=np.float32,
-                shape=(total_after, 256)
+                shape=(total_after, self.embedding_dim)
             )
             combined_ids = np.lib.format.open_memmap(
                 tmp_ids_path,

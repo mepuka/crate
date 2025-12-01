@@ -2,9 +2,23 @@
 
 Production-ready FastAPI service for semantic search over 2.2M KEXP music plays using FAISS embeddings.
 
+**Live API:** https://cratemusic.duckdns.org
+
+## Current Production Status
+
+| Component | Value |
+|-----------|-------|
+| Model | BAAI/bge-small-en-v1.5 |
+| Embedding Dimension | 384 (native) |
+| Total Vectors | 2,198,906 |
+| Memory Usage | ~3.2GB |
+
+See [SEARCH_SERVICE.md](SEARCH_SERVICE.md) for comprehensive production documentation.
+
 ## Features
 
-- **Fast Semantic Search:** <20ms query latency using FAISS IVF index
+- **Fast Semantic Search:** ~800ms query latency using FAISS IVFFlat index
+- **BGE-small Embeddings:** 384d native vectors, no PCA required
 - **Full Type Safety:** Pydantic V2 models with validation
 - **Auto-Generated Docs:** OpenAPI/Swagger at `/docs`
 - **Production-Ready:** Docker deployment, health checks, structured logging
@@ -54,22 +68,31 @@ docker-compose logs -f
 
 Before running the service, prepare these data files in the `data/` directory:
 
-### 1. Create play_ids.npy Mapping
+### Required Files (384d BGE-small)
 
 ```bash
-python scripts/create_play_ids_mapping.py \
-  --csv ../analysis/enriched_plays_full.csv \
-  --output data/play_ids.npy
+# From your data directory
+cp ../data/embeddings_384d.index data/   # 3.2 GB - FAISS index
+cp ../data/play_ids.npy data/            # 17 MB - ID mapping
+cp ../data/metadata.json data/           # Model configuration
+cp ../data/music_kb.sqlite data/         # SQLite database
 ```
 
-### 2. Copy Existing Files
+**Note:** The `embeddings_384d.npy` file is NOT needed at runtime - the FAISS index contains the vectors.
 
-```bash
-# From your analysis directory
-cp ../data/embeddings_256d.npy data/
-cp ../data/embeddings_256d.index data/
-cp ../data/pca_transformer_256d.joblib data/
-cp ../data/metadata.json data/
+### metadata.json Format
+
+```json
+{
+  "model_name": "BAAI/bge-small-en-v1.5",
+  "embedding_dim": 384,
+  "num_vectors": 2198906,
+  "index_type": "IVFFlat",
+  "nlist": 1024,
+  "metric": "inner_product",
+  "normalized": true,
+  "pca_applied": false
+}
 ```
 
 ### 3. Prepare SQLite Database
@@ -135,15 +158,18 @@ Get single play by ID.
 
 ## Configuration
 
-Environment variables (see `.env.example`):
+Environment variables (set in docker-compose.yml):
 
-- `DATABASE_PATH`: Path to SQLite database
-- `EMBEDDINGS_PATH`: Path to embeddings .npy file
-- `PLAY_IDS_PATH`: Path to play_ids .npy mapping
-- `PCA_PATH`: Path to PCA transformer
-- `INDEX_PATH`: Path to FAISS index
-- `CORS_ORIGINS`: Comma-separated allowed origins
-- `LOG_LEVEL`: Logging level (INFO, DEBUG, etc.)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_PATH` | data/music_kb.sqlite | SQLite database |
+| `INDEX_PATH` | data/embeddings_384d.index | FAISS index |
+| `PLAY_IDS_PATH` | data/play_ids.npy | ID mapping |
+| `METADATA_PATH` | data/metadata.json | Index config |
+| `MODEL_NAME` | BAAI/bge-small-en-v1.5 | Embedding model |
+| `EMBEDDING_DIM` | 384 | Embedding dimension |
+| `CORS_ORIGINS` | * | Allowed origins |
+| `LOG_LEVEL` | INFO | Logging level |
 
 ## Testing
 
@@ -248,10 +274,12 @@ Query → FastAPI → SearchService (FAISS) → indices
 
 ## Performance
 
-- **Query Latency:** <20ms (verified in production)
-- **Memory Usage:** ~3GB (embeddings + index + model)
-- **Throughput:** 50+ queries/sec
-- **Startup Time:** 30-60 seconds
+- **Query Latency:** ~800ms first query, ~100ms subsequent (warm cache)
+- **Memory Usage:** ~3.2GB (FAISS index + model)
+- **Startup Time:** ~45 seconds (FAISS index loading)
+- **Container Limit:** 3.5GB (4GB droplet)
+
+**Note:** BM25/Hybrid search is disabled due to memory constraints on 4GB droplet.
 
 ## Troubleshooting
 

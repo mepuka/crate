@@ -470,6 +470,14 @@ class TrackPlay(BasePlay):
         examples=["https://kexp-cdn.imgix.net/albums/12345-thumb.jpg"]
     )
 
+    @field_validator("image_uri", "thumbnail_uri", mode="before")
+    @classmethod
+    def validate_image_uri(cls, v: Any) -> str:
+        """Convert None to empty string for image URIs."""
+        if v is None:
+            return ""
+        return v
+
     # Track information
     song: str = Field(
         ...,

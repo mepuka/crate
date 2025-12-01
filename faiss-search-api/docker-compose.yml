@@ -12,11 +12,12 @@ services:
       - ./scripts:/app/scripts:ro
     environment:
       - DATABASE_PATH=/app/data/music_kb.sqlite
-      - EMBEDDINGS_PATH=/app/data/embeddings_256d.npy
+      - EMBEDDINGS_PATH=/app/data/embeddings_384d.npy
       - PLAY_IDS_PATH=/app/data/play_ids.npy
-      - PCA_PATH=/app/data/pca_transformer_256d.joblib
-      - INDEX_PATH=/app/data/embeddings_256d.index
+      - INDEX_PATH=/app/data/embeddings_384d.index
       - METADATA_PATH=/app/data/metadata.json
+      - MODEL_NAME=BAAI/bge-small-en-v1.5
+      - EMBEDDING_DIM=384
       - CORS_ORIGINS=*
       - LOG_LEVEL=INFO
     restart: unless-stopped

@@ -641,6 +641,126 @@ class DatabaseService:
             'anchor_position': anchor_position
         }
 
+    def get_all_plays_for_indexing(self) -> List[Dict[str, Any]]:
+        """
+        Fetch all plays with fields needed for BM25 indexing.
+
+        Returns lightweight dictionaries with just the fields needed
+        for building search documents.
+
+        Returns:
+            List of play dictionaries with indexing fields
+        """
+        cursor = self.conn.cursor()
+        query = """
+            SELECT id, artist, song, album, comment, labels, rotation_status
+            FROM fact_plays
+            ORDER BY id
+        """
+        cursor.execute(query)
+
+        results = []
+        for row in cursor.fetchall():
+            data = dict(row)
+            # Parse labels JSON
+            if data.get('labels'):
+                try:
+                    labels = json.loads(data['labels'])
+                    data['labels'] = ' '.join(labels) if isinstance(labels, list) else str(labels)
+                except json.JSONDecodeError:
+                    data['labels'] = ''
+            else:
+                data['labels'] = ''
+            results.append(data)
+
+        logger.info(f"Fetched {len(results):,} plays for indexing")
+        return results
+
+    def ensure_enrichment_type(self, type_name: str) -> int:
+        """
+        Ensure an enrichment type exists, creating it if necessary.
+
+        Args:
+            type_name: Name of the enrichment type
+
+        Returns:
+            The enrichment type ID
+        """
+        cursor = self.conn.cursor()
+
+        # Try to get existing type
+        cursor.execute(
+            "SELECT id FROM enrichment_types WHERE name = ?",
+            (type_name,)
+        )
+        row = cursor.fetchone()
+
+        if row:
+            return row[0]
+
+        # Create new type
+        cursor.execute(
+            "INSERT INTO enrichment_types (name) VALUES (?)",
+            (type_name,)
+        )
+        self.conn.commit()
+        type_id = cursor.lastrowid
+        logger.info(f"Created new enrichment type: {type_name} (id={type_id})")
+        return type_id
+
+    def bulk_insert_enrichments(
+        self,
+        enrichment_type_id: int,
+        enrichments: List[Dict[str, Any]]
+    ) -> int:
+        """
+        Bulk insert enrichments using executemany for performance.
+
+        Args:
+            enrichment_type_id: ID of the enrichment type
+            enrichments: List of dicts with 'play_id' and 'data' keys
+
+        Returns:
+            Number of enrichments inserted/updated
+        """
+        cursor = self.conn.cursor()
+
+        # Prepare data for executemany
+        insert_data = [
+            (
+                item['play_id'],
+                enrichment_type_id,
+                json.dumps(item['data']) if isinstance(item['data'], dict) else item['data']
+            )
+            for item in enrichments
+        ]
+
+        # Use INSERT OR REPLACE for upsert behavior
+        cursor.executemany("""
+            INSERT INTO enrichments (play_id, enrichment_type_id, data, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(play_id, enrichment_type_id)
+            DO UPDATE SET
+                data = excluded.data,
+                updated_at = CURRENT_TIMESTAMP
+        """, insert_data)
+
+        self.conn.commit()
+        count = len(insert_data)
+        logger.info(f"Bulk inserted {count:,} enrichments")
+        return count
+
+    def get_enrichment_types(self) -> List[Dict[str, Any]]:
+        """
+        Get all enrichment types.
+
+        Returns:
+            List of enrichment type dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id, name FROM enrichment_types ORDER BY name")
+        return [{'id': row[0], 'name': row[1]} for row in cursor.fetchall()]
+
     def close(self):
         """Close database connection."""
         if self._conn:

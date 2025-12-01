@@ -81,6 +81,100 @@ class SearchResponse(BaseModel):
     query: str
 
 
+class HybridSearchRequest(BaseModel):
+    """Hybrid search request model."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Search query text",
+        examples=["Funkadelic", "upbeat electronic dance"]
+    )
+    limit: int = Field(
+        default=50,
+        ge=1,
+        le=200,
+        description="Maximum number of results to return"
+    )
+    bm25_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Weight for BM25 keyword search (0-1)"
+    )
+    faiss_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Weight for FAISS semantic search (0-1)"
+    )
+    use_expansion: bool = Field(
+        default=True,
+        description="Apply query expansion (artist aliases, genre synonyms)"
+    )
+
+    @field_validator('query')
+    @classmethod
+    def query_not_empty(cls, v: str) -> str:
+        """Validate query is not empty or whitespace."""
+        if not v.strip():
+            raise ValueError('Query cannot be empty or whitespace')
+        return v.strip()
+
+
+class HybridPlayResult(BaseModel):
+    """Hybrid search result with RRF scores and ranking info."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    # Core fields
+    id: int
+    artist: str
+    song: str
+    rrf_score: float = Field(
+        description="Reciprocal Rank Fusion score (higher = better)"
+    )
+
+    # Ranking info
+    bm25_rank: Optional[int] = Field(None, description="Rank in BM25 results (None if not found)")
+    faiss_rank: Optional[int] = Field(None, description="Rank in FAISS results (None if not found)")
+    faiss_score: Optional[float] = Field(None, description="FAISS similarity score")
+
+    # Optional metadata
+    album: Optional[str] = None
+    airdate: Optional[str] = None
+    release_date: Optional[str] = None
+    labels: List[str] = Field(default_factory=list)
+    rotation_status: Optional[str] = None
+    is_local: bool = False
+    is_live: bool = False
+    is_request: bool = False
+    comment: Optional[str] = None
+    show: int = 0
+
+    # Album artwork URLs
+    image_uri: Optional[str] = None
+    thumbnail_uri: Optional[str] = None
+
+    # MusicBrainz IDs
+    artist_mbid: Optional[List[str]] = None
+    recording_mbid: Optional[str] = None
+    release_mbid: Optional[str] = None
+    release_group_mbid: Optional[str] = None
+
+
+class HybridSearchResponse(BaseModel):
+    """Hybrid search response with BM25 + FAISS results."""
+
+    results: List[HybridPlayResult]
+    total: int
+    query_time_ms: float
+    query: str
+    bm25_weight: float
+    faiss_weight: float
+
+
 class HealthResponse(BaseModel):
     """Health check response."""
 

@@ -16,11 +16,19 @@ class Settings(BaseSettings):
     # Paths
     DATA_DIR: Path = Path("data")
     DATABASE_PATH: Path = Path("data/music_kb.sqlite")
-    EMBEDDINGS_PATH: Path = Path("data/embeddings_256d.npy")
+
+    # Embeddings - BGE-small uses native 384d (no PCA reduction needed)
+    EMBEDDINGS_PATH: Path = Path("data/embeddings_384d.npy")
     PLAY_IDS_PATH: Path = Path("data/play_ids.npy")
-    PCA_PATH: Path = Path("data/pca_transformer_256d.joblib")
-    INDEX_PATH: Path = Path("data/embeddings_256d.index")
+    INDEX_PATH: Path = Path("data/embeddings_384d.index")
     METADATA_PATH: Path = Path("data/metadata.json")
+
+    # Legacy PCA path (only used if metadata.json specifies pca_applied: true)
+    PCA_PATH: Path = Path("data/pca_transformer_256d.joblib")
+
+    # Model config - BGE-small is 3x smaller than mpnet, better retrieval scores
+    MODEL_NAME: str = "BAAI/bge-small-en-v1.5"
+    EMBEDDING_DIM: int = 384
 
     # Server
     HOST: str = "0.0.0.0"

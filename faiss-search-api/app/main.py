@@ -13,10 +13,12 @@ import anyio
 
 from .services.search_service import FAISSSearchService
 from .services.db_service import DatabaseService
+from .services.hybrid_search_service import HybridSearchService
 from .models import (
     SearchRequest, SearchResponse, HealthResponse, PlayResult, TimelineResponse,
     EnrichmentRequest, EnrichmentResponse, BatchPlaysResponse,
-    EnrichmentData, GetEnrichmentsResponse
+    EnrichmentData, GetEnrichmentsResponse,
+    HybridSearchRequest, HybridSearchResponse, HybridPlayResult
 )
 from .config import settings
 from .routes import embeddings
@@ -33,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 # Global service instances
 search_service: Optional[FAISSSearchService] = None
+hybrid_search_service: Optional[HybridSearchService] = None
 db_service: Optional[DatabaseService] = None
 startup_time: float = 0
 
@@ -40,28 +43,44 @@ startup_time: float = 0
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown."""
-    global search_service, db_service, startup_time
+    global search_service, hybrid_search_service, db_service, startup_time
 
     # Startup
     logger.info("Starting FAISS Search API...")
     startup_time = time.time()
 
     try:
-        # Initialize search service
-        search_service = FAISSSearchService(
-            embeddings_path=settings.EMBEDDINGS_PATH,
-            play_ids_path=settings.PLAY_IDS_PATH,
-            pca_path=settings.PCA_PATH,
-            index_path=settings.INDEX_PATH,
-            metadata_path=settings.METADATA_PATH,
-            nlist=settings.FAISS_NLIST,
-            nprobe=settings.FAISS_NPROBE,
-            skip_embeddings_load=True  # FAISS index contains vectors, .npy not needed
-        )
-        search_service.initialize()
-
-        # Initialize database service
+        # Initialize database service (required for timeline)
         db_service = DatabaseService(settings.DATABASE_PATH)
+        logger.info("Database service initialized")
+
+        # Initialize search service (requires embedding files)
+        # For BGE-small: play_ids.npy, embeddings_384d.index, metadata.json
+        # For legacy mpnet: also needs pca_transformer_256d.joblib
+        try:
+            search_service = FAISSSearchService(
+                embeddings_path=settings.EMBEDDINGS_PATH,
+                play_ids_path=settings.PLAY_IDS_PATH,
+                pca_path=settings.PCA_PATH,
+                index_path=settings.INDEX_PATH,
+                metadata_path=settings.METADATA_PATH,
+                nlist=settings.FAISS_NLIST,
+                nprobe=settings.FAISS_NPROBE,
+                skip_embeddings_load=True  # FAISS index contains vectors, .npy not needed
+            )
+            search_service.initialize()
+            logger.info("Search service initialized")
+
+            # Skip hybrid search - disabled to reduce memory usage
+            # BM25 indexing on 2.2M documents exceeds 4GB droplet RAM
+            logger.info("Hybrid search disabled (memory constraints)")
+            hybrid_search_service = None
+
+        except FileNotFoundError as e:
+            logger.warning(f"Search service disabled - missing embedding files: {e}")
+            logger.warning("To enable search, upload: play_ids.npy, embeddings_384d.index, metadata.json")
+            search_service = None
+            hybrid_search_service = None
 
         logger.info("Services initialized successfully")
 
@@ -84,7 +103,7 @@ class CacheHeadersMiddleware(BaseHTTPMiddleware):
     Cache strategy:
     - Health endpoint: 30 seconds (dynamic health status)
     - Search endpoint: 1 week (deterministic results, static data)
-    - Timeline endpoint: 1 week (historical data is static)
+    - Timeline endpoint: 30 seconds (live updates need fresh data)
     - Single play endpoint: 1 week (play data doesn't change)
     - OpenAPI/Docs: 1 hour (metadata endpoints)
     """
@@ -93,7 +112,7 @@ class CacheHeadersMiddleware(BaseHTTPMiddleware):
     CACHE_DURATIONS = {
         "/api/health": 30,                    # 30 seconds - health should be fresh
         "/api/search": 604800,                # 1 week (7 days)
-        "/api/plays/timeline": 604800,        # 1 week
+        "/api/plays/timeline": 30,            # 30 seconds - live updates need fresh data
         "/api/plays/": 604800,                # 1 week (for /api/plays/{id} pattern)
         "/openapi.json": 3600,                # 1 hour
         "/docs": 3600,                        # 1 hour
@@ -175,12 +194,17 @@ app.include_router(embeddings.router)
 
 # Dependency injection
 def get_search_service() -> FAISSSearchService:
-    """Get search service dependency."""
+    """Get search service dependency (required for search endpoints)."""
     if search_service is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Search service not initialized"
+            detail="Search service not available - embedding files missing"
         )
+    return search_service
+
+
+def get_search_service_optional() -> Optional[FAISSSearchService]:
+    """Get search service (optional - returns None if not available)."""
     return search_service
 
 
@@ -194,6 +218,16 @@ def get_db_service() -> DatabaseService:
     return db_service
 
 
+def get_hybrid_search_service() -> HybridSearchService:
+    """Get hybrid search service dependency (required for hybrid search)."""
+    if hybrid_search_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Hybrid search service not available - BM25 index not built"
+        )
+    return hybrid_search_service
+
+
 # Endpoints
 @app.get(
     "/api/health",
@@ -203,7 +237,7 @@ def get_db_service() -> DatabaseService:
     description="Check service health and readiness"
 )
 async def health_check(
-    search: FAISSSearchService = Depends(get_search_service),
+    search: Optional[FAISSSearchService] = Depends(get_search_service_optional),
     db: DatabaseService = Depends(get_db_service)
 ) -> HealthResponse:
     """Health check endpoint."""
@@ -225,12 +259,26 @@ async def health_check(
         logger.warning(f"Database health check failed: {e}")
         db_connected = False
 
+    # Determine search status
+    search_available = search is not None and search.index is not None
+    index_loaded = search_available
+    total_vectors = search.index.ntotal if search_available else 0
+
+    # Status: ok if db works, degraded if search missing
+    if db_connected:
+        api_status = "ok" if search_available else "degraded"
+    else:
+        api_status = "error"
+
+    # Get embedding dimension from search service
+    embedding_dim = search.embedding_dim if search_available else settings.EMBEDDING_DIM
+
     return HealthResponse(
-        status="ok" if (search.index is not None and db_connected) else "degraded",
-        index_loaded=search.index is not None,
+        status=api_status,
+        index_loaded=index_loaded,
         database_connected=db_connected,
-        total_vectors=search.index.ntotal if search.index is not None else 0,
-        embedding_dimension=256,  # Always 256d after PCA reduction
+        total_vectors=total_vectors,
+        embedding_dimension=embedding_dim,
         memory_usage_mb=memory_mb,
         uptime_seconds=time.time() - startup_time
     )
@@ -291,6 +339,107 @@ async def search(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Search failed: {str(e)}"
+        )
+
+
+@app.post(
+    "/api/search/hybrid",
+    response_model=HybridSearchResponse,
+    tags=["search"],
+    summary="Hybrid search (BM25 + FAISS)",
+    description="""
+    Hybrid search combining BM25 keyword search with FAISS semantic search.
+
+    Uses Reciprocal Rank Fusion (RRF) to merge results from both methods.
+
+    **When to use:**
+    - Exact matches (artist names, track titles): BM25 excels
+    - Semantic queries (mood, style, related concepts): FAISS excels
+    - Combined: Best of both worlds
+
+    **Weights:**
+    - bm25_weight: Influence of keyword matches (default 0.5)
+    - faiss_weight: Influence of semantic similarity (default 0.5)
+    - Use bm25_weight=1.0, faiss_weight=0.0 for pure keyword search
+    """,
+    responses={
+        200: {"description": "Successful search"},
+        400: {"description": "Invalid request"},
+        503: {"description": "Hybrid search not available"},
+        500: {"description": "Search failed"}
+    }
+)
+async def hybrid_search(
+    request: HybridSearchRequest,
+    hybrid_svc: HybridSearchService = Depends(get_hybrid_search_service),
+    db_svc: DatabaseService = Depends(get_db_service)
+) -> HybridSearchResponse:
+    """Hybrid search endpoint combining BM25 and FAISS."""
+    try:
+        start_time = time.time()
+
+        # Perform hybrid search
+        results = hybrid_svc.search(
+            query=request.query,
+            k=request.limit,
+            bm25_weight=request.bm25_weight,
+            faiss_weight=request.faiss_weight,
+            use_expansion=request.use_expansion
+        )
+
+        # Get play IDs for database lookup
+        play_ids = [r.play_id for r in results]
+
+        # Fetch full play data from database
+        plays_dict = db_svc.get_plays_by_ids(play_ids)
+
+        # Merge hybrid results with play data
+        hybrid_results = []
+        for result in results:
+            play_data = plays_dict.get(result.play_id)
+            if play_data:
+                hybrid_results.append(HybridPlayResult(
+                    id=result.play_id,
+                    artist=play_data.get('artist', ''),
+                    song=play_data.get('song', ''),
+                    rrf_score=result.rrf_score,
+                    bm25_rank=result.bm25_rank,
+                    faiss_rank=result.faiss_rank,
+                    faiss_score=result.faiss_score,
+                    album=play_data.get('album'),
+                    airdate=play_data.get('airdate'),
+                    release_date=play_data.get('release_date'),
+                    labels=play_data.get('labels', []),
+                    rotation_status=play_data.get('rotation_status'),
+                    is_local=play_data.get('is_local', False),
+                    is_live=play_data.get('is_live', False),
+                    is_request=play_data.get('is_request', False),
+                    comment=play_data.get('comment'),
+                    show=play_data.get('show', 0),
+                    image_uri=play_data.get('image_uri'),
+                    thumbnail_uri=play_data.get('thumbnail_uri'),
+                    artist_mbid=play_data.get('artist_mbid'),
+                    recording_mbid=play_data.get('recording_mbid'),
+                    release_mbid=play_data.get('release_mbid'),
+                    release_group_mbid=play_data.get('release_group_mbid')
+                ))
+
+        query_time = (time.time() - start_time) * 1000
+
+        return HybridSearchResponse(
+            results=hybrid_results,
+            total=len(hybrid_results),
+            query_time_ms=query_time,
+            query=request.query,
+            bm25_weight=request.bm25_weight,
+            faiss_weight=request.faiss_weight
+        )
+
+    except Exception as e:
+        logger.error(f"Hybrid search failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Hybrid search failed: {str(e)}"
         )
 
 
@@ -570,12 +719,32 @@ async def get_play(
     "/api/enrichments",
     response_model=EnrichmentResponse,
     tags=["enrichments"],
-    summary="Store enrichments from agent",
-    description="Store play enrichments sent from the Cloud Run agent",
+    summary="Bulk store enrichments",
+    description="""
+    Store play enrichments in bulk.
+
+    **Optimized for large uploads:** Uses bulk insert for high throughput (~10k items/sec).
+
+    **Auto-creates enrichment types:** If the type doesn't exist, it will be created.
+
+    **Authentication:** Requires X-API-Key header if FAISS_API_KEY is set.
+
+    **Usage from Colab:**
+    ```python
+    import httpx
+    with open('chunk_0000.json', 'r') as f:
+        data = json.load(f)
+    response = httpx.post(
+        'https://api.example.com/api/enrichments',
+        json=data,
+        headers={'X-API-Key': 'your-key'},
+        timeout=300
+    )
+    ```
+    """,
     responses={
         200: {"description": "Enrichments stored successfully"},
         401: {"description": "Invalid or missing API key"},
-        400: {"description": "Invalid enrichment type"},
         500: {"description": "Failed to store enrichments"}
     }
 )
@@ -585,9 +754,14 @@ async def create_enrichments(
     x_api_key: Optional[str] = Header(None)
 ) -> EnrichmentResponse:
     """
-    Store enrichments from agent.
+    Bulk store enrichments.
 
-    Requires X-API-Key header for authentication.
+    Optimized for large uploads with:
+    - Auto-creation of enrichment types
+    - Bulk insert using executemany
+    - Upsert behavior (update if exists)
+
+    Requires X-API-Key header for authentication if FAISS_API_KEY env var is set.
     """
     # Validate API key
     expected_key = os.getenv("FAISS_API_KEY")
@@ -599,42 +773,19 @@ async def create_enrichments(
             )
 
     try:
-        cursor = db_svc.conn.cursor()
+        # Auto-create enrichment type if it doesn't exist
+        enrichment_type_id = db_svc.ensure_enrichment_type(request.enrichment_type)
 
-        # Get enrichment type ID
-        cursor.execute(
-            "SELECT id FROM enrichment_types WHERE name = ?",
-            (request.enrichment_type,)
-        )
-        type_row = cursor.fetchone()
+        # Prepare enrichments for bulk insert
+        enrichments = [
+            {'play_id': item.play_id, 'data': item.data}
+            for item in request.enrichments
+        ]
 
-        if not type_row:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown enrichment type: {request.enrichment_type}"
-            )
+        # Bulk insert using optimized method
+        count = db_svc.bulk_insert_enrichments(enrichment_type_id, enrichments)
 
-        enrichment_type_id = type_row[0]
-
-        # Insert or update enrichments
-        count = 0
-        for item in request.enrichments:
-            data_json = json.dumps(item.data)
-
-            cursor.execute("""
-                INSERT INTO enrichments (play_id, enrichment_type_id, data, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(play_id, enrichment_type_id)
-                DO UPDATE SET
-                    data = excluded.data,
-                    updated_at = CURRENT_TIMESTAMP
-            """, (item.play_id, enrichment_type_id, data_json))
-
-            count += 1
-
-        db_svc.conn.commit()
-
-        logger.info(f"Stored {count} enrichments of type '{request.enrichment_type}'")
+        logger.info(f"Bulk stored {count:,} enrichments of type '{request.enrichment_type}'")
         return EnrichmentResponse(status="success", count=count)
 
     except Exception as e:
