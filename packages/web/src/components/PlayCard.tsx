@@ -3,7 +3,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 import { formatPlayTime, formatRelativeTime } from '@/lib/date-utils'
 import { getNewMusicDataAttr, isNewMusic } from '@/lib/new-music-utils'
-import { forwardRef } from 'react'
+import { forwardRef, memo, useCallback, useMemo } from 'react'
 import { AlbumArt } from './AlbumArt'
 import { useAtom } from '@effect-atom/atom-react'
 import { selectedPlayIdAtom } from '@/atoms/play-details'
@@ -25,9 +25,9 @@ const playCardVariants = cva(
         dimmed: "opacity-60"
       },
       size: {
-        compact: "p-2",
-        default: "p-3",
-        expanded: "p-6"
+        compact: "p-1.5",
+        default: "p-2",
+        expanded: "p-4"
       }
     },
     defaultVariants: {
@@ -54,38 +54,54 @@ function getAgeCategory(airdate: Date | null): 'recent' | 'older' | 'old' {
 }
 
 
-export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
+export const PlayCard = memo(forwardRef<HTMLDivElement, PlayCardProps>(
   ({ play, variant, size, isFocused, className }, ref) => {
-    const imageSize = size === 'compact' ? 80 : size === 'expanded' ? 160 : 120
+    // Smaller image sizes for compact design
+    const imageSize = size === 'compact' ? 56 : size === 'expanded' ? 120 : 72
     const [_, setSelectedId] = useAtom(selectedPlayIdAtom)
 
-    // Check if this is a non-track play (special segment/show)
-    const isNonTrackPlay = !play.song && !play.artist && play.comment
+    // Memoize computed values to avoid recalculating on every render
+    const isNonTrackPlay = useMemo(
+      () => !play.song && !play.artist && play.comment,
+      [play.song, play.artist, play.comment]
+    )
 
-    // Parse release year from release_date
-    const releaseYear = play.release_date ? new Date(play.release_date).getFullYear() : null
+    const releaseYear = useMemo(
+      () => play.release_date ? new Date(play.release_date).getFullYear() : null,
+      [play.release_date]
+    )
 
-    // Determine if card has album art or is a placeholder
-    const hasArt = !!(play.thumbnail_uri || play.image_uri)
+    const hasArt = useMemo(
+      () => !!(play.thumbnail_uri || play.image_uri),
+      [play.thumbnail_uri, play.image_uri]
+    )
 
-    // Calculate age category for recency indicators
-    const ageCategory = getAgeCategory(play.airdate)
+    const ageCategory = useMemo(
+      () => getAgeCategory(play.airdate),
+      [play.airdate]
+    )
 
-    // Detect if this play is new music
-    const newMusicIndicator = getNewMusicDataAttr(play)
-    const isNewRelease = isNewMusic(play)
+    const newMusicIndicator = useMemo(
+      () => getNewMusicDataAttr(play),
+      [play]
+    )
 
-    // Handle click to open play details panel
-    const handleClick = () => {
+    const isNewRelease = useMemo(
+      () => isNewMusic(play),
+      [play]
+    )
+
+    // Memoize handlers to prevent unnecessary re-renders of children
+    const handleClick = useCallback(() => {
       setSelectedId(Option.some(play.id))
-    }
+    }, [play.id, setSelectedId])
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
+    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault()
         setSelectedId(Option.some(play.id))
       }
-    }
+    }, [play.id, setSelectedId])
 
     return (
       <div
@@ -120,7 +136,7 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           }
         />
 
-        <div className="relative z-10 flex gap-3 py-2 pointer-events-none min-h-[146px]">
+        <div className="relative z-10 flex gap-2.5 py-1 pointer-events-none">
           {/* Album Art */}
           <AlbumArt
             src={play.thumbnail_uri || play.image_uri}
@@ -130,15 +146,15 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
           />
 
           {/* Metadata */}
-          <div className="flex-1 min-w-0 flex flex-col gap-1 py-0">
+          <div className="flex-1 min-w-0 flex flex-col gap-0.5 justify-center">
             {/* Title & Time */}
-            <div className="flex items-baseline justify-between gap-4">
-              <h3 className="track-title text-foreground truncate" title={isNonTrackPlay ? play.comment! : play.song}>
+            <div className="flex items-baseline justify-between gap-2">
+              <h3 className="track-title text-foreground truncate text-sm leading-snug" title={isNonTrackPlay ? play.comment! : play.song}>
                 {isNonTrackPlay ? play.comment : (play.song || 'Untitled')}
               </h3>
               {play.airdate && (
                 <time
-                  className="timestamp text-foreground whitespace-nowrap shrink-0 ml-auto font-mono"
+                  className="timestamp text-foreground/50 whitespace-nowrap shrink-0 text-[10px]"
                   dateTime={play.airdate.toISOString()}
                 >
                   {formatPlayTime(play.airdate)}
@@ -146,78 +162,71 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
               )}
             </div>
 
-            {/* Artist or special content indicator */}
+            {/* Artist */}
             {!isNonTrackPlay && (
-              <p className="artist-name text-foreground truncate" title={play.artist}>
+              <p className="text-xs text-foreground/70 truncate leading-snug" title={play.artist}>
                 {play.artist || 'Unknown Artist'}
               </p>
             )}
             {isNonTrackPlay && (
-              <p className="artist-name text-muted-foreground/80 text-xs italic">
-                Special Program Segment
+              <p className="text-xs text-muted-foreground/60 italic">
+                Program Segment
               </p>
             )}
 
-            {/* Album & Release Year */}
+            {/* Album & Release Year - single line */}
             {!isNonTrackPlay && (play.album || releaseYear) && (
-              <p className="text-xs text-muted-foreground/80 leading-tight truncate" title={play.album || undefined}>
+              <p className="text-[11px] text-muted-foreground/60 leading-tight truncate" title={play.album || undefined}>
                 {play.album && releaseYear ? (
                   <>
                     {play.album}
-                    <span className="text-muted-foreground/60"> • </span>
-                    <span className="text-muted-foreground/70 font-mono">{releaseYear}</span>
+                    <span className="mx-1">•</span>
+                    <span className="font-mono">{releaseYear}</span>
                   </>
                 ) : play.album ? (
                   play.album
                 ) : releaseYear ? (
-                  <span className="text-muted-foreground/70 font-mono">{releaseYear}</span>
+                  <span className="font-mono">{releaseYear}</span>
                 ) : null}
               </p>
             )}
 
-            {/* Badges */}
-            {!isNonTrackPlay && size !== 'compact' && (
-              <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                {/* New Music Badge - appears first if applicable */}
+            {/* Compact badges - only show most important */}
+            {!isNonTrackPlay && size === 'expanded' && (
+              <div className="flex flex-wrap items-center gap-1 mt-0.5">
                 {isNewRelease && (
-                  <span className="new-music-badge">New Music</span>
-                )}
-                {play.rotation_status && (
-                  <span className="text-xs text-muted-foreground">{play.rotation_status}</span>
-                )}
-                {play.labels && play.labels.length > 0 && (
-                  <span className="text-xs text-muted-foreground truncate" title={play.labels.join(', ')}>
-                    {play.labels.slice(0, 2).join(', ')}
-                  </span>
+                  <span className="new-music-badge text-[10px] py-0.5 px-1.5">New</span>
                 )}
                 {play.is_local && (
-                  <span className="text-xs text-muted-foreground">Local</span>
+                  <span className="text-[10px] text-accent/80">Local</span>
                 )}
                 {play.is_request && (
-                  <span className="text-xs text-muted-foreground">Request</span>
-                )}
-                {play.is_live && (
-                  <span className="text-xs text-muted-foreground">Live</span>
+                  <span className="text-[10px] text-accent/80">Request</span>
                 )}
               </div>
+            )}
+
+            {/* New music indicator for default size */}
+            {!isNonTrackPlay && size !== 'expanded' && isNewRelease && (
+              <span className="new-music-badge text-[10px] py-0.5 px-1.5 w-fit">New</span>
             )}
 
             {/* Similarity score (for search results) */}
             {play.similarity > 0 && (
-              <div className="text-xs text-muted-foreground">
-                Similarity: {(play.similarity * 100).toFixed(1)}%
+              <div className="text-[10px] text-muted-foreground/60">
+                {(play.similarity * 100).toFixed(0)}% match
               </div>
             )}
 
-            {/* Comment */}
+            {/* Comment - only in expanded */}
             {play.comment && size === 'expanded' && (
-              <p className="mt-2 text-xs text-muted-foreground italic line-clamp-2">
+              <p className="mt-1 text-[11px] text-muted-foreground/70 italic line-clamp-2">
                 {play.comment}
               </p>
             )}
 
-            {/* Featured Link Preview */}
-            {size !== 'compact' && (
+            {/* Featured Link Preview - only in expanded */}
+            {size === 'expanded' && (
               <FeaturedLinkPreview playId={play.id} />
             )}
           </div>
@@ -225,6 +234,6 @@ export const PlayCard = forwardRef<HTMLDivElement, PlayCardProps>(
       </div>
     )
   }
-)
+))
 
 PlayCard.displayName = 'PlayCard'

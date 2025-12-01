@@ -89,10 +89,14 @@ export const streamStatusAtom = Atom.make<StreamStatus>({ status: "off" });
 /**
  * Action atom: Start/restart stream with config.
  * Actually runs the stream and collects results.
+ * Uses Effect patterns for proper error handling.
  */
 export const restartStreamAtom = TimelineRuntime.fn<StreamTimelineConfig>()(
-  (config, get) =>
-    Effect.gen(function* () {
+  (config, get) => {
+    // Track collected play IDs using a mutable ref that survives across Effect steps
+    let collectedIds: number[] = [];
+
+    return Effect.gen(function* () {
       yield* Effect.log(
         `[Stream Atoms] Restarting stream with mode: ${config.mode}`
       );
@@ -102,6 +106,7 @@ export const restartStreamAtom = TimelineRuntime.fn<StreamTimelineConfig>()(
 
       // Clear previous results
       get.set(streamPlayIdsAtom, []);
+      collectedIds = [];
 
       // If mode is off, just update status and return
       if (config.mode === "off") {
@@ -115,101 +120,102 @@ export const restartStreamAtom = TimelineRuntime.fn<StreamTimelineConfig>()(
       // Get KVS for storing plays
       const kvs = yield* TimelineKVS;
 
-      try {
-        // Create appropriate stream based on mode
-        const stream = (() => {
-          switch (config.mode) {
-            case "pagination": {
-              const paginationStream = createTimelinePaginationStream(
-                config.paginationParams ?? { limit: 20 }
-              );
-              // Limit to maxPages if specified
-              return config.maxPages
-                ? paginationStream.pipe(Stream.take(config.maxPages))
-                : paginationStream;
-            }
-            case "mock-sse":
-              return createMockSSEStream(
-                config.sseConfig ?? { emitIntervalMs: 2000, maxPlays: 100 }
-              );
-            case "burst-sse":
-              return createBurstMockSSEStream(5, 10000, 100).pipe(
-                Stream.take(config.sseConfig?.maxPlays ?? 100)
-              );
-            default:
-              return Stream.empty;
+      // Create appropriate stream based on mode
+      const stream = (() => {
+        switch (config.mode) {
+          case "pagination": {
+            const paginationStream = createTimelinePaginationStream(
+              config.paginationParams ?? { limit: 20 }
+            );
+            // Limit to maxPages if specified
+            return config.maxPages
+              ? paginationStream.pipe(Stream.take(config.maxPages))
+              : paginationStream;
           }
-        })();
-
-        // Track collected play IDs
-        const collectedIds: number[] = [];
-
-        // Run the stream - handle different types appropriately
-        if (config.mode === "pagination") {
-          // Pagination mode returns PageResult objects
-          const paginationStream = stream as ReturnType<typeof createTimelinePaginationStream>;
-
-          yield* Stream.runForEach(
-            paginationStream,
-            (pageResult) =>
-              Effect.gen(function* () {
-                // Extract plays from PageResult
-                const plays = pageResult.response.results;
-
-                // Plays are already stored in KVS by the pagination stream
-                // Just collect the IDs
-                const pageIds = plays.map((play) => play.id);
-                collectedIds.push(...pageIds);
-
-                // Update atom with accumulated IDs
-                get.set(streamPlayIdsAtom, [...collectedIds]);
-
-                yield* Effect.log(
-                  `[Stream Atoms] Collected ${collectedIds.length} plays so far`
-                );
-              })
-          );
-        } else {
-          // SSE modes return PlayResult objects directly
-          const playStream = stream as Stream.Stream<PlayResult, never, never>;
-
-          yield* Stream.runForEach(
-            playStream,
-            (play) =>
-              Effect.gen(function* () {
-                // Store play in KVS
-                yield* kvs.storePlay(play);
-
-                // Collect ID
-                collectedIds.push(play.id);
-
-                // Update atom with accumulated IDs
-                get.set(streamPlayIdsAtom, [...collectedIds]);
-
-                yield* Effect.log(
-                  `[Stream Atoms] Received play: ${play.artist} - ${play.song} (${collectedIds.length} total)`
-                );
-              })
-          );
+          case "mock-sse":
+            return createMockSSEStream(
+              config.sseConfig ?? { emitIntervalMs: 2000, maxPlays: 100 }
+            );
+          case "burst-sse":
+            return createBurstMockSSEStream(5, 10000, 100).pipe(
+              Stream.take(config.sseConfig?.maxPlays ?? 100)
+            );
+          default:
+            return Stream.empty;
         }
+      })();
 
-        // Stream completed successfully
-        get.set(streamStatusAtom, {
-          status: "complete",
-          count: collectedIds.length,
-        });
+      // Run the stream - handle different types appropriately
+      if (config.mode === "pagination") {
+        // Pagination mode returns PageResult objects
+        const paginationStream = stream as ReturnType<typeof createTimelinePaginationStream>;
 
-        yield* Effect.log(
-          `[Stream Atoms] Stream completed with ${collectedIds.length} plays`
+        yield* Stream.runForEach(
+          paginationStream,
+          (pageResult) =>
+            Effect.gen(function* () {
+              // Extract plays from PageResult
+              const plays = pageResult.response.results;
+
+              // Plays are already stored in KVS by the pagination stream
+              // Just collect the IDs
+              const pageIds = plays.map((play) => play.id);
+              collectedIds.push(...pageIds);
+
+              // Update atom with accumulated IDs
+              get.set(streamPlayIdsAtom, [...collectedIds]);
+
+              yield* Effect.log(
+                `[Stream Atoms] Collected ${collectedIds.length} plays so far`
+              );
+            })
         );
-      } catch (error) {
-        // Stream failed
-        get.set(streamStatusAtom, { status: "error", error });
-        yield* Effect.logError(
-          `[Stream Atoms] Stream failed: ${error}`
+      } else {
+        // SSE modes return PlayResult objects directly
+        const playStream = stream as Stream.Stream<PlayResult, never, never>;
+
+        yield* Stream.runForEach(
+          playStream,
+          (play) =>
+            Effect.gen(function* () {
+              // Store play in KVS
+              yield* kvs.storePlay(play);
+
+              // Collect ID
+              collectedIds.push(play.id);
+
+              // Update atom with accumulated IDs
+              get.set(streamPlayIdsAtom, [...collectedIds]);
+
+              yield* Effect.log(
+                `[Stream Atoms] Received play: ${play.artist} - ${play.song} (${collectedIds.length} total)`
+              );
+            })
         );
       }
-    })
+
+      // Stream completed successfully
+      get.set(streamStatusAtom, {
+        status: "complete",
+        count: collectedIds.length,
+      });
+
+      yield* Effect.log(
+        `[Stream Atoms] Stream completed with ${collectedIds.length} plays`
+      );
+    }).pipe(
+      // Use Effect.catchAll for proper error handling
+      Effect.catchAll((error) =>
+        Effect.gen(function* () {
+          // Stream failed - update status with error
+          get.set(streamStatusAtom, { status: "error", error });
+          yield* Effect.logError(
+            `[Stream Atoms] Stream failed: ${String(error)}`
+          );
+        })
+      )
+    );
+  }
 );
 
 /**

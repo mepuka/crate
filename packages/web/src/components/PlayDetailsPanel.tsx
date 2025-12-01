@@ -33,8 +33,11 @@ export function PlayDetailsPanel() {
     <div
       className={cn(
         "fixed top-0 right-0 h-screen overflow-y-auto",
-        "transition-all duration-300 ease-in-out",
-        isOpen ? "w-full lg:w-2/3" : "w-0 opacity-0"
+        "transition-all duration-300 ease-out",
+        // When open: full width on mobile, remaining space on desktop (after 420-480px timeline)
+        isOpen
+          ? "w-full lg:left-[420px] xl:left-[480px] lg:w-[calc(100%-420px)] xl:w-[calc(100%-480px)]"
+          : "w-0 opacity-0 pointer-events-none"
       )}
     >
       {isOpen && (

@@ -133,15 +133,26 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
         return sortedPlays;
       });
 
-    // Initialize: Reconstruct chunk on service creation (before atoms are created)
-    yield* Effect.log(
-      "Initializing TimelineKVS: Reconstructing chunk from all plays"
-    );
-    const initialChunk = yield* reconstructChunkFromAllPlays();
+    // FAST STARTUP: Try to use cached chunk directly, defer reconstruction
+    // This prevents blocking the main thread on startup with large play counts
+    yield* Effect.log("Initializing TimelineKVS: Checking for cached chunk");
+
+    const cachedChunkOption = yield* playsChunkStore.get("timeline:plays_chunk");
+    const initialChunk = yield* Option.match(cachedChunkOption, {
+      onSome: (cached) => Effect.gen(function* () {
+        const playCount = Chunk.size(cached);
+        yield* Effect.log(`TimelineKVS: Using cached chunk with ${playCount} plays (fast path)`);
+        return cached;
+      }),
+      onNone: () => Effect.gen(function* () {
+        // Only reconstruct if no cached chunk exists
+        yield* Effect.log("TimelineKVS: No cached chunk, reconstructing (slow path)");
+        return yield* reconstructChunkFromAllPlays();
+      }),
+    });
+
     const playCount = Chunk.size(initialChunk);
-    yield* Effect.log(
-      `TimelineKVS initialized with ${playCount} plays from cache`
-    );
+    yield* Effect.log(`TimelineKVS initialized with ${playCount} plays`);
 
     // Store a play by ID and maintain both HashSet and cached Chunk
     // Uses incremental chunk updates instead of full reconstruction for better performance
@@ -178,16 +189,29 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
             Chunk.empty<PlayResult>()
           );
 
-          // Prepend new play and re-sort to maintain newest-first order
-          const updatedChunk = sortPlaysByAirdateDesc(
-            Chunk.prepend(currentChunk, play)
-          );
+          // PERF OPTIMIZATION: Skip sorting if new play is clearly newest
+          // This is the common case for live updates - play just aired
+          const firstPlay = Chunk.head(currentChunk);
+          const needsSort = Option.match(firstPlay, {
+            onNone: () => false, // Empty chunk, no sort needed
+            onSome: (first) => {
+              // Only sort if new play is older than first play
+              // (airdate comparison: newer = larger timestamp)
+              const newTime = play.airdate?.getTime() ?? 0;
+              const firstTime = first.airdate?.getTime() ?? 0;
+              return newTime < firstTime;
+            },
+          });
+
+          const updatedChunk = needsSort
+            ? sortPlaysByAirdateDesc(Chunk.prepend(currentChunk, play))
+            : Chunk.prepend(currentChunk, play);
 
           // Persist updated chunk
           yield* playsChunkStore.set("timeline:plays_chunk", updatedChunk);
 
           yield* Effect.logDebug(
-            `[TimelineKVS] New play added: ${play.id}, chunk now has ${Chunk.size(updatedChunk)} plays`
+            `[TimelineKVS] New play added: ${play.id}, chunk size: ${Chunk.size(updatedChunk)}, sorted: ${needsSort}`
           );
         } else {
           // Existing play - update in chunk if cached (metadata update, enrichment, etc.)
@@ -223,6 +247,55 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
 
         yield* Effect.logTrace(
           `[TimelineKVS] Reactivity invalidated for play ${play.id}`
+        );
+      });
+
+    // BATCH STORE: Store multiple plays efficiently with single reactivity invalidation
+    // This is much faster than calling storePlay() for each play individually
+    const storePlays = (plays: readonly PlayResult[]) =>
+      Effect.gen(function* () {
+        if (plays.length === 0) return;
+
+        yield* Effect.log(`[TimelineKVS] Batch storing ${plays.length} plays`);
+
+        // Get current state once
+        const currentHashSetOption = yield* playIdsHashSetStore.get("timeline:play_ids_set");
+        let currentHashSet = Option.getOrElse(currentHashSetOption, () => HashSet.empty<number>());
+
+        const currentChunkOption = yield* playsChunkStore.get("timeline:plays_chunk");
+        let currentChunk = Option.getOrElse(currentChunkOption, () => Chunk.empty<PlayResult>());
+
+        const newPlayIds: number[] = [];
+
+        // Store each play and track new IDs
+        for (const play of plays) {
+          yield* playStore.set(`timeline:play:${play.id}`, play);
+
+          const isNew = !HashSet.has(currentHashSet, play.id);
+          if (isNew) {
+            currentHashSet = HashSet.add(currentHashSet, play.id);
+            currentChunk = Chunk.prepend(currentChunk, play);
+            newPlayIds.push(play.id);
+          } else {
+            // Update existing play in chunk
+            currentChunk = Chunk.map(currentChunk, (p) => (p.id === play.id ? play : p));
+          }
+        }
+
+        // Sort once at the end (instead of per-play)
+        if (newPlayIds.length > 0) {
+          currentChunk = sortPlaysByAirdateDesc(currentChunk);
+        }
+
+        // Persist updated state
+        yield* playIdsHashSetStore.set("timeline:play_ids_set", currentHashSet);
+        yield* playsChunkStore.set("timeline:plays_chunk", currentChunk);
+
+        // Single reactivity invalidation for all plays
+        yield* Reactivity.invalidate(["timeline:plays_chunk"]);
+
+        yield* Effect.log(
+          `[TimelineKVS] Batch stored ${plays.length} plays (${newPlayIds.length} new), chunk size: ${Chunk.size(currentChunk)}`
         );
       });
 
@@ -314,6 +387,7 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
 
     return {
       storePlay,
+      storePlays, // Batch store for performance
       getPlay,
       setLastSeenId,
       getLastSeenId,
@@ -349,12 +423,10 @@ export const FetchLatestLive = Effect.gen(function* () {
   yield* Effect.log(`Received ${latestTimeline.results.length} plays from API`);
 
   if (latestTimeline.results.length > 0) {
-    // Store all fetched plays (storePlay handles deduplication via HashSet)
+    // PERF: Use batch store for single reactivity invalidation
+    // This is MUCH faster than storing each play individually (200 invalidations -> 1)
     const storeResult = yield* Effect.either(
-      Effect.all(
-        latestTimeline.results.map((play) => timelineKVS.storePlay(play)),
-        { concurrency: 50 }
-      )
+      timelineKVS.storePlays(latestTimeline.results)
     );
 
     if (storeResult._tag === "Left") {
@@ -369,13 +441,14 @@ export const FetchLatestLive = Effect.gen(function* () {
     yield* timelineKVS.setLastSeenId(latestPlay.id);
 
     yield* Effect.log(
-      `Stored ${latestTimeline.results.length} plays, latest: play ${latestPlay.id} at ${latestPlay.airdate.toISOString()}`
+      `Batch stored ${latestTimeline.results.length} plays, latest: play ${latestPlay.id} at ${latestPlay.airdate.toISOString()}`
     );
   } else {
     yield* Effect.log("No plays returned from timeline API");
   }
 }).pipe(
-  Effect.repeat(Schedule.spaced(Duration.millis(100000))),
+  // Poll every 30 seconds for responsive live updates
+  Effect.repeat(Schedule.spaced(Duration.seconds(30))),
   Effect.forever,
   Effect.forkScoped,
   Effect.uninterruptible,

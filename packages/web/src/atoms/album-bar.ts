@@ -11,9 +11,10 @@ export type { AlbumArtworkData };
 
 /**
  * Number of recent plays to show in the scrolling album bar
- * Research recommended 100 minimum to avoid visible repetition in 4-row grid
+ * Using 250 for better visual variety across the full-screen grid
+ * Higher count = less visible repetition, especially on large displays
  */
-export const ALBUM_BAR_PLAY_COUNT = 100;
+export const ALBUM_BAR_PLAY_COUNT = 250;
 
 /**
  * Reactive atom that loads album artwork using the Web Worker.

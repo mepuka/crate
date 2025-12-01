@@ -3,8 +3,10 @@
  *
  * Wrapper component that conditionally renders a show transition marker
  * before a play card based on show boundaries.
+ * Memoized to prevent unnecessary re-renders when parent updates.
  */
 
+import { memo } from 'react'
 import { TimelinePlayCardWrapper } from './TimelinePlayCardWrapper'
 import { ShowTransitionMarker } from './ShowTransitionMarker'
 import type { ShowBoundary } from '@/atoms/kexp-atoms'
@@ -14,7 +16,7 @@ interface TimelineItemWithMarkerProps {
   showBoundary?: ShowBoundary
 }
 
-export function TimelineItemWithMarker({ playId, showBoundary }: TimelineItemWithMarkerProps) {
+export const TimelineItemWithMarker = memo(function TimelineItemWithMarker({ playId, showBoundary }: TimelineItemWithMarkerProps) {
   return (
     <>
       {showBoundary && (
@@ -28,4 +30,4 @@ export function TimelineItemWithMarker({ playId, showBoundary }: TimelineItemWit
       <TimelinePlayCardWrapper playId={playId} />
     </>
   )
-}
+})

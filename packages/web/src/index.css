@@ -191,24 +191,24 @@
   /* Play Card - Refined "Late Night Broadcast" Aesthetic */
   .play-card {
     position: relative;
-    border-radius: 12px;
+    border-radius: 10px;
     overflow: hidden;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     /* Refined border with warm undertone */
-    border: 1px solid rgba(245, 130, 22, 0.1);
+    border: 1px solid rgba(245, 130, 22, 0.08);
     /* Subtle warm background glow */
     background: linear-gradient(
       135deg,
-      rgba(255, 255, 255, 0.04) 0%,
-      rgba(255, 255, 255, 0.02) 100%
+      rgba(255, 255, 255, 0.03) 0%,
+      rgba(255, 255, 255, 0.015) 100%
     );
     /* GPU optimization */
     transform: translateZ(0);
-    /* Refined shadow with warmth */
+    /* Refined shadow with warmth - tighter */
     box-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.3),
-      0 0 0 1px rgba(245, 130, 22, 0.05) inset;
+      0 1px 4px rgba(0, 0, 0, 0.25),
+      0 0 0 1px rgba(245, 130, 22, 0.03) inset;
   }
 
   /* Enhanced hover with "radio glow" */
@@ -257,50 +257,22 @@
     opacity: 0.7;
   }
 
-  /* Recency Indicators - Phase 2.3 */
-  /* Most recent plays feel "closer" */
+  /* Recency Indicators - Subtle opacity only (scale removed for cleaner layout) */
   .play-card[data-age="recent"] {
     opacity: 1;
   }
 
   .play-card[data-age="older"] {
-    opacity: 0.85;
+    opacity: 0.9;
   }
 
   .play-card[data-age="old"] {
-    opacity: 0.7;
+    opacity: 0.75;
   }
 
-  /* Scale adjustments for recency (base state, hover overrides) */
-  .play-card[data-age="recent"] {
-    transform: scale(1);
-  }
-
-  .play-card[data-age="older"] {
-    transform: scale(0.98);
-  }
-
-  .play-card[data-age="old"] {
-    transform: scale(0.96);
-  }
-
-  /* Hover States - Phase 2.2 (integrated with recency) */
-  /* Hover state needs to account for base scale */
-  .play-card[data-age="recent"]:hover {
-    transform: translateY(-2px) scale(1.01);
-    box-shadow: var(--shadow-hover);
-    z-index: 10;
-  }
-
-  .play-card[data-age="older"]:hover {
-    transform: translateY(-2px) scale(0.99);
-    box-shadow: var(--shadow-hover);
-    z-index: 10;
-  }
-
-  .play-card[data-age="old"]:hover {
-    transform: translateY(-2px) scale(0.97);
-    box-shadow: var(--shadow-hover);
+  /* Hover States - Clean lift effect without scale complexity */
+  .play-card:hover {
+    transform: translateY(-1px);
     z-index: 10;
   }
 
@@ -426,7 +398,7 @@
   .timeline-container {
     position: relative;
     isolation: isolate;
-    border-radius: 20px;
+    border-radius: 16px;
     overflow: visible;
     background: transparent;
     border: none;
@@ -435,16 +407,16 @@
     transform: translateZ(0);
   }
 
-  /* Whisper-light glass layer - maximum transparency */
+  /* Glass layer - solid readable background over album art */
   .timeline-backdrop {
     content: "";
     position: absolute;
     inset: 0;
-    /* Ultra-light background - barely tinted */
-    background: rgba(8, 10, 15, 0.30);
-    backdrop-filter: blur(12px) saturate(120%);
-    -webkit-backdrop-filter: blur(12px) saturate(120%);
-    border-radius: 20px;
+    /* Solid dark background for maximum readability */
+    background: rgba(8, 10, 15, 0.92);
+    backdrop-filter: blur(20px) saturate(120%);
+    -webkit-backdrop-filter: blur(20px) saturate(120%);
+    border-radius: 16px;
     pointer-events: none;
     z-index: 0;
     /* GPU optimization */
@@ -452,15 +424,15 @@
     will-change: transform;
   }
 
-  /* Barely-there edge treatment */
+  /* Subtle edge treatment */
   .timeline-backdrop-edge {
     position: absolute;
     inset: 0;
-    border-radius: 20px;
-    /* Whisper border */
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    /* Minimal shadow */
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+    border-radius: 16px;
+    /* Subtle border */
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    /* Soft shadow */
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
     pointer-events: none;
     z-index: 1;
   }
@@ -474,7 +446,8 @@
   }
 
   /* Ensure content is positioned above glass layers */
-  .timeline-container > * {
+  /* Exclude backdrop elements from z-index override */
+  .timeline-container > *:not(.timeline-backdrop):not(.timeline-backdrop-edge) {
     position: relative;
     z-index: 10;
   }
@@ -675,13 +648,49 @@
     isolation: isolate;
   }
 
-  /* Mobile optimization: Disable expensive blur for battery life */
+  /* Mobile optimization: Tighter layout and reduced effects */
   @media (max-width: 768px) {
     .album-grid-blur {
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
       /* Use lighter solid overlay to keep albums visible */
       background: rgba(0, 0, 0, 0.6) !important;
+    }
+
+    /* Tighter play cards on mobile */
+    .play-card {
+      border-radius: 8px;
+    }
+
+    /* Reduce timeline container padding on mobile */
+    .timeline-container {
+      border-radius: 14px;
+    }
+
+    /* Simpler backdrop effects on mobile for performance */
+    .timeline-backdrop {
+      backdrop-filter: blur(8px) saturate(110%);
+      -webkit-backdrop-filter: blur(8px) saturate(110%);
+    }
+  }
+
+  /* Extra compact for very narrow screens */
+  @media (max-width: 480px) {
+    .play-card {
+      border-radius: 6px;
+    }
+
+    .timeline-container {
+      border-radius: 10px;
+    }
+
+    /* Minimal shadow effects on small screens */
+    .play-card.has-art {
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    .play-card:hover {
+      transform: none;
     }
   }
 

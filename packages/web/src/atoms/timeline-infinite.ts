@@ -13,7 +13,7 @@
  * Based on: packages/web/docs/timeline-atoms-infinite-scroll.md
  */
 
-import { Atom } from "@effect-atom/atom-react";
+import { Atom, Result } from "@effect-atom/atom-react";
 import {
   TimelineRuntime,
   TimelineClient,
@@ -28,6 +28,7 @@ import {
   percentageAtom,
   anchorIdAtom,
 } from "./timeline-url-sync";
+import { playIdsAtom } from "./timeline";
 
 /**
  * A single page in the infinite timeline.
@@ -79,6 +80,18 @@ const initialInfiniteState: TimelineInfiniteState = {
   initialParams: { limit: 50 },
   initialMethod: "cursor",
 };
+
+/**
+ * Request deduplication: Track in-flight cursors to prevent duplicate requests.
+ * Uses a Set outside of atoms for synchronous access during effect execution.
+ */
+const inFlightCursors = new Set<string>();
+
+/**
+ * Generate a unique key for a cursor request (handles undefined cursor for initial)
+ */
+const getCursorKey = (cursor: string | undefined): string =>
+  cursor ?? "__initial__";
 
 /**
  * Atom that holds the infinite scroll state.
@@ -140,14 +153,11 @@ export const timelinePageAtom = Atom.family((params: TimelineParams) =>
 
       yield* Effect.log(`Received ${response.results.length} plays from API`);
 
-      // Normalize all plays into KVS (single source of truth)
-      yield* Effect.all(
-        response.results.map((play) => kvs.storePlay(play)),
-        { concurrency: 50 }
-      );
+      // PERF: Batch store for single reactivity invalidation
+      yield* kvs.storePlays(response.results);
 
       yield* Effect.log(
-        `Stored ${response.results.length} plays in KVS, has_more=${response.has_more}`
+        `Batch stored ${response.results.length} plays in KVS, has_more=${response.has_more}`
       );
 
       return response;
@@ -178,11 +188,8 @@ const loadInitialPageEffect = (config: {
 
     yield* Effect.log(`Received ${response.results.length} plays from API`);
 
-    // Normalize all plays into KVS (single source of truth)
-    yield* Effect.all(
-      response.results.map((play) => kvs.storePlay(play)),
-      { concurrency: 50 }
-    );
+    // PERF: Batch store for single reactivity invalidation
+    yield* kvs.storePlays(response.results);
 
     // Find anchor position if anchor method was used
     let anchorPosition: TimelineInfiniteState["anchorPosition"];
@@ -274,14 +281,11 @@ const loadNextPageEffect = (params: TimelineParams) =>
 
     yield* Effect.log(`Received ${response.results.length} plays from API`);
 
-    // Normalize all plays into KVS
-    yield* Effect.all(
-      response.results.map((play) => kvs.storePlay(play)),
-      { concurrency: 50 }
-    );
+    // PERF: Batch store for single reactivity invalidation
+    yield* kvs.storePlays(response.results);
 
     yield* Effect.log(
-      `Next page loaded: ${response.results.length} plays, has_more=${response.has_more}`
+      `Next page batch stored: ${response.results.length} plays, has_more=${response.has_more}`
     );
 
     return { response, params };
@@ -290,6 +294,7 @@ const loadNextPageEffect = (params: TimelineParams) =>
 /**
  * Action atom: Load next timeline page (cursor pagination).
  * Only works after initial page is loaded.
+ * Includes request deduplication to prevent race conditions.
  */
 export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) =>
   Effect.gen(function* () {
@@ -304,9 +309,23 @@ export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) =>
     }
 
     // Build cursor-based params (ignore special navigation fields)
+    const nextCursor = state.nextCursor ?? undefined;
+    const cursorKey = getCursorKey(nextCursor);
+
+    // Request deduplication: skip if this cursor is already in flight
+    if (inFlightCursors.has(cursorKey)) {
+      yield* Effect.log(
+        `Skipping load-more: cursor ${cursorKey} already in flight`
+      );
+      return;
+    }
+
+    // Mark cursor as in-flight
+    inFlightCursors.add(cursorKey);
+
     const nextParams: TimelineParams = {
       limit: state.initialParams.limit,
-      cursor: state.nextCursor ?? undefined,
+      cursor: nextCursor,
     };
 
     // Set loading state
@@ -318,6 +337,9 @@ export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) =>
 
     // Execute the load (will throw if error)
     const result = yield* loadNextPageEffect(nextParams);
+
+    // Remove from in-flight tracking
+    inFlightCursors.delete(cursorKey);
 
     // Append page to existing pages
     const currentState = get(timelineInfiniteStateAtom);
@@ -335,6 +357,11 @@ export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) =>
   }).pipe(
     Effect.catchAll((error) =>
       Effect.gen(function* () {
+        // Clean up in-flight tracking on error
+        const state = get(timelineInfiniteStateAtom);
+        const cursorKey = getCursorKey(state.nextCursor ?? undefined);
+        inFlightCursors.delete(cursorKey);
+
         yield* Effect.logError(`Next page load failed: ${error}`);
         const currentState = get(timelineInfiniteStateAtom);
         const errorState: TimelineInfiniteState = {
@@ -356,16 +383,20 @@ export const resetTimelineInfiniteStateAtom = TimelineRuntime.fn<void>()(
   (_, get) =>
     Effect.gen(function* () {
       yield* Effect.log("Resetting infinite timeline state");
+
+      // Clear in-flight tracking to prevent stale requests
+      inFlightCursors.clear();
+
       const resetState: TimelineInfiniteState = { ...initialInfiniteState };
       get.set(timelineInfiniteStateAtom, resetState);
     })
 );
 
 /**
- * Derived atom: All play IDs from loaded pages (newest first).
- * Concatenates all pages in order.
+ * Derived atom: Play IDs from loaded pages only (newest first).
+ * Used internally for pagination tracking.
  */
-export const allLoadedPlayIdsAtom = Atom.make((get) => {
+const paginatedPlayIdsAtom = Atom.make((get) => {
   const state = get(timelineInfiniteStateAtom);
 
   return pipe(
@@ -375,6 +406,37 @@ export const allLoadedPlayIdsAtom = Atom.make((get) => {
     // Dedupe in case of overlaps (e.g., anchor queries)
     EffectArray.dedupe
   );
+});
+
+/**
+ * Derived atom: All play IDs combining live KVS updates with paginated pages.
+ * Live updates from FetchLatestLive appear immediately at the top.
+ * Paginated plays follow below, deduped against live updates.
+ */
+export const allLoadedPlayIdsAtom = Atom.make((get) => {
+  const paginatedIds = get(paginatedPlayIdsAtom);
+  const kvsIdsResult = get(playIdsAtom);
+
+  // Get KVS IDs if available, otherwise use empty array
+  const kvsIds = Result.matchWithWaiting(kvsIdsResult, {
+    onWaiting: () => [] as readonly number[],
+    onError: () => [] as readonly number[],
+    onDefect: () => [] as readonly number[],
+    onSuccess: (s) => s.value,
+  });
+
+  // If no paginated pages loaded yet, use KVS data
+  if (paginatedIds.length === 0) {
+    return kvsIds as number[];
+  }
+
+  // Merge: Use paginated IDs as base, prepend any newer IDs from KVS
+  // KVS may have newer plays that arrived via FetchLatestLive
+  const paginatedSet = new Set(paginatedIds);
+  const newerFromKvs = kvsIds.filter((id) => !paginatedSet.has(id));
+
+  // Prepend newer KVS plays, then paginated plays
+  return [...newerFromKvs, ...paginatedIds];
 });
 
 /**

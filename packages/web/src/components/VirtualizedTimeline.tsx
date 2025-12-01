@@ -11,7 +11,7 @@
  * - Automatic load-more with intersection observer
  */
 
-import { useAtomValue, useAtom, Result } from '@effect-atom/atom-react'
+import { useAtomValue, useAtom, useAtomMount, Result } from '@effect-atom/atom-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useRef } from 'react'
 import { Option } from 'effect'
@@ -22,7 +22,7 @@ import {
   timelineLoadingStateAtom,
   loadedPlayCountAtom,
 } from '@/atoms/timeline-infinite'
-import { newestPlayAtom, playIdToBoundaryMapAtom } from '@/atoms/timeline'
+import { latestItemAtom, newestPlayAtom, playIdToBoundaryMapAtom } from '@/atoms/timeline'
 import { isPanelOpenAtom } from '@/atoms/play-details'
 import { DevAtomDisplay } from './DevAtomDisplay'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -38,13 +38,12 @@ import { cn } from '@/lib/utils'
  * TanStack Virtual recommends estimating the largest possible size.
  *
  * Timeline items are variable height:
- * - Compact: ~80px (no show marker, no links)
- * - With show marker: ~180px
- * - With links: ~120-200px
+ * - Compact: ~90px (smaller cards now)
+ * - With show marker: ~140px
  *
- * We estimate 200px to be safe.
+ * We estimate 100px for tighter layout.
  */
-const ESTIMATED_ITEM_HEIGHT = 200;
+const ESTIMATED_ITEM_HEIGHT = 100;
 
 /**
  * How many items from the end should trigger load-more.
@@ -52,6 +51,9 @@ const ESTIMATED_ITEM_HEIGHT = 200;
 const LOAD_MORE_THRESHOLD = 5;
 
 export function VirtualizedTimeline() {
+  // Mount the background fetching service for live updates
+  useAtomMount(latestItemAtom);
+
   // Atoms
   const playIds = useAtomValue(allLoadedPlayIdsAtom);
   const loadingState = useAtomValue(timelineLoadingStateAtom);
@@ -129,157 +131,130 @@ export function VirtualizedTimeline() {
     }
   }, [])
 
-  // Handle initial loading
-  if (loadingState.isLoadingInitial) {
-    return (
-      <div className={cn(
-        "relative z-10 transition-all duration-300 ease-in-out min-h-screen",
-        isPanelOpen ? "w-full lg:w-1/3" : "w-full"
-      )}>
-        <DevAtomDisplay />
-        <FPSIndicator />
-        <div className="px-4 sm:px-6 lg:px-8 pt-20 pb-12 max-w-4xl mx-auto">
-          <div className="timeline-container bg-background rounded-lg shadow-xl p-6 border border-white/10">
-            <div className="relative z-10">
-              <div className="mb-8 sm:mb-10">
-                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground mb-1">
-                  Timeline
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  KEXP play history
-                </p>
-              </div>
-              <div className="space-y-4">
-                <TimelineSkeleton count={5} />
-              </div>
-            </div>
+  // Shared layout wrapper for loading/error/empty states
+  // Timeline is centered when panel is closed, slides left when panel opens
+  const StateWrapper = ({ children }: { children: React.ReactNode }) => (
+    <div className={cn(
+      "relative z-10 h-screen flex flex-col",
+      "transition-all duration-300 ease-out",
+      // Centered with max-width when closed, fixed left when open
+      isPanelOpen
+        ? "fixed top-0 left-0 w-full lg:w-[420px] xl:w-[480px] min-w-[380px]"
+        : "mx-auto w-full max-w-2xl"
+    )}>
+      <DevAtomDisplay />
+      <FPSIndicator />
+      <div className="flex-none px-3 sm:px-4 pt-3 pb-2">
+        <div className="timeline-container rounded-xl p-3 sm:p-4">
+          <div className="timeline-backdrop" />
+          <div className="timeline-backdrop-edge" />
+          <div className="relative z-10">
+            <h1 className="text-lg sm:text-xl font-semibold tracking-tight text-foreground">
+              Timeline
+            </h1>
           </div>
         </div>
       </div>
+      <div className="flex-1 min-h-0 px-3 sm:px-4 pb-3">
+        <div className="timeline-container h-full rounded-xl overflow-hidden">
+          <div className="timeline-backdrop" />
+          <div className="timeline-backdrop-edge" />
+          <div className="relative z-10 h-full overflow-auto px-3 sm:px-4 py-4">
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Handle initial loading
+  if (loadingState.isLoadingInitial) {
+    return (
+      <StateWrapper>
+        <TimelineSkeleton count={8} />
+      </StateWrapper>
     );
   }
 
   // Handle error
   if (loadingState.isError) {
     return (
-      <div className={cn(
-        "relative z-10 transition-all duration-300 ease-in-out min-h-screen",
-        isPanelOpen ? "w-full lg:w-1/3" : "w-full"
-      )}>
-        <DevAtomDisplay />
-        <FPSIndicator />
-        <div className="px-4 sm:px-6 lg:px-8 pt-20 pb-12 max-w-4xl mx-auto">
-          <div className="timeline-container bg-background rounded-lg shadow-xl p-6 border border-white/10">
-            <div className="relative z-10">
-              <TimelineErrorState error={loadingState.error} />
-            </div>
-          </div>
-        </div>
-      </div>
+      <StateWrapper>
+        <TimelineErrorState error={loadingState.error} />
+      </StateWrapper>
     );
   }
 
   // Handle empty state
   if (playIds.length === 0) {
     return (
-      <div className={cn(
-        "relative z-10 transition-all duration-300 ease-in-out min-h-screen",
-        isPanelOpen ? "w-full lg:w-1/3" : "w-full"
-      )}>
-        <DevAtomDisplay />
-        <FPSIndicator />
-        <div className="px-4 sm:px-6 lg:px-8 pt-20 pb-12 max-w-4xl mx-auto">
-          <div className="timeline-container bg-background rounded-lg shadow-xl p-6 border border-white/10">
-            <div className="relative z-10">
-              <TimelineEmptyState
-                message="No plays found"
-                description="Try adjusting your filters or check back later."
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      <StateWrapper>
+        <TimelineEmptyState
+          message="No plays found"
+          description="Try adjusting your filters or check back later."
+        />
+      </StateWrapper>
     );
   }
 
   return (
     <div className={cn(
-      "relative z-10 transition-all duration-300 ease-in-out min-h-screen",
-      isPanelOpen ? "w-full lg:w-1/3" : "w-full"
+      "relative z-10 h-screen flex flex-col",
+      "transition-all duration-300 ease-out",
+      // Centered with max-width when closed, fixed left when open
+      isPanelOpen
+        ? "fixed top-0 left-0 w-full lg:w-[420px] xl:w-[480px] min-w-[380px]"
+        : "mx-auto w-full max-w-2xl"
     )}>
       <DevAtomDisplay />
       <FPSIndicator />
-      <div className="px-4 sm:px-6 lg:px-8 pt-20 pb-12 max-w-4xl mx-auto">
-        <div className="timeline-container bg-background rounded-lg shadow-xl p-6 border border-white/10">
-          {/* Glassy backdrop layer */}
+
+      {/* Compact header */}
+      <div className="flex-none px-3 sm:px-4 pt-3 pb-2">
+        <div className="timeline-container rounded-xl p-3 sm:p-4">
           <div className="timeline-backdrop" />
-          {/* Glassy border edge */}
           <div className="timeline-backdrop-edge" />
-          {/* SVG mask for rounded corners */}
-          <svg
-            className="timeline-svg-mask"
-            width="100%"
-            height="100%"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <mask id="timelineGlassMask">
-              <rect
-                width="100%"
-                height="100%"
-                fill="white"
-                rx="8"
-                ry="8"
-              />
-            </mask>
-          </svg>
-          {/* Content layer */}
-          <div className="relative z-10">
-            <div className="mb-8 sm:mb-10">
-              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground mb-1">
+          <div className="relative z-10 flex items-baseline justify-between gap-4 flex-wrap">
+            <div className="flex items-baseline gap-3">
+              <h1 className="text-lg sm:text-xl font-semibold tracking-tight text-foreground">
                 Timeline
               </h1>
-              <p className="text-sm text-muted-foreground">
-                KEXP play history
-              </p>
-            </div>
-
-            {/* Latest Play */}
-            <div className="mb-6">
-              <div className="text-sm text-muted-foreground">
-                Latest:{' '}
-                {Result.matchWithWaiting(newestPlay, {
-                  onWaiting: () => <Skeleton className="inline-block h-4 w-32" />,
-                  onError: () => <span className="text-destructive">Error</span>,
-                  onDefect: () => <span className="text-destructive">Defect</span>,
-                  onSuccess: (s) =>
-                    Option.match(s.value, {
-                      onNone: () => <span>—</span>,
-                      onSome: (play) => <span className="text-foreground">{play.artist} — {play.song}</span>,
-                    }),
-                })}
-              </div>
-            </div>
-
-            {/* Play count */}
-            {playIds.length > 0 && (
-              <div className="mb-4 text-xs text-muted-foreground">
-                {loadedCount} play{loadedCount !== 1 ? 's' : ''}
+              <span className="text-xs text-muted-foreground/70">
+                {loadedCount} plays
                 {loadingState.hasMore && ' • scroll for more'}
-              </div>
-            )}
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground truncate max-w-[50%]">
+              {Result.matchWithWaiting(newestPlay, {
+                onWaiting: () => <Skeleton className="inline-block h-3 w-24" />,
+                onError: () => null,
+                onDefect: () => null,
+                onSuccess: (s) =>
+                  Option.match(s.value, {
+                    onNone: () => null,
+                    onSome: (play) => (
+                      <span className="text-foreground/80">
+                        <span className="text-muted-foreground/60">Now: </span>
+                        {play.artist} — {play.song}
+                      </span>
+                    ),
+                  }),
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
 
-            {/* Virtual scroll container */}
-            <div
-              ref={parentRef}
-              className="overflow-auto"
-              style={{
-                height: 'calc(100vh - 400px)', // Responsive to viewport, accounting for header/padding
-                minHeight: '400px', // Minimum height for usability
-                maxHeight: '800px', // Maximum height to prevent excessive scrolling area
-                contain: 'strict',
-              }}
-            >
+      {/* Scrollable timeline area - takes remaining height */}
+      <div className="flex-1 min-h-0 px-3 sm:px-4 pb-3">
+        <div className="timeline-container h-full rounded-xl overflow-hidden">
+          <div className="timeline-backdrop" />
+          <div className="timeline-backdrop-edge" />
+          <div
+            ref={parentRef}
+            className="relative z-10 h-full overflow-auto px-3 sm:px-4 py-2"
+            style={{ contain: 'strict' }}
+          >
               <div
                 style={{
                   height: `${virtualizer.getTotalSize()}px`,
@@ -317,21 +292,20 @@ export function VirtualizedTimeline() {
                   );
                 })}
               </div>
-            </div>
 
-            {/* Loading more indicator */}
-            {loadingState.isLoadingMore && (
-              <div className="mt-4 text-center">
-                <Skeleton className="h-20 w-full" />
-              </div>
-            )}
+              {/* Loading more indicator */}
+              {loadingState.isLoadingMore && (
+                <div className="py-3 text-center">
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                </div>
+              )}
 
-            {/* End of timeline indicator */}
-            {!loadingState.hasMore && playIds.length > 0 && (
-              <div className="mt-4 text-center text-sm text-muted-foreground">
-                You've reached the beginning of the timeline
-              </div>
-            )}
+              {/* End of timeline indicator */}
+              {!loadingState.hasMore && playIds.length > 0 && (
+                <div className="py-3 text-center text-xs text-muted-foreground/60">
+                  End of timeline
+                </div>
+              )}
           </div>
         </div>
       </div>

@@ -17,7 +17,7 @@
  * ```
  */
 
-import { useState } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { useAtomValue } from "@effect-atom/atom-react"
 import { HashMap, Chunk } from "effect"
 import { linksByCategoryAtom } from "@/atoms/link-atoms"
@@ -29,6 +29,17 @@ export function LinksByCategory({ playId }: { playId: number }) {
   const byCategory = useAtomValue(linksByCategoryAtom(playId))
   const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
 
+  // Memoize the categories array to avoid recreating on every render
+  const categories = useMemo(
+    () => Array.from(HashMap.toEntries(byCategory)),
+    [byCategory]
+  )
+
+  // Memoize hover handlers to stabilize references
+  const handleHover = useCallback((id: string | null) => {
+    setHoveredLinkId(id)
+  }, [])
+
   if (HashMap.isEmpty(byCategory)) return null
 
   return (
@@ -36,13 +47,13 @@ export function LinksByCategory({ playId }: { playId: number }) {
       <h3 className="text-lg font-semibold mb-4 text-muted-foreground/80" style={{ fontFamily: 'var(--font-family-display)', letterSpacing: '-0.01em' }}>
         Links
       </h3>
-      {Array.from(HashMap.toEntries(byCategory)).map(([category, links]) => (
+      {categories.map(([category, links]) => (
         <CategorySection
           key={category}
           category={category}
           links={links}
           hoveredLinkId={hoveredLinkId}
-          onHover={setHoveredLinkId}
+          onHover={handleHover}
         />
       ))}
     </div>

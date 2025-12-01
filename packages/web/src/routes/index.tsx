@@ -8,7 +8,8 @@ export const Route = createFileRoute('/')({
 
 function HomePage() {
   return (
-    <div className="flex min-h-screen">
+    <div className="relative min-h-screen w-full">
+      {/* Timeline and Panel share viewport - both position independently */}
       <VirtualizedTimeline />
       <PlayDetailsPanel />
     </div>

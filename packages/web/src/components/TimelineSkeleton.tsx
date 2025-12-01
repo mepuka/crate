@@ -12,25 +12,25 @@ export function TimelineSkeleton({ count = 5, className }: TimelineSkeletonProps
       {Array.from({ length: count }).map((_, index) => (
         <div
           key={index}
-          className="border-b border-border/40 bg-card"
+          className="rounded-lg bg-card/30 p-2"
         >
-          <div className="flex gap-3 py-3">
-            {/* Album Art Skeleton */}
-            <Skeleton className="h-20 w-20 sm:h-24 sm:w-24 shrink-0 rounded" />
-            
+          <div className="flex gap-2.5">
+            {/* Album Art Skeleton - smaller */}
+            <Skeleton className="h-[72px] w-[72px] shrink-0 rounded-md" />
+
             {/* Content Skeleton */}
-            <div className="flex-1 min-w-0 space-y-0.5 py-0.5">
+            <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5">
               {/* Title and Time */}
-              <div className="flex items-baseline justify-between gap-3">
-                <Skeleton className="h-4 w-3/4 rounded" />
-                <Skeleton className="h-3 w-16 rounded shrink-0" />
+              <div className="flex items-baseline justify-between gap-2">
+                <Skeleton className="h-3.5 w-3/4 rounded" />
+                <Skeleton className="h-2.5 w-12 rounded shrink-0" />
               </div>
-              
+
               {/* Artist */}
               <Skeleton className="h-3 w-1/2 rounded" />
-              
+
               {/* Album */}
-              <Skeleton className="h-3 w-2/3 rounded" />
+              <Skeleton className="h-2.5 w-2/5 rounded" />
             </div>
           </div>
         </div>

@@ -24,6 +24,8 @@ const CONFIG = {
   VIGNETTE_STRENGTH: 0.25, // Vignette darkening strength (0-1)
   GRAIN_OPACITY: 0.08, // Film grain opacity (0-1)
   COLOR_SHIFT_AMOUNT: 0.06, // Subtle color channel shifts (±6%)
+  // Cache limits to prevent unbounded memory growth
+  MAX_TILE_CACHE_SIZE: 200, // Max cached tiles (LRU eviction)
 } as const;
 
 /**
@@ -38,14 +40,18 @@ function organicNoise(row: number, col: number, seed: number = 0): number {
 /**
  * Apply granular visual defects within a single tile
  * Creates localized imperfections like vignetting, grain, and color shifts
+ *
+ * NOTE: Pixel-level effects (grain, color shifts) require getImageData which
+ * fails for cross-origin images. We gracefully skip those for CORS images.
  */
 function applyTileDefects(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   row: number,
   col: number,
-  size: number
+  size: number,
+  isCrossOrigin: boolean = false
 ): void {
-  // Vignette effect (darkened edges)
+  // Vignette effect (darkened edges) - uses gradient overlay, works with CORS
   const vignetteStrength = organicNoise(row, col, 10) * CONFIG.VIGNETTE_STRENGTH;
   if (vignetteStrength > 0.05) {
     const gradient = ctx.createRadialGradient(
@@ -58,46 +64,58 @@ function applyTileDefects(
     ctx.fillRect(0, 0, size, size);
   }
 
-  // Film grain texture
-  const grainAmount = organicNoise(row, col, 11) * CONFIG.GRAIN_OPACITY;
-  if (grainAmount > 0.02) {
-    const imageData = ctx.getImageData(0, 0, size, size);
-    const pixels = imageData.data;
-
-    // Apply subtle random noise to pixels
-    for (let i = 0; i < pixels.length; i += 4) {
-      const pixelNoise = organicNoise(
-        Math.floor(i / 4 / size),
-        (i / 4) % size,
-        row * 1000 + col
-      );
-      const grain = (pixelNoise - 0.5) * grainAmount * 255;
-      pixels[i] += grain;     // R
-      pixels[i + 1] += grain; // G
-      pixels[i + 2] += grain; // B
-    }
-
-    ctx.putImageData(imageData, 0, 0);
+  // Skip pixel-level effects for cross-origin images (getImageData would fail)
+  if (isCrossOrigin) {
+    return;
   }
 
-  // Subtle color channel shifts (chromatic aberration-like)
+  // Film grain texture - requires getImageData
+  const grainAmount = organicNoise(row, col, 11) * CONFIG.GRAIN_OPACITY;
+  if (grainAmount > 0.02) {
+    try {
+      const imageData = ctx.getImageData(0, 0, size, size);
+      const pixels = imageData.data;
+
+      // Apply subtle random noise to pixels
+      for (let i = 0; i < pixels.length; i += 4) {
+        const pixelNoise = organicNoise(
+          Math.floor(i / 4 / size),
+          (i / 4) % size,
+          row * 1000 + col
+        );
+        const grain = (pixelNoise - 0.5) * grainAmount * 255;
+        pixels[i] += grain;     // R
+        pixels[i + 1] += grain; // G
+        pixels[i + 2] += grain; // B
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+    } catch {
+      // Canvas tainted by cross-origin data - skip grain effect
+    }
+  }
+
+  // Subtle color channel shifts (chromatic aberration-like) - requires getImageData
   const colorShift = organicNoise(row, col, 12) * CONFIG.COLOR_SHIFT_AMOUNT;
   if (colorShift > 0.015) {
-    // Get image data and apply slight color channel modifications
-    const imageData = ctx.getImageData(0, 0, size, size);
-    const pixels = imageData.data;
+    try {
+      const imageData = ctx.getImageData(0, 0, size, size);
+      const pixels = imageData.data;
 
-    const redShift = (organicNoise(row, col, 13) - 0.5) * colorShift * 2;
-    const greenShift = (organicNoise(row, col, 14) - 0.5) * colorShift * 2;
-    const blueShift = (organicNoise(row, col, 15) - 0.5) * colorShift * 2;
+      const redShift = (organicNoise(row, col, 13) - 0.5) * colorShift * 2;
+      const greenShift = (organicNoise(row, col, 14) - 0.5) * colorShift * 2;
+      const blueShift = (organicNoise(row, col, 15) - 0.5) * colorShift * 2;
 
-    for (let i = 0; i < pixels.length; i += 4) {
-      pixels[i] *= (1 + redShift);       // R
-      pixels[i + 1] *= (1 + greenShift); // G
-      pixels[i + 2] *= (1 + blueShift);  // B
+      for (let i = 0; i < pixels.length; i += 4) {
+        pixels[i] *= (1 + redShift);       // R
+        pixels[i + 1] *= (1 + greenShift); // G
+        pixels[i + 2] *= (1 + blueShift);  // B
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+    } catch {
+      // Canvas tainted by cross-origin data - skip color shift effect
     }
-
-    ctx.putImageData(imageData, 0, 0);
   }
 }
 
@@ -116,7 +134,8 @@ function createPreRenderedTile(
   bitmap: ImageBitmap,
   row: number,
   col: number,
-  clipPath: Path2D | undefined
+  clipPath: Path2D | undefined,
+  isCrossOrigin: boolean = true // Default true for safety - skip pixel effects
 ): OffscreenCanvas {
   const offscreen = new OffscreenCanvas(CONFIG.TILE_SIZE, CONFIG.TILE_SIZE);
   const ctx = offscreen.getContext("2d", { willReadFrequently: true });
@@ -156,8 +175,8 @@ function createPreRenderedTile(
   ctx.globalAlpha = 1;
 
   // Apply granular per-tile defects (vignette, grain, color shifts)
-  // This requires getImageData/putImageData but happens ONCE per tile
-  applyTileDefects(ctx, row, col, CONFIG.TILE_SIZE);
+  // Pixel-level effects skipped for cross-origin images (canvas tainted)
+  applyTileDefects(ctx, row, col, CONFIG.TILE_SIZE, isCrossOrigin);
 
   return offscreen;
 }
@@ -202,20 +221,67 @@ export function ScrollingAlbumBar() {
   // Metadata cache to map index -> artwork data for new music detection
   const artworkMetadata = useRef<Map<number, AlbumArtworkData>>(new Map());
 
+  // Pre-computed isNewMusic flags (computed once during load, not per-render)
+  const isNewMusicFlags = useRef<Map<number, boolean>>(new Map());
+
   // Precompute clipping path for rounded corners (used during tile creation)
   const clipPathRef = useRef<Path2D>();
 
+  // Path2D for new music glow effect (created once, reused)
+  const newMusicPathRef = useRef<Path2D>();
+
+  // Helper: Add to cache with LRU eviction
+  const addToTileCache = (key: string, tile: OffscreenCanvas) => {
+    tileCache.current.set(key, tile);
+
+    // LRU eviction: remove oldest entries if over limit
+    if (tileCache.current.size > CONFIG.MAX_TILE_CACHE_SIZE) {
+      const firstKey = tileCache.current.keys().next().value;
+      if (firstKey) {
+        tileCache.current.delete(firstKey);
+      }
+    }
+  };
+
+  // Cleanup ImageBitmaps on unmount to prevent GPU memory leaks
   useEffect(() => {
+    return () => {
+      // Close all ImageBitmaps explicitly
+      imagesRef.current.forEach((bitmap) => {
+        if (bitmap && typeof bitmap.close === 'function') {
+          bitmap.close();
+        }
+      });
+      imagesRef.current = [];
+
+      // Clear caches
+      tileCache.current.clear();
+      artworkMetadata.current.clear();
+      isNewMusicFlags.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    // Clip path for tile corners
     const path = new Path2D();
     path.roundRect(0, 0, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE, CONFIG.TILE_RADIUS);
     clipPathRef.current = path;
+
+    // Path for new music glow effect (slightly inset)
+    const glowPath = new Path2D();
+    glowPath.roundRect(1, 1, CONFIG.TILE_SIZE - 2, CONFIG.TILE_SIZE - 2, CONFIG.TILE_RADIUS);
+    newMusicPathRef.current = glowPath;
   }, []);
 
-  // Load album artwork images and build pre-rendered tile cache
+  // Track load progress for progressive rendering
+  const [loadProgress, setLoadProgress] = useState(0);
+
+  // Load album artwork images in PARALLEL with progressive rendering
   useEffect(() => {
     Result.matchWithWaiting(albumArtResult, {
       onWaiting: () => {
         setIsLoadingComplete(false);
+        setLoadProgress(0);
       },
       onError: (error) => {
         console.error("Failed to load album artwork:", error);
@@ -225,54 +291,126 @@ export function ScrollingAlbumBar() {
       },
       onSuccess: async (s) => {
         const artworks = s.value as readonly AlbumArtworkData[];
-        const bitmaps: ImageBitmap[] = [];
+
+        // Close old ImageBitmaps before clearing to prevent GPU memory leaks
+        imagesRef.current.forEach((bitmap) => {
+          if (bitmap && typeof bitmap.close === 'function') {
+            bitmap.close();
+          }
+        });
 
         // Clear old caches when new data arrives
         tileCache.current.clear();
         artworkMetadata.current.clear();
+        isNewMusicFlags.current.clear();
+        imagesRef.current = [];
 
-        // Load images as ImageBitmaps for GPU-native rendering
-        for (let i = 0; i < artworks.length; i++) {
-          const artwork = artworks[i];
+        // Helper to load a single image using Image element (avoids CORS issues)
+        const loadImage = async (artwork: AlbumArtworkData, index: number): Promise<ImageBitmap | null> => {
           try {
-            const response = await fetch(artwork.imageUri);
-            const blob = await response.blob();
+            // Use Image element to load - bypasses CORS for display
+            const img = new Image();
+            img.crossOrigin = 'anonymous'; // Try anonymous first, fall back if needed
 
-            // Decode to ImageBitmap with resize during decode (saves memory)
-            const bitmap = await createImageBitmap(blob, {
-              resizeWidth: CONFIG.TILE_SIZE,
-              resizeHeight: CONFIG.TILE_SIZE,
-              resizeQuality: 'medium'
+            const loadPromise = new Promise<HTMLImageElement>((resolve, reject) => {
+              const timeoutId = setTimeout(() => {
+                reject(new Error('Image load timeout'));
+              }, 8000);
+
+              img.onload = () => {
+                clearTimeout(timeoutId);
+                resolve(img);
+              };
+              img.onerror = () => {
+                clearTimeout(timeoutId);
+                // Retry without crossOrigin if CORS fails
+                const retryImg = new Image();
+                retryImg.onload = () => resolve(retryImg);
+                retryImg.onerror = () => reject(new Error('Image load failed'));
+                retryImg.src = artwork.imageUri;
+              };
+              img.src = artwork.imageUri;
             });
 
-            bitmaps.push(bitmap);
+            const loadedImg = await loadPromise;
+
+            // Decode to ImageBitmap with resize during decode (saves memory)
+            const bitmap = await createImageBitmap(loadedImg, {
+              resizeWidth: CONFIG.TILE_SIZE,
+              resizeHeight: CONFIG.TILE_SIZE,
+              resizeQuality: 'low' // Use 'low' for faster decoding
+            });
 
             // Store metadata for new music detection
-            artworkMetadata.current.set(i, artwork);
+            artworkMetadata.current.set(index, artwork);
+
+            // Pre-compute isNewMusic flag (once per artwork, not per render)
+            isNewMusicFlags.current.set(index, isNewMusic({
+              airdate: artwork.airdate,
+              comment: artwork.comment,
+            } as any));
 
             // Pre-render tile with all effects baked in
-            // Use a consistent row/col seed (0, i) for deterministic effects
             const preRenderedTile = createPreRenderedTile(
               bitmap,
               0, // Fixed row seed for consistency
-              i, // Use index as col seed for variation
+              index, // Use index as col seed for variation
               clipPathRef.current
             );
 
-            // Cache the pre-rendered tile
-            tileCache.current.set(artwork.imageUri, preRenderedTile);
-          } catch (err) {
-            console.error(`Failed to load image for play ${artwork.id}:`, err);
-          }
-        }
+            // Cache the pre-rendered tile with LRU eviction
+            addToTileCache(artwork.imageUri, preRenderedTile);
 
-        if (bitmaps.length > 0) {
-          imagesRef.current = bitmaps;
+            return bitmap;
+          } catch (err) {
+            // Log error with context (but don't fail the whole batch)
+            if (err instanceof Error && err.name === 'AbortError') {
+              console.warn(`Timeout loading image for play ${artwork.id}`);
+            } else {
+              console.error(`Failed to load image for play ${artwork.id}:`, err);
+            }
+            return null;
+          }
+        };
+
+        // Load ALL images in parallel (much faster than sequential)
+        let loadedCount = 0;
+        const bitmapPromises = artworks.map((artwork, index) =>
+          loadImage(artwork, index).then((bitmap) => {
+            loadedCount++;
+            // Update progress for progressive rendering
+            setLoadProgress(loadedCount / artworks.length);
+
+            // Enable rendering after first few images load (progressive)
+            if (loadedCount >= 6 && !isLoadingComplete) {
+              // Filter out nulls and set as loaded
+              const validBitmaps = imagesRef.current.filter(Boolean);
+              if (validBitmaps.length >= 6) {
+                setIsLoadingComplete(true);
+              }
+            }
+
+            if (bitmap) {
+              imagesRef.current[index] = bitmap;
+            }
+            return bitmap;
+          })
+        );
+
+        // Wait for all to complete
+        await Promise.all(bitmapPromises);
+
+        // Final update with all loaded bitmaps
+        const validBitmaps = imagesRef.current.filter(Boolean);
+        if (validBitmaps.length > 0) {
           setIsLoadingComplete(true);
         }
       },
     });
   }, [albumArtResult]);
+
+  // Track last rendered dimensions to avoid unnecessary redraws
+  const lastDimensionsRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
 
   // Render static grid when images are loaded
   useEffect(() => {
@@ -289,23 +427,44 @@ export function ScrollingAlbumBar() {
       const canvasWidth = window.innerWidth;
       const canvasHeight = window.innerHeight;
 
+      // Skip render if dimensions haven't changed significantly (>10px)
+      const lastDim = lastDimensionsRef.current;
+      if (
+        Math.abs(canvasWidth - lastDim.width) < 10 &&
+        Math.abs(canvasHeight - lastDim.height) < 10
+      ) {
+        return;
+      }
+      lastDimensionsRef.current = { width: canvasWidth, height: canvasHeight };
+
       // Use standard DPR for static content
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = canvasWidth * dpr;
-      canvas.height = canvasHeight * dpr;
-      canvas.style.width = `${canvasWidth}px`;
-      canvas.style.height = `${canvasHeight}px`;
-      ctx.scale(dpr, dpr);
 
-      // Clear canvas
+      // Only resize canvas if dimensions actually changed (prevents flash)
+      const newWidth = canvasWidth * dpr;
+      const newHeight = canvasHeight * dpr;
+      if (canvas.width !== newWidth || canvas.height !== newHeight) {
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+        canvas.style.width = `${canvasWidth}px`;
+        canvas.style.height = `${canvasHeight}px`;
+      }
+
+      // Reset transform and clear
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
       // Calculate grid dimensions (extra tiles to account for brick pattern offset)
       const cols = Math.ceil(canvasWidth / tileWidth) + 2;
       const rows = Math.ceil(canvasHeight / tileWidth) + 1;
 
-      // Render grid using cached pre-rendered tiles
-      let imageIndex = 0;
+      // Get valid artwork indices (filter sparse array)
+      const validIndices = Array.from(artworkMetadata.current.keys());
+      if (validIndices.length === 0) return;
+
+      // Render grid using cached pre-rendered tiles with pseudo-random selection
+      // to avoid obvious repetition patterns
       for (let row = 0; row < rows; row++) {
         // Start column offset for even rows to fill left edge
         const startCol = row % 2 === 1 ? -1 : 0;
@@ -316,10 +475,11 @@ export function ScrollingAlbumBar() {
           const x = col * tileWidth + (row % 2 === 1 ? CONFIG.ROW_OFFSET : 0);
           const y = row * tileWidth;
 
-          // Get artwork metadata (cycle through available images)
-          const artworkIndex = imageIndex % imagesRef.current.length;
+          // Use seeded random to select image - avoids obvious repetition patterns
+          // Different seeds create varied distribution across the grid
+          const randomIndex = Math.floor(organicNoise(row, col, 42) * validIndices.length);
+          const artworkIndex = validIndices[randomIndex];
           const artwork = artworkMetadata.current.get(artworkIndex);
-          imageIndex++;
 
           if (!artwork) continue;
 
@@ -327,11 +487,8 @@ export function ScrollingAlbumBar() {
           const preRenderedTile = tileCache.current.get(artwork.imageUri);
           if (!preRenderedTile) continue;
 
-          // Check if this tile is new music
-          const isNew = isNewMusic({
-            airdate: artwork.airdate,
-            comment: artwork.comment,
-          } as any);
+          // Use pre-computed isNewMusic flag (computed once during load)
+          const isNew = isNewMusicFlags.current.get(artworkIndex) ?? false;
 
           ctx.save();
           ctx.translate(x, y);
@@ -340,17 +497,15 @@ export function ScrollingAlbumBar() {
           ctx.drawImage(preRenderedTile, 0, 0, CONFIG.TILE_SIZE, CONFIG.TILE_SIZE);
 
           // Apply new music highlight if applicable
-          if (isNew) {
+          if (isNew && newMusicPathRef.current) {
             // Teal glow effect for new music
             ctx.strokeStyle = 'rgba(94, 234, 212, 0.5)'; // Teal color (matches --new-music-glow)
             ctx.lineWidth = 3;
             ctx.shadowColor = 'rgba(94, 234, 212, 0.4)';
             ctx.shadowBlur = 12;
 
-            // Draw rounded rectangle border
-            const path = new Path2D();
-            path.roundRect(1, 1, CONFIG.TILE_SIZE - 2, CONFIG.TILE_SIZE - 2, CONFIG.TILE_RADIUS);
-            ctx.stroke(path);
+            // Draw rounded rectangle border using cached Path2D
+            ctx.stroke(newMusicPathRef.current);
 
             // Reset shadow for next tile
             ctx.shadowColor = 'transparent';
@@ -365,28 +520,36 @@ export function ScrollingAlbumBar() {
     // Initial render
     renderGrid();
 
-    // Re-render on resize (tiles are already cached, just re-layout the grid)
-    let resizeTimeout: number;
-    const handleResize = () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = window.setTimeout(renderGrid, 250);
-    };
+    // Use ResizeObserver for smoother resize handling (better than window resize event)
+    let rafId: number | null = null;
+    const resizeObserver = new ResizeObserver(() => {
+      // Cancel pending frame and schedule new one
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      // Use requestAnimationFrame for smooth rendering during resize
+      rafId = requestAnimationFrame(renderGrid);
+    });
 
-    window.addEventListener("resize", handleResize);
+    // Observe document body for size changes
+    resizeObserver.observe(document.body);
 
     return () => {
-      clearTimeout(resizeTimeout);
-      window.removeEventListener("resize", handleResize);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      resizeObserver.disconnect();
     };
   }, [isLoadingComplete]);
 
   return (
     <div className="album-grid-background fixed inset-0 -z-10 overflow-hidden">
-      {/* Canvas layer - renders album tiles (no blur) */}
+      {/* Canvas layer - renders album tiles with fade-in */}
       <canvas
         ref={canvasRef}
-        className="absolute inset-0 w-full h-full"
-        style={{ opacity: CONFIG.CANVAS_OPACITY }}
+        className={`absolute inset-0 w-full h-full transition-opacity duration-1000 ease-out ${
+          isLoadingComplete ? 'opacity-75' : 'opacity-0'
+        }`}
       />
 
       {/* CSS blur overlay - light blur for aesthetic */}
@@ -405,28 +568,15 @@ export function ScrollingAlbumBar() {
         aria-hidden="true"
       />
 
-      {/* Loading state */}
-      {Result.matchWithWaiting(albumArtResult, {
-        onWaiting: () => (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="flex gap-2 items-center text-sm text-muted-foreground">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              Loading album artwork...
-            </div>
+      {/* Loading state with progress */}
+      {!isLoadingComplete && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="flex flex-col gap-2 items-center text-sm text-muted-foreground">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <span>Loading album artwork... {Math.round(loadProgress * 100)}%</span>
           </div>
-        ),
-        onError: () => (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="text-sm text-muted-foreground">Failed to load album artwork</span>
-          </div>
-        ),
-        onDefect: () => (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="text-sm text-muted-foreground">Error loading album artwork</span>
-          </div>
-        ),
-        onSuccess: () => null,
-      })}
+        </div>
+      )}
     </div>
   );
 }

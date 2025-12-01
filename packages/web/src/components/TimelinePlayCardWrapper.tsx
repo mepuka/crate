@@ -1,5 +1,6 @@
 import { useAtomValue, Result } from '@effect-atom/atom-react'
 import { Option } from 'effect'
+import { memo } from 'react'
 import { playAtom } from '@/atoms/timeline'
 import { PlayCard } from './PlayCard'
 import { TimelineErrorState } from './TimelineErrorState'
@@ -9,7 +10,7 @@ interface TimelinePlayCardWrapperProps {
   playId: number
 }
 
-export function TimelinePlayCardWrapper({ playId }: TimelinePlayCardWrapperProps) {
+export const TimelinePlayCardWrapper = memo(function TimelinePlayCardWrapper({ playId }: TimelinePlayCardWrapperProps) {
   const play = useAtomValue(playAtom(playId))
 
   return Result.matchWithWaiting(play, {
@@ -47,5 +48,5 @@ export function TimelinePlayCardWrapper({ playId }: TimelinePlayCardWrapperProps
       })
     ),
   })
-}
+})
 
