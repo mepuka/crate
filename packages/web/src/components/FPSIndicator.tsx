@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 
 export function FPSIndicator() {
+  if (!import.meta.env.DEV) {
+    return null
+  }
+
+  return <FPSIndicatorImpl />
+}
+
+function FPSIndicatorImpl() {
   const [fps, setFps] = useState(60)
   const [avgFps, setAvgFps] = useState(60)
   const frameTimesRef = useRef<number[]>([])
@@ -68,4 +76,3 @@ export function FPSIndicator() {
     </div>
   )
 }
-

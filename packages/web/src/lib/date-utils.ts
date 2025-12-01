@@ -28,12 +28,26 @@ const DEFAULT_LOCALE = "en-US";
  */
 
 /**
+ * Validate if a locale string is supported by Intl.DateTimeFormat.
+ */
+const isValidLocale = (locale: string): boolean => {
+  try {
+    new Intl.DateTimeFormat(locale);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Get the default locale from the browser, falling back to DEFAULT_LOCALE.
  * Returns the user's preferred locale or the fallback.
  */
 const getDefaultLocale = (): string => {
   if (typeof navigator !== "undefined" && navigator.language) {
-    return navigator.language;
+    if (isValidLocale(navigator.language)) {
+      return navigator.language;
+    }
   }
   return DEFAULT_LOCALE;
 };
