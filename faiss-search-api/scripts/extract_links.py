@@ -294,14 +294,15 @@ class LinkExtractor:
         """Find plays with URLs not yet in link_content."""
         cursor = self.conn.cursor()
 
-        # Get plays with URLs in comments
+        # Get plays with URLs in comments - oldest first to process backlog
+        # Then switch to DESC for real-time processing once backlog is done
         cursor.execute("""
             SELECT id, comment
             FROM fact_plays
             WHERE comment LIKE '%http%'
-            ORDER BY id DESC
+            ORDER BY id ASC
             LIMIT ?
-        """, (batch_size * 10,))  # Fetch more since we filter
+        """, (batch_size * 100,))  # Fetch more since many will be skipped/extracted
 
         plays_with_new_urls = []
 
@@ -334,8 +335,14 @@ class LinkExtractor:
     def insert_link(self, url: str, normalized: str, domain: str,
                     link_type: str, title: Optional[str],
                     markdown: Optional[str], error: Optional[str]) -> int:
-        """Insert link into link_content table."""
+        """Insert link into link_content table, or return existing ID if URL exists."""
         cursor = self.conn.cursor()
+
+        # Check if URL already exists
+        cursor.execute("SELECT id FROM link_content WHERE url = ?", (url,))
+        existing = cursor.fetchone()
+        if existing:
+            return existing[0]
 
         status = "success" if markdown else ("error" if error else "pending")
 
