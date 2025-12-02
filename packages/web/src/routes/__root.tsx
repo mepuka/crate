@@ -17,7 +17,7 @@ function RootComponent() {
         Skip to main content
       </a>
       <ScrollingAlbumBar />
-      <main id="main-content" className="flex-1">
+      <main id="main-content" className="flex-1 relative z-0">
         <Outlet />
       </main>
       <TanStackRouterDevtools />

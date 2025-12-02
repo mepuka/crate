@@ -2,13 +2,24 @@ import { createFileRoute, useParams, Link } from '@tanstack/react-router'
 import { useAtomValue, Result } from '@effect-atom/atom-react'
 import { playAtom } from '@/atoms/timeline'
 import { Option } from 'effect'
+import { z } from 'zod'
+
+// Schema for search params we want to preserve
+const playSearchSchema = z.object({
+  artist_mbid: z.string().optional(),
+  release_group_mbid: z.string().optional(),
+  release_mbid: z.string().optional(),
+  recording_mbid: z.string().optional(),
+})
 
 export const Route = createFileRoute('/play/$id')({
+  validateSearch: (search) => playSearchSchema.parse(search),
   component: PlayDetailPage,
 })
 
 function PlayDetailPage() {
   const { id } = useParams({ from: '/play/$id' })
+  const search = Route.useSearch()
   const play = useAtomValue(playAtom(Number(id)))
 
   return (
@@ -16,7 +27,7 @@ function PlayDetailPage() {
       <header className="mb-6">
         <Link
           to="/"
-          search={(prev) => prev}
+          search={search}
           className="text-sm text-gray-600 hover:text-gray-900 mb-4 inline-block"
         >
           ← Back to Timeline

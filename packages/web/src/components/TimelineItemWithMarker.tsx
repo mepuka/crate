@@ -18,7 +18,7 @@ interface TimelineItemWithMarkerProps {
 
 export const TimelineItemWithMarker = memo(function TimelineItemWithMarker({ playId, showBoundary }: TimelineItemWithMarkerProps) {
   return (
-    <>
+    <li className="block">
       {showBoundary && (
         <ShowTransitionMarker
           timestamp={showBoundary.timestamp}
@@ -28,6 +28,6 @@ export const TimelineItemWithMarker = memo(function TimelineItemWithMarker({ pla
         />
       )}
       <TimelinePlayCardWrapper playId={playId} />
-    </>
+    </li>
   )
 })

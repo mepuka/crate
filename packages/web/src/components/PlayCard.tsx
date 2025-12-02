@@ -117,15 +117,20 @@ export const PlayCard = memo(forwardRef<HTMLDivElement, PlayCardProps>(
         )}
         data-age={ageCategory}
         data-new-music={newMusicIndicator}
-        role="article"
-        tabIndex={0}
-        onClick={handleClick}
-        onKeyDown={handleKeyDown}
-        aria-label={isNonTrackPlay
-          ? `${play.comment} - Special program segment played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`
-          : `${play.song} by ${play.artist} played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`
-        }
+        role="article" // The main card is an article
       >
+        {/* Clickable overlay for entire card - z-index 0 to sit behind interactive children */}
+        <div
+          onClick={handleClick}
+          onKeyDown={handleKeyDown}
+          tabIndex={0}
+          role="button"
+          className="absolute inset-0 z-0 cursor-pointer"
+          aria-label={isNonTrackPlay
+            ? `View details for ${play.comment} - Special program segment played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`
+            : `View details for ${play.song} by ${play.artist} played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`
+          }
+        />
         <div className="relative z-10 flex gap-2.5 py-1 pointer-events-none">
           {/* Album Art */}
           <AlbumArt
