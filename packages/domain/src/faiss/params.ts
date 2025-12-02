@@ -39,3 +39,15 @@ export class SearchParams extends Schema.Class<SearchParams>("SearchParams")({
   limit: Schema.optionalWith(Schema.Number, { default: () => 10 }),
   offset: Schema.optionalWith(Schema.Number, { default: () => 0 })
 }) {}
+
+/**
+ * Play count endpoint URL parameters.
+ *
+ * For GET /api/plays/count - at least one MBID filter must be provided.
+ */
+export class PlayCountParams extends Schema.Class<PlayCountParams>("PlayCountParams")({
+  artist_mbid: Schema.optional(Schema.String),
+  recording_mbid: Schema.optional(Schema.String),
+  release_mbid: Schema.optional(Schema.String),
+  release_group_mbid: Schema.optional(Schema.String)
+}) {}

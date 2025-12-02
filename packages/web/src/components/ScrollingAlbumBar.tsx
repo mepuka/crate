@@ -2,6 +2,103 @@ import { useAtomValue, Result } from "@effect-atom/atom-react";
 import { useEffect, useRef, useState } from "react";
 import { recentAlbumArtAtom, type AlbumArtworkData } from "@/atoms/album-bar";
 import { isNewMusic } from "@/lib/new-music-utils";
+import { Effect, Option, pipe } from "effect";
+
+// ============================================================================
+// Image Proxy - Pure Functions with Option
+// ============================================================================
+
+// API base URL for image proxy (empty for same-origin, full URL for cross-origin)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+const CORS_BLOCKED_DOMAINS = ['archive.org', 'kexp.org', 'coverartarchive.org'] as const;
+
+/** Parse URL safely, returning Option.none for invalid URLs */
+const parseUrl = (url: string): Option.Option<URL> =>
+  Option.liftThrowable((u: string) => new URL(u))(url);
+
+/** Check if hostname matches or is subdomain of a blocked domain */
+const isBlockedDomain = (hostname: string): boolean =>
+  CORS_BLOCKED_DOMAINS.some(domain =>
+    hostname === domain || hostname.endsWith('.' + domain)
+  );
+
+/** Determine if URL needs proxying - pure function returning boolean */
+const needsProxy = (url: string): boolean =>
+  pipe(
+    parseUrl(url),
+    Option.map(parsed => isBlockedDomain(parsed.hostname)),
+    Option.getOrElse(() => false)
+  );
+
+/** Build proxied URL - endpoint is at /api/image-proxy */
+const getProxiedUrl = (url: string): string =>
+  `${API_BASE_URL}/api/image-proxy?url=${encodeURIComponent(url)}`;
+
+/** Resolve image URL - applies proxy if needed */
+const resolveImageUrl = (url: string): string =>
+  needsProxy(url) ? getProxiedUrl(url) : url;
+
+// ============================================================================
+// Image Loading - Effect-based with proper error handling
+// ============================================================================
+
+/** Tagged error for image loading failures */
+class ImageLoadError {
+  readonly _tag = "ImageLoadError";
+  constructor(
+    readonly playId: number,
+    readonly reason: "timeout" | "load_failed" | "bitmap_failed",
+    readonly cause?: unknown
+  ) {}
+}
+
+/** Load image element with timeout - returns Effect */
+const loadImageElement = (
+  url: string,
+  timeoutMs: number = 8000
+): Effect.Effect<HTMLImageElement, ImageLoadError> =>
+  Effect.async<HTMLImageElement, ImageLoadError>((resume) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    const timeoutId = setTimeout(() => {
+      resume(Effect.fail(new ImageLoadError(0, "timeout")));
+    }, timeoutMs);
+
+    img.onload = () => {
+      clearTimeout(timeoutId);
+      resume(Effect.succeed(img));
+    };
+
+    img.onerror = () => {
+      clearTimeout(timeoutId);
+      resume(Effect.fail(new ImageLoadError(0, "load_failed")));
+    };
+
+    img.src = url;
+
+    // Cleanup on interruption
+    return Effect.sync(() => {
+      clearTimeout(timeoutId);
+      img.src = '';
+    });
+  });
+
+/** Create ImageBitmap from loaded image - returns Effect */
+const createBitmap = (
+  img: HTMLImageElement,
+  size: number
+): Effect.Effect<ImageBitmap, ImageLoadError> =>
+  pipe(
+    Effect.tryPromise({
+      try: () => createImageBitmap(img, {
+        resizeWidth: size,
+        resizeHeight: size,
+        resizeQuality: 'low'
+      }),
+      catch: (cause) => new ImageLoadError(0, "bitmap_failed", cause)
+    })
+  );
 
 /**
  * Configuration for the static background album grid
@@ -305,106 +402,73 @@ export function ScrollingAlbumBar() {
         isNewMusicFlags.current.clear();
         imagesRef.current = [];
 
-        // Helper to load a single image using Image element (avoids CORS issues)
-        const loadImage = async (artwork: AlbumArtworkData, index: number): Promise<ImageBitmap | null> => {
-          try {
-            // Use Image element to load - bypasses CORS for display
-            const img = new Image();
-            img.crossOrigin = 'anonymous'; // Try anonymous first, fall back if needed
+        // Build Effect for loading a single image with all side effects
+        const loadSingleImage = (artwork: AlbumArtworkData, index: number) =>
+          pipe(
+            // Resolve URL (applies proxy if needed)
+            Effect.succeed(resolveImageUrl(artwork.imageUri)),
+            // Load image element
+            Effect.flatMap(loadImageElement),
+            // Create bitmap from loaded image
+            Effect.flatMap((img) => createBitmap(img, CONFIG.TILE_SIZE)),
+            // Store metadata and cache tile on success
+            Effect.tap((bitmap) => Effect.sync(() => {
+              artworkMetadata.current.set(index, artwork);
+              isNewMusicFlags.current.set(index, isNewMusic({
+                airdate: artwork.airdate,
+                comment: artwork.comment,
+              } as Parameters<typeof isNewMusic>[0]));
 
-            const loadPromise = new Promise<HTMLImageElement>((resolve, reject) => {
-              const timeoutId = setTimeout(() => {
-                reject(new Error('Image load timeout'));
-              }, 8000);
-
-              img.onload = () => {
-                clearTimeout(timeoutId);
-                resolve(img);
-              };
-              img.onerror = () => {
-                clearTimeout(timeoutId);
-                // Retry without crossOrigin if CORS fails
-                const retryImg = new Image();
-                retryImg.onload = () => resolve(retryImg);
-                retryImg.onerror = () => reject(new Error('Image load failed'));
-                retryImg.src = artwork.imageUri;
-              };
-              img.src = artwork.imageUri;
-            });
-
-            const loadedImg = await loadPromise;
-
-            // Decode to ImageBitmap with resize during decode (saves memory)
-            const bitmap = await createImageBitmap(loadedImg, {
-              resizeWidth: CONFIG.TILE_SIZE,
-              resizeHeight: CONFIG.TILE_SIZE,
-              resizeQuality: 'low' // Use 'low' for faster decoding
-            });
-
-            // Store metadata for new music detection
-            artworkMetadata.current.set(index, artwork);
-
-            // Pre-compute isNewMusic flag (once per artwork, not per render)
-            isNewMusicFlags.current.set(index, isNewMusic({
-              airdate: artwork.airdate,
-              comment: artwork.comment,
-            } as any));
-
-            // Pre-render tile with all effects baked in
-            const preRenderedTile = createPreRenderedTile(
-              bitmap,
-              0, // Fixed row seed for consistency
-              index, // Use index as col seed for variation
-              clipPathRef.current
-            );
-
-            // Cache the pre-rendered tile with LRU eviction
-            addToTileCache(artwork.imageUri, preRenderedTile);
-
-            return bitmap;
-          } catch (err) {
-            // Log error with context (but don't fail the whole batch)
-            if (err instanceof Error && err.name === 'AbortError') {
-              console.warn(`Timeout loading image for play ${artwork.id}`);
-            } else {
-              console.error(`Failed to load image for play ${artwork.id}:`, err);
-            }
-            return null;
-          }
-        };
-
-        // Load ALL images in parallel (much faster than sequential)
-        let loadedCount = 0;
-        const bitmapPromises = artworks.map((artwork, index) =>
-          loadImage(artwork, index).then((bitmap) => {
-            loadedCount++;
-            // Update progress for progressive rendering
-            setLoadProgress(loadedCount / artworks.length);
-
-            // Enable rendering after first few images load (progressive)
-            if (loadedCount >= 6 && !isLoadingComplete) {
-              // Filter out nulls and set as loaded
-              const validBitmaps = imagesRef.current.filter(Boolean);
-              if (validBitmaps.length >= 6) {
-                setIsLoadingComplete(true);
-              }
-            }
-
-            if (bitmap) {
+              const preRenderedTile = createPreRenderedTile(
+                bitmap,
+                0,
+                index,
+                clipPathRef.current
+              );
+              addToTileCache(artwork.imageUri, preRenderedTile);
               imagesRef.current[index] = bitmap;
+            })),
+            // Convert to Option - success yields Some, failure yields None
+            Effect.option,
+            // Track progress after each load (success or failure)
+            Effect.tap(() => Effect.sync(() => {
+              loadedCount++;
+              setLoadProgress(loadedCount / artworks.length);
+
+              if (loadedCount >= 6 && !isLoadingComplete) {
+                const validBitmaps = imagesRef.current.filter(Boolean);
+                if (validBitmaps.length >= 6) {
+                  setIsLoadingComplete(true);
+                }
+              }
+            })),
+            // Log failures for debugging (using Option.match)
+            Effect.tap((result) =>
+              Option.match(result, {
+                onNone: () => Effect.logWarning(`Failed to load image for play ${artwork.id}`),
+                onSome: () => Effect.void
+              })
+            )
+          );
+
+        // Load ALL images in parallel with bounded concurrency
+        let loadedCount = 0;
+        const loadAllImages = pipe(
+          Effect.all(
+            artworks.map((artwork, index) => loadSingleImage(artwork, index)),
+            { concurrency: 10 } // Limit concurrent loads to avoid overwhelming browser
+          ),
+          // Final completion check
+          Effect.tap(() => Effect.sync(() => {
+            const validBitmaps = imagesRef.current.filter(Boolean);
+            if (validBitmaps.length > 0) {
+              setIsLoadingComplete(true);
             }
-            return bitmap;
-          })
+          }))
         );
 
-        // Wait for all to complete
-        await Promise.all(bitmapPromises);
-
-        // Final update with all loaded bitmaps
-        const validBitmaps = imagesRef.current.filter(Boolean);
-        if (validBitmaps.length > 0) {
-          setIsLoadingComplete(true);
-        }
+        // Run the Effect (convert to Promise for useEffect compatibility)
+        await Effect.runPromise(loadAllImages);
       },
     });
   }, [albumArtResult]);

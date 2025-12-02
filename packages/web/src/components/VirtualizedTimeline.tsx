@@ -87,7 +87,8 @@ export function VirtualizedTimeline() {
 
   // Intersection observer for infinite scroll
   useEffect(() => {
-    if (!loadingState.hasMore || loadingState.isLoadingMore) {
+    // Don't load more if: no more pages, already loading, or in error state
+    if (!loadingState.hasMore || loadingState.isLoadingMore || loadingState.isError) {
       return;
     }
 
@@ -101,7 +102,7 @@ export function VirtualizedTimeline() {
     if (playIds.length - lastVirtualItem.index <= LOAD_MORE_THRESHOLD) {
       loadMore();
     }
-  }, [virtualItems, playIds.length, loadingState.hasMore, loadingState.isLoadingMore, loadMore]);
+  }, [virtualItems, playIds.length, loadingState.hasMore, loadingState.isLoadingMore, loadingState.isError, loadMore]);
 
   // Performance optimization: Reduce expensive effects during scroll
   useEffect(() => {

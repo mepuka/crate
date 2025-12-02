@@ -255,3 +255,12 @@ class GetEnrichmentsResponse(BaseModel):
 
     enrichments: List[EnrichmentData]
     total: int
+
+
+class PlayCountResponse(BaseModel):
+    """Response for play count queries."""
+
+    count: int = Field(description="Number of matching plays")
+    entity_type: Optional[str] = Field(None, description="Type of entity filtered (artist, recording, etc)")
+    mbid: Optional[str] = Field(None, description="MBID that was filtered")
+    query_time_ms: float = Field(description="Query execution time in milliseconds")

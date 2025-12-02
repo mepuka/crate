@@ -26,7 +26,7 @@ import { Schema } from "effect"
  * })
  * ```
  */
-export { SearchParams, TimelineParams } from "@crate/domain/faiss/schemas"
+export { SearchParams, TimelineParams, PlayCountParams } from "@crate/domain/faiss/schemas"
 
 /**
  * Play ID path parameter.

@@ -761,6 +761,40 @@ class DatabaseService:
         cursor.execute("SELECT id, name FROM enrichment_types ORDER BY name")
         return [{'id': row[0], 'name': row[1]} for row in cursor.fetchall()]
 
+    def get_play_count(
+        self,
+        artist_mbid: Optional[str] = None,
+        recording_mbid: Optional[str] = None,
+        release_mbid: Optional[str] = None,
+        release_group_mbid: Optional[str] = None
+    ) -> int:
+        """
+        Get count of plays matching MBID filters.
+
+        Args:
+            artist_mbid: Filter by artist MBID
+            recording_mbid: Filter by recording MBID
+            release_mbid: Filter by release MBID
+            release_group_mbid: Filter by release group MBID
+
+        Returns:
+            Count of matching plays
+        """
+        cursor = self.conn.cursor()
+
+        # Build MBID filter clause
+        mbid_filter, mbid_params = self._build_mbid_filter_clause(
+            artist_mbid, recording_mbid, release_mbid, release_group_mbid
+        )
+
+        if mbid_filter:
+            query = f"SELECT COUNT(*) FROM fact_plays {mbid_filter}"
+            cursor.execute(query, mbid_params)
+        else:
+            cursor.execute("SELECT COUNT(*) FROM fact_plays")
+
+        return cursor.fetchone()[0]
+
     def close(self):
         """Close database connection."""
         if self._conn:

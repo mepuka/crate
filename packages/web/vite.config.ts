@@ -25,7 +25,7 @@ export default defineConfig({
       "/api": {
         target: "https://cratemusic.duckdns.org",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ""),
+        // Don't rewrite - backend routes include /api prefix
       },
     },
   },

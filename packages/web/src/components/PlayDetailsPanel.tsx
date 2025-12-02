@@ -15,10 +15,11 @@ import { Option } from "effect";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatPlayTime } from "@/lib/date-utils";
 import { AlbumArt } from "./AlbumArt";
-import { X } from "lucide-react";
+import { X, User, Disc, Music } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommentWithLinks } from "./CommentWithLinks";
 import { LinksByCategory } from "./LinksByCategory";
+import { Link } from "@tanstack/react-router";
 
 export function PlayDetailsPanel() {
   const [selectedId, setSelectedId] = useAtom(selectedPlayIdAtom);
@@ -359,6 +360,58 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
               <div className="space-y-4 border-t border-border/30 pt-6 opacity-90">
                 <LinksByCategory playId={play.id} />
               </div>
+
+              {/* Explore KEXP Section - MBID Links */}
+              {!isNonTrackPlay && (play.artist_mbid?.length || play.release_group_mbid || play.recording_mbid) && (
+                <div className="space-y-4 border-t border-border/50 pt-6">
+                  <h3
+                    className="text-xl font-bold"
+                    style={{
+                      fontFamily: 'var(--font-family-display)',
+                      letterSpacing: '-0.02em'
+                    }}
+                  >
+                    Explore on KEXP
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {/* Artist link */}
+                    {play.artist_mbid && play.artist_mbid.length > 0 && (
+                      <Link
+                        to="/artist/$mbid"
+                        params={{ mbid: play.artist_mbid[0] }}
+                        className="mbid-link inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-card/50 border border-border/50 hover:bg-primary/10 hover:border-primary/30 transition-all"
+                      >
+                        <User className="h-4 w-4 text-primary/70" />
+                        <span className="text-sm">All plays by {play.artist}</span>
+                      </Link>
+                    )}
+
+                    {/* Album link (release_group) */}
+                    {play.release_group_mbid && play.album && (
+                      <Link
+                        to="/album/$mbid"
+                        params={{ mbid: play.release_group_mbid }}
+                        className="mbid-link inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-card/50 border border-border/50 hover:bg-primary/10 hover:border-primary/30 transition-all"
+                      >
+                        <Disc className="h-4 w-4 text-primary/70" />
+                        <span className="text-sm">All plays from {play.album}</span>
+                      </Link>
+                    )}
+
+                    {/* Recording link */}
+                    {play.recording_mbid && (
+                      <Link
+                        to="/recording/$mbid"
+                        params={{ mbid: play.recording_mbid }}
+                        className="mbid-link inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-card/50 border border-border/50 hover:bg-primary/10 hover:border-primary/30 transition-all"
+                      >
+                        <Music className="h-4 w-4 text-primary/70" />
+                        <span className="text-sm">All plays of this track</span>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Future Analysis Section Placeholder */}
               <div className="space-y-4 border-t border-border/50 pt-6">

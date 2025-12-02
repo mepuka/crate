@@ -9,6 +9,35 @@ interface AlbumArtProps {
   isNewMusic?: boolean
 }
 
+// API base URL for image proxy (empty for same-origin, full URL for cross-origin)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ""
+
+// Domains that require CORS proxy (block browser requests)
+const CORS_BLOCKED_DOMAINS = ['archive.org', 'kexp.org', 'coverartarchive.org']
+
+/**
+ * Check if a URL needs to be proxied due to CORS restrictions.
+ * Only archive.org, kexp.org, and coverartarchive.org are proxied.
+ */
+function needsProxy(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return CORS_BLOCKED_DOMAINS.some(domain =>
+      parsed.hostname === domain || parsed.hostname.endsWith('.' + domain)
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Get the proxied URL for an image that needs CORS bypass.
+ * Note: The image-proxy endpoint is at /api/image-proxy
+ */
+function getProxiedUrl(url: string): string {
+  return `${API_BASE_URL}/api/image-proxy?url=${encodeURIComponent(url)}`
+}
+
 // Generate organic gradient based on alt text hash
 function generateOrganicGradient(seed: string): string {
   // Simple hash function
@@ -51,6 +80,12 @@ export function AlbumArt({ src, alt, size = 120, className, isNewMusic = false }
   // Generate consistent gradient for this album
   const gradient = useMemo(() => generateOrganicGradient(alt), [alt])
 
+  // Proxy external images that have CORS restrictions
+  const imageSrc = useMemo(() => {
+    if (!src) return null
+    return needsProxy(src) ? getProxiedUrl(src) : src
+  }, [src])
+
   return (
     <div
       className={cn("album-art relative rounded overflow-hidden shrink-0", className)}
@@ -71,9 +106,9 @@ export function AlbumArt({ src, alt, size = 120, className, isNewMusic = false }
       />
 
       {/* Image */}
-      {src && !error && (
+      {imageSrc && !error && (
         <img
-          src={src}
+          src={imageSrc}
           alt={alt}
           loading="lazy"
           decoding="async"

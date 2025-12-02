@@ -740,6 +740,299 @@
   }
 
   /* ========================================
+     ENTITY PAGE SYSTEM
+     Philosophy: MusicBrainz entity exploration with radio aesthetic
+     Used by /artist, /album, /release, /recording routes
+     ======================================== */
+
+  /* Entity header - prominent, immersive */
+  .entity-header {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 2rem;
+    border-radius: 16px;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.04) 0%,
+      rgba(255, 255, 255, 0.02) 100%
+    );
+    border: 1px solid rgba(245, 130, 22, 0.1);
+    box-shadow:
+      0 4px 24px rgba(0, 0, 0, 0.3),
+      0 0 0 1px rgba(245, 130, 22, 0.05) inset;
+  }
+
+  @media (min-width: 640px) {
+    .entity-header {
+      flex-direction: row;
+      gap: 2rem;
+      padding: 2.5rem;
+    }
+  }
+
+  /* Entity artwork - large, prominent */
+  .entity-image {
+    position: relative;
+    flex-shrink: 0;
+    width: 100%;
+    max-width: 240px;
+    aspect-ratio: 1;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(255, 255, 255, 0.05);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  @media (min-width: 640px) {
+    .entity-image {
+      width: 200px;
+      max-width: none;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .entity-image {
+      width: 280px;
+    }
+  }
+
+  .entity-image:hover {
+    transform: scale(1.02);
+    box-shadow:
+      0 12px 48px rgba(245, 130, 22, 0.15),
+      0 0 32px rgba(245, 130, 22, 0.1),
+      0 0 0 1px rgba(245, 130, 22, 0.15);
+  }
+
+  .entity-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* Entity info container */
+  .entity-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+
+  /* Entity type badge */
+  .entity-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    width: fit-content;
+    font-family: var(--font-family-body);
+    font-size: var(--font-time);
+    font-weight: var(--weight-time);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: hsl(var(--primary));
+    background: hsl(var(--primary) / 0.12);
+    border: 1px solid hsl(var(--primary) / 0.2);
+    border-radius: 6px;
+  }
+
+  /* Entity name - extreme typography */
+  .entity-name {
+    font-family: var(--font-family-display);
+    font-size: clamp(1.75rem, 5vw, 3rem);
+    font-weight: var(--weight-display);
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: hsl(var(--foreground));
+  }
+
+  /* Entity details (play count, etc) */
+  .entity-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    font-family: var(--font-family-body);
+    font-size: var(--font-artist);
+    color: hsl(var(--foreground) / 0.6);
+  }
+
+  .entity-details .stat {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .entity-details .stat-value {
+    font-family: var(--font-family-display);
+    font-weight: var(--weight-title);
+    font-variant-numeric: tabular-nums;
+    color: hsl(var(--foreground) / 0.85);
+  }
+
+  .entity-details .stat-label {
+    color: hsl(var(--foreground) / 0.5);
+  }
+
+  /* Entity timeline container */
+  .entity-timeline {
+    position: relative;
+    margin-top: 2rem;
+    isolation: isolate;
+  }
+
+  .entity-timeline-title {
+    font-family: var(--font-family-display);
+    font-size: 1.25rem;
+    font-weight: var(--weight-title);
+    letter-spacing: -0.02em;
+    margin-bottom: 1rem;
+    padding-left: 0.5rem;
+    color: hsl(var(--foreground) / 0.85);
+    border-left: 3px solid hsl(var(--primary));
+  }
+
+  /* Scrollable timeline area */
+  .entity-timeline-scroll {
+    position: relative;
+    max-height: calc(100vh - 400px);
+    min-height: 300px;
+    overflow-y: auto;
+    border-radius: 12px;
+    background: rgba(8, 10, 15, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    /* Custom scrollbar */
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.3) transparent;
+  }
+
+  .entity-timeline-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .entity-timeline-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .entity-timeline-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.3);
+    border-radius: 4px;
+  }
+
+  .entity-timeline-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.5);
+  }
+
+  /* Entity page container */
+  .entity-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .entity-page {
+      padding: 2rem 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .entity-page {
+      padding: 3rem 2rem;
+    }
+  }
+
+  /* MBID link buttons - consistent styling */
+  .mbid-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    font-family: var(--font-family-body);
+    font-size: var(--font-artist);
+    font-weight: var(--weight-artist);
+    color: hsl(var(--foreground) / 0.75);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-decoration: none;
+    transition: all 0.2s ease;
+  }
+
+  .mbid-link:hover {
+    background: hsl(var(--primary) / 0.1);
+    border-color: hsl(var(--primary) / 0.25);
+    color: hsl(var(--foreground));
+    box-shadow: 0 0 16px hsl(var(--primary) / 0.15);
+  }
+
+  .mbid-link svg {
+    color: hsl(var(--primary) / 0.7);
+    transition: color 0.2s ease;
+  }
+
+  .mbid-link:hover svg {
+    color: hsl(var(--primary));
+  }
+
+  /* Entity loading state */
+  .entity-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    gap: 1rem;
+    color: hsl(var(--foreground) / 0.5);
+  }
+
+  .entity-loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid hsl(var(--primary) / 0.2);
+    border-top-color: hsl(var(--primary));
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Entity error state */
+  .entity-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    gap: 0.75rem;
+    text-align: center;
+    padding: 2rem;
+  }
+
+  .entity-error-title {
+    font-family: var(--font-family-display);
+    font-size: 1.25rem;
+    font-weight: var(--weight-title);
+    color: hsl(var(--destructive));
+  }
+
+  .entity-error-message {
+    font-size: var(--font-artist);
+    color: hsl(var(--foreground) / 0.6);
+    max-width: 400px;
+  }
+
+  /* ========================================
      REFINED LINK DISPLAY SYSTEM
      Philosophy: Thumbnails speak, minimal text, cohesive colors
      Integrated with radio broadcast aesthetic

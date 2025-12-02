@@ -23,7 +23,10 @@ export { HealthResponse } from "./schemas/Health.js"
 export type { Health } from "./schemas/Health.js"
 
 // Schemas - Params (reusable across HttpApi, Router, Atoms)
-export { TimelineParams, SearchParams, PlayIdParam } from "./schemas/SearchParams.js"
+export { TimelineParams, SearchParams, PlayIdParam, PlayCountParams } from "./schemas/SearchParams.js"
+
+// Schemas - Count response
+export { PlayCountResponse } from "@crate/domain/faiss/schemas"
 
 // Error types
 export {

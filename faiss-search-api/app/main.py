@@ -2,9 +2,12 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import StreamingResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+import httpx
+from urllib.parse import urlparse
 from contextlib import asynccontextmanager
 import time
 import logging
@@ -17,7 +20,7 @@ from .services.hybrid_search_service import HybridSearchService
 from .models import (
     SearchRequest, SearchResponse, HealthResponse, PlayResult, TimelineResponse,
     EnrichmentRequest, EnrichmentResponse, BatchPlaysResponse,
-    EnrichmentData, GetEnrichmentsResponse,
+    EnrichmentData, GetEnrichmentsResponse, PlayCountResponse,
     HybridSearchRequest, HybridSearchResponse, HybridPlayResult
 )
 from .config import settings
@@ -113,7 +116,9 @@ class CacheHeadersMiddleware(BaseHTTPMiddleware):
         "/api/health": 30,                    # 30 seconds - health should be fresh
         "/api/search": 604800,                # 1 week (7 days)
         "/api/plays/timeline": 30,            # 30 seconds - live updates need fresh data
+        "/api/plays/count": 300,              # 5 minutes - entity play counts are semi-stable
         "/api/plays/": 604800,                # 1 week (for /api/plays/{id} pattern)
+        "/api/image-proxy": 2592000,          # 30 days - images are static
         "/openapi.json": 3600,                # 1 hour
         "/docs": 3600,                        # 1 hour
         "/redoc": 3600,                       # 1 hour
@@ -632,6 +637,85 @@ async def get_timeline(
         )
 
 
+@app.get(
+    "/api/plays/count",
+    response_model=PlayCountResponse,
+    tags=["plays"],
+    summary="Get play count by MBID",
+    description="""
+    Count plays matching MBID filters. Used for entity page headers.
+
+    At least one MBID filter must be provided. Returns the count of matching plays.
+
+    **Examples:**
+    - `/api/plays/count?artist_mbid=a74b1b7f-71a5-4011-9441-d0b5e4122711` - Count plays by Radiohead
+    - `/api/plays/count?recording_mbid=...` - Count plays of a specific recording
+    - `/api/plays/count?release_group_mbid=...` - Count plays from an album
+    """,
+    responses={
+        200: {"description": "Count retrieved successfully"},
+        400: {"description": "No MBID filter provided"},
+        500: {"description": "Query failed"}
+    }
+)
+async def get_play_count(
+    artist_mbid: Optional[str] = None,
+    recording_mbid: Optional[str] = None,
+    release_mbid: Optional[str] = None,
+    release_group_mbid: Optional[str] = None,
+    db_svc: DatabaseService = Depends(get_db_service)
+) -> PlayCountResponse:
+    """Get count of plays matching MBID filter."""
+    # Require at least one MBID filter
+    if not any([artist_mbid, recording_mbid, release_mbid, release_group_mbid]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one MBID filter is required (artist_mbid, recording_mbid, release_mbid, or release_group_mbid)"
+        )
+
+    try:
+        start_time = time.time()
+
+        count = db_svc.get_play_count(
+            artist_mbid=artist_mbid,
+            recording_mbid=recording_mbid,
+            release_mbid=release_mbid,
+            release_group_mbid=release_group_mbid
+        )
+
+        query_time = (time.time() - start_time) * 1000
+
+        # Determine which entity type was filtered
+        entity_type = None
+        mbid = None
+        if artist_mbid:
+            entity_type = "artist"
+            mbid = artist_mbid
+        elif recording_mbid:
+            entity_type = "recording"
+            mbid = recording_mbid
+        elif release_mbid:
+            entity_type = "release"
+            mbid = release_mbid
+        elif release_group_mbid:
+            entity_type = "release_group"
+            mbid = release_group_mbid
+
+        return PlayCountResponse(
+            count=count,
+            entity_type=entity_type,
+            mbid=mbid,
+            query_time_ms=query_time
+        )
+
+    except Exception as e:
+        logger.error(f"Play count query failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Play count query failed: {str(e)}"
+        )
+
+
 # Enrichment endpoints
 
 @app.get(
@@ -880,4 +964,122 @@ async def get_enrichments(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to fetch enrichments: {str(e)}"
+        )
+
+
+# Image proxy endpoint - bypasses CORS for album art
+# Allowed domains for security (prevent open proxy abuse)
+ALLOWED_IMAGE_DOMAINS = {
+    "archive.org",
+    "ia601500.us.archive.org",  # archive.org CDN variants
+    "ia800100.us.archive.org",
+    "coverartarchive.org",
+    "kexp.org",
+    "www.kexp.org",
+    "static.kexp.org",
+}
+
+
+@app.get(
+    "/api/image-proxy",
+    tags=["media"],
+    summary="Proxy images to bypass CORS",
+    description="""
+    Proxies external images through the API server to bypass CORS restrictions.
+
+    **Security:** Only allows images from trusted domains (archive.org, kexp.org, coverartarchive.org).
+
+    **Caching:** Responses are cached for 30 days by both the server and client.
+
+    **Usage:** `/api/image-proxy?url=https://archive.org/...`
+    """,
+    responses={
+        200: {"description": "Image content streamed"},
+        400: {"description": "Invalid URL or domain not allowed"},
+        404: {"description": "Image not found"},
+        502: {"description": "Failed to fetch image from origin"}
+    }
+)
+async def image_proxy(url: str):
+    """
+    Proxy image requests to bypass CORS.
+
+    Validates the domain is in the allowed list to prevent open proxy abuse.
+    Streams the image content with appropriate content-type headers.
+    """
+    # Parse and validate URL
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme in ('http', 'https'):
+            raise ValueError("Invalid URL scheme")
+        if not parsed.netloc:
+            raise ValueError("Invalid URL format")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid URL: {str(e)}"
+        )
+
+    # Check domain is allowed - also check if it ends with allowed domain (for CDN subdomains)
+    domain = parsed.netloc.lower()
+    allowed = domain in ALLOWED_IMAGE_DOMAINS
+    if not allowed:
+        # Check if it's a subdomain of an allowed domain
+        for allowed_domain in ALLOWED_IMAGE_DOMAINS:
+            if domain.endswith('.' + allowed_domain) or domain.endswith('archive.org'):
+                allowed = True
+                break
+
+    if not allowed:
+        logger.warning(f"Image proxy: blocked domain {domain}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Domain not allowed: {domain}. Only archive.org, kexp.org, and coverartarchive.org images can be proxied."
+        )
+
+    # Fetch the image
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, follow_redirects=True)
+
+            if response.status_code == 404:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Image not found"
+                )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to fetch image: HTTP {response.status_code}"
+                )
+
+            # Validate content type is an image
+            content_type = response.headers.get('content-type', '')
+            if not content_type.startswith('image/'):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"URL does not point to an image: {content_type}"
+                )
+
+            # Return streaming response with proper headers
+            return StreamingResponse(
+                iter([response.content]),
+                media_type=content_type,
+                headers={
+                    "Cache-Control": "public, max-age=2592000",  # 30 days
+                    "Access-Control-Allow-Origin": "*",
+                }
+            )
+
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Timeout fetching image from origin"
+        )
+    except httpx.RequestError as e:
+        logger.error(f"Image proxy fetch error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to fetch image: {str(e)}"
         )

@@ -19,7 +19,9 @@ import { AlbumBarWorkerClient } from "@/workers/album-bar-worker-client";
 
 // Combined runtime with configured HTTP client and Reactivity support
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
+// Note: Endpoint paths already include /api prefix, so baseUrl should be empty for same-origin
+// or the full origin URL (e.g., https://cratemusic.duckdns.org) for cross-origin
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 export class TimelineClient extends AtomHttpApi.Tag<TimelineClient>()(
   "TimelineClient",

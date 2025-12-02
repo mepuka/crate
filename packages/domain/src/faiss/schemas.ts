@@ -22,12 +22,13 @@ const SafeDateFromString = Schema.transform(
 /**
  * String that normalizes empty strings to null.
  * KEXP API sometimes returns empty strings instead of null for missing data.
+ * Also handles actual null values from the API.
  */
 const StringOrNull = Schema.transform(
-  Schema.String,
+  Schema.NullOr(Schema.String),
   Schema.NullOr(Schema.String),
   {
-    decode: (s) => s === "" ? null : s,
+    decode: (s) => s === "" || s === null ? null : s,
     encode: (s) => s ?? ""
   }
 );
@@ -95,10 +96,23 @@ export class SearchResponse extends Schema.Class<SearchResponse>("SearchResponse
   query: Schema.String
 }) {}
 
+/**
+ * PlayCountResponse schema - matches FastAPI backend PlayCountResponse model.
+ *
+ * Response for play count endpoint.
+ */
+export class PlayCountResponse extends Schema.Class<PlayCountResponse>("PlayCountResponse")({
+  count: Schema.Number,
+  entity_type: Schema.NullOr(Schema.String),
+  mbid: Schema.NullOr(Schema.String),
+  query_time_ms: Schema.Number
+}) {}
+
 // Export type aliases for the schema classes
 export type Play = typeof PlayResult.Type
 export type Timeline = typeof TimelineResponse.Type
 export type SearchResult = typeof SearchResponse.Type
+export type PlayCount = typeof PlayCountResponse.Type
 
 // Export parameter schemas
 export * from "./params.js"
