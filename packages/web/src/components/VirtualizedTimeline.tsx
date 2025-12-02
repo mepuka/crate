@@ -271,6 +271,8 @@ export function VirtualizedTimeline() {
               isTransitioning ? "timeline-transitioning" : "timeline-visible"
             )}
             style={{ contain: 'strict' }}
+            role="list"
+            aria-label={`Radio play timeline with ${playIds.length} plays`}
           >
               <div
                 style={{
@@ -293,6 +295,7 @@ export function VirtualizedTimeline() {
                       key={virtualItem.key}
                       data-index={virtualItem.index}
                       ref={virtualizer.measureElement}
+                      role="listitem"
                       style={{
                         position: 'absolute',
                         top: 0,

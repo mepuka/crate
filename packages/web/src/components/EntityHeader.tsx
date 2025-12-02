@@ -36,7 +36,7 @@ export function EntityHeader({ metadata }: EntityHeaderProps) {
         ) : metadata.imageUri ? (
           <img
             src={metadata.imageUri}
-            alt=""
+            alt={`${metadata.name} - ${typeLabel}`}
             className="entity-image"
             loading="eager"
           />

@@ -107,7 +107,7 @@ export const PlayCard = memo(forwardRef<HTMLDivElement, PlayCardProps>(
       <div
         ref={ref}
         className={cn(
-          "play-card",
+          "play-card cursor-pointer",
           hasArt ? "has-art" : "is-placeholder",
           playCardVariants({
             variant: isFocused ? 'focused' : variant,
@@ -118,24 +118,14 @@ export const PlayCard = memo(forwardRef<HTMLDivElement, PlayCardProps>(
         data-age={ageCategory}
         data-new-music={newMusicIndicator}
         role="article"
+        tabIndex={0}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
         aria-label={isNonTrackPlay
           ? `${play.comment} - Special program segment played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`
           : `${play.song} by ${play.artist} played ${play.airdate ? formatRelativeTime(play.airdate) : ''}`
         }
       >
-        {/* Clickable overlay for entire card */}
-        <div
-          onClick={handleClick}
-          onKeyDown={handleKeyDown}
-          tabIndex={0}
-          role="button"
-          className="absolute inset-0 z-20 cursor-pointer"
-          aria-label={isNonTrackPlay
-            ? `View details for ${play.comment}`
-            : `View details for ${play.song} by ${play.artist}`
-          }
-        />
-
         <div className="relative z-10 flex gap-2.5 py-1 pointer-events-none">
           {/* Album Art */}
           <AlbumArt
