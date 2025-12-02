@@ -15,7 +15,7 @@
  */
 
 import { Atom } from "@effect-atom/atom-react";
-import { Effect, Stream, Chunk } from "effect";
+import { Effect, Stream, Chunk, Fiber } from "effect";
 import { TimelineRuntime, TimelineKVS } from "@/lib/http-runtime";
 import type { PlayResult, TimelineParams } from "@crate/api";
 import type { MockSSEConfig } from "@/streams/timeline-mock-sse-stream";
@@ -88,9 +88,15 @@ export type StreamStatus =
 export const streamStatusAtom = Atom.make<StreamStatus>({ status: "off" });
 
 /**
+ * Atom: Reference to running stream fiber (internal)
+ * Used to cancel previous stream on restart/stop.
+ */
+const runningStreamFiberAtom = Atom.make<Fiber.RuntimeFiber<void, unknown> | null>(null);
+
+/**
  * Action atom: Start/restart stream with config.
  * Actually runs the stream and collects results.
- * Uses Effect patterns for proper error handling.
+ * Uses Effect patterns for proper error handling and fiber management.
  */
 export const restartStreamAtom = TimelineRuntime.fn<StreamTimelineConfig>()(
   (config, get) => {
@@ -101,6 +107,14 @@ export const restartStreamAtom = TimelineRuntime.fn<StreamTimelineConfig>()(
       yield* Effect.log(
         `[Stream Atoms] Restarting stream with mode: ${config.mode}`
       );
+
+      // Cancel any existing stream fiber
+      const existingFiber = get(runningStreamFiberAtom);
+      if (existingFiber !== null) {
+        yield* Effect.log("[Stream Atoms] Interrupting previous stream fiber");
+        yield* Fiber.interrupt(existingFiber);
+        get.set(runningStreamFiberAtom, null);
+      }
 
       // Update config
       get.set(streamTimelineConfigAtom, config);
@@ -146,87 +160,109 @@ export const restartStreamAtom = TimelineRuntime.fn<StreamTimelineConfig>()(
         }
       })();
 
-      // Run the stream - handle different types appropriately
-      if (config.mode === "pagination") {
-        // Pagination mode returns PageResult objects
-        const paginationStream = stream as ReturnType<typeof createTimelinePaginationStream>;
+      // Define the stream processing effect
+      const streamEffect = Effect.gen(function* () {
+        // Run the stream - handle different types appropriately
+        if (config.mode === "pagination") {
+          // Pagination mode returns PageResult objects
+          const paginationStream = stream as ReturnType<typeof createTimelinePaginationStream>;
 
-        yield* Stream.runForEach(
-          paginationStream,
-          (pageResult) =>
-            Effect.gen(function* () {
-              // Extract plays from PageResult
-              const plays = pageResult.response.results;
+          yield* Stream.runForEach(
+            paginationStream,
+            (pageResult) =>
+              Effect.gen(function* () {
+                // Extract plays from PageResult
+                const plays = pageResult.response.results;
 
-              // Plays are already stored in KVS by the pagination stream
-              // Just collect the IDs
-              const pageIds = plays.map((play) => play.id);
-              collectedIds.push(...pageIds);
+                // Plays are already stored in KVS by the pagination stream
+                // Just collect the IDs
+                const pageIds = plays.map((play) => play.id);
+                collectedIds.push(...pageIds);
 
-              // Update atom with accumulated IDs
-              get.set(streamPlayIdsAtom, [...collectedIds]);
+                // Update atom with accumulated IDs
+                get.set(streamPlayIdsAtom, [...collectedIds]);
 
-              yield* Effect.log(
-                `[Stream Atoms] Collected ${collectedIds.length} plays so far`
-              );
-            })
-        );
-      } else {
-        // SSE modes return PlayResult objects directly
-        const playStream = stream as Stream.Stream<PlayResult, never, never>;
-
-        yield* Stream.runForEach(
-          playStream,
-          (play) =>
-            Effect.gen(function* () {
-              // Store play in KVS
-              yield* kvs.storePlay(play);
-
-              // Collect ID
-              collectedIds.push(play.id);
-
-              // Update atom with accumulated IDs
-              get.set(streamPlayIdsAtom, [...collectedIds]);
-
-              yield* Effect.log(
-                `[Stream Atoms] Received play: ${play.artist} - ${play.song} (${collectedIds.length} total)`
-              );
-            })
-        );
-      }
-
-      // Stream completed successfully
-      get.set(streamStatusAtom, {
-        status: "complete",
-        count: collectedIds.length,
-      });
-
-      yield* Effect.log(
-        `[Stream Atoms] Stream completed with ${collectedIds.length} plays`
-      );
-    }).pipe(
-      // Use Effect.catchAll for proper error handling
-      Effect.catchAll((error) =>
-        Effect.gen(function* () {
-          // Stream failed - update status with error
-          get.set(streamStatusAtom, { status: "error", error });
-          yield* Effect.logError(
-            `[Stream Atoms] Stream failed: ${String(error)}`
+                yield* Effect.log(
+                  `[Stream Atoms] Collected ${collectedIds.length} plays so far`
+                );
+              })
           );
-        })
-      )
-    );
+        } else {
+          // SSE modes return PlayResult objects directly
+          const playStream = stream as Stream.Stream<PlayResult, never, never>;
+
+          yield* Stream.runForEach(
+            playStream,
+            (play) =>
+              Effect.gen(function* () {
+                // Store play in KVS
+                yield* kvs.storePlay(play);
+
+                // Collect ID
+                collectedIds.push(play.id);
+
+                // Update atom with accumulated IDs
+                get.set(streamPlayIdsAtom, [...collectedIds]);
+
+                yield* Effect.log(
+                  `[Stream Atoms] Received play: ${play.artist} - ${play.song} (${collectedIds.length} total)`
+                );
+              })
+          );
+        }
+
+        // Stream completed successfully
+        get.set(streamStatusAtom, {
+          status: "complete",
+          count: collectedIds.length,
+        });
+        get.set(runningStreamFiberAtom, null);
+
+        yield* Effect.log(
+          `[Stream Atoms] Stream completed with ${collectedIds.length} plays`
+        );
+      }).pipe(
+        Effect.catchAll((error) =>
+          Effect.gen(function* () {
+            // Stream failed - update status with error
+            get.set(streamStatusAtom, { status: "error", error });
+            get.set(runningStreamFiberAtom, null);
+            yield* Effect.logError(
+              `[Stream Atoms] Stream failed: ${String(error)}`
+            );
+          })
+        )
+      );
+
+      // Fork the stream effect - manual cleanup via Fiber.interrupt on restart/stop
+      // @effect-hook-ignore - Effect.fork is correct here (atom runtime has no Scope)
+      const fiber = yield* Effect.fork(streamEffect);
+      get.set(runningStreamFiberAtom, fiber);
+
+      yield* Effect.log("[Stream Atoms] Stream fiber started");
+    });
   }
 );
 
 /**
- * Action atom: Stop stream
+ * Action atom: Stop stream and clear state
  */
 export const stopStreamAtom = TimelineRuntime.fn<void>()((_, get) =>
   Effect.gen(function* () {
     yield* Effect.log("[Stream Atoms] Stopping stream");
+
+    // Cancel any running fiber
+    const existingFiber = get(runningStreamFiberAtom);
+    if (existingFiber !== null) {
+      yield* Effect.log("[Stream Atoms] Interrupting stream fiber");
+      yield* Fiber.interrupt(existingFiber);
+      get.set(runningStreamFiberAtom, null);
+    }
+
+    // Clear all stream state
     get.set(streamTimelineConfigAtom, { ...defaultStreamConfig, mode: "off" });
     get.set(streamStatusAtom, { status: "off" });
+    get.set(streamPlayIdsAtom, []);
   })
 );
 
