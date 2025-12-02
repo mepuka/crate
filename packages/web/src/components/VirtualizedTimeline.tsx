@@ -13,24 +13,25 @@
 
 import { useAtomValue, useAtom, useAtomMount, Result } from '@effect-atom/atom-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Option } from 'effect'
 import {
   loadInitialTimelinePageAtom,
   loadNextTimelinePageAtom,
+  resetTimelineInfiniteStateAtom,
   allLoadedPlayIdsAtom,
   timelineLoadingStateAtom,
   loadedPlayCountAtom,
+  filterNeedsReloadAtom,
+  activeFilterAtom,
 } from '@/atoms/timeline-infinite'
 import { latestItemAtom, newestPlayAtom, playIdToBoundaryMapAtom } from '@/atoms/timeline'
-import { isPanelOpenAtom } from '@/atoms/play-details'
-import { DevAtomDisplay } from './DevAtomDisplay'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TimelineSkeleton } from './TimelineSkeleton'
 import { TimelineEmptyState } from './TimelineEmptyState'
 import { TimelineErrorState } from './TimelineErrorState'
 import { TimelineItemWithMarker } from './TimelineItemWithMarker'
-import { FPSIndicator } from './FPSIndicator'
+import { FilterChip } from './FilterChip'
 import { cn } from '@/lib/utils'
 
 /**
@@ -60,16 +61,43 @@ export function VirtualizedTimeline() {
   const loadedCount = useAtomValue(loadedPlayCountAtom);
   const newestPlay = useAtomValue(newestPlayAtom);
   const boundaryMap = useAtomValue(playIdToBoundaryMapAtom);
-  const isPanelOpen = useAtomValue(isPanelOpenAtom);
+  const filterNeedsReload = useAtomValue(filterNeedsReloadAtom);
+  const activeFilter = useAtomValue(activeFilterAtom);
 
   // Actions
   const [, loadInitial] = useAtom(loadInitialTimelinePageAtom);
   const [, loadMore] = useAtom(loadNextTimelinePageAtom);
+  const [, resetTimeline] = useAtom(resetTimelineInfiniteStateAtom);
+
+  // Transition state for filter changes
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   // Load initial page on mount
   useEffect(() => {
     loadInitial();
   }, []);
+
+  // Handle filter changes with fade transition
+  useEffect(() => {
+    if (filterNeedsReload) {
+      // Start fade-out transition
+      setIsTransitioning(true);
+
+      // After fade-out completes, reset and reload
+      const fadeOutTimer = setTimeout(() => {
+        resetTimeline();
+        loadInitial();
+
+        // After data starts loading, fade back in
+        // The loading state will handle showing skeleton during load
+        setTimeout(() => {
+          setIsTransitioning(false);
+        }, 50);
+      }, 150); // Match CSS transition duration
+
+      return () => clearTimeout(fadeOutTimer);
+    }
+  }, [filterNeedsReload, resetTimeline, loadInitial]);
 
   // Refs
   const parentRef = useRef<HTMLDivElement>(null);
@@ -133,18 +161,9 @@ export function VirtualizedTimeline() {
   }, [])
 
   // Shared layout wrapper for loading/error/empty states
-  // Timeline is centered when panel is closed, slides left when panel opens
+  // Timeline fills its container - parent controls width in split view
   const StateWrapper = ({ children }: { children: React.ReactNode }) => (
-    <div className={cn(
-      "relative z-10 h-screen flex flex-col",
-      "transition-all duration-300 ease-out",
-      // Centered with max-width when closed, fixed left when open
-      isPanelOpen
-        ? "fixed top-0 left-0 w-full lg:w-[420px] xl:w-[480px] min-w-[380px]"
-        : "mx-auto w-full max-w-2xl"
-    )}>
-      <DevAtomDisplay />
-      <FPSIndicator />
+    <div className="relative z-10 h-full flex flex-col w-full">
       <div className="flex-none px-3 sm:px-4 pt-3 pb-2">
         <div className="timeline-container rounded-xl p-3 sm:p-4">
           <div className="timeline-backdrop" />
@@ -199,16 +218,10 @@ export function VirtualizedTimeline() {
   }
 
   return (
-    <div className={cn(
-      "relative z-10 h-screen flex flex-col",
-      "transition-all duration-300 ease-out",
-      // Centered with max-width when closed, fixed left when open
-      isPanelOpen
-        ? "fixed top-0 left-0 w-full lg:w-[420px] xl:w-[480px] min-w-[380px]"
-        : "mx-auto w-full max-w-2xl"
-    )}>
-      <DevAtomDisplay />
-      <FPSIndicator />
+    <div className="relative z-10 h-full flex flex-col w-full">
+
+      {/* Filter chip - shows when filter is active */}
+      <FilterChip />
 
       {/* Compact header */}
       <div className="flex-none px-3 sm:px-4 pt-3 pb-2">
@@ -218,7 +231,7 @@ export function VirtualizedTimeline() {
           <div className="relative z-10 flex items-baseline justify-between gap-4 flex-wrap">
             <div className="flex items-baseline gap-3">
               <h1 className="text-lg sm:text-xl font-semibold tracking-tight text-foreground">
-                Timeline
+                {activeFilter ? 'Filtered' : 'Timeline'}
               </h1>
               <span className="text-xs text-muted-foreground/70">
                 {loadedCount} plays
@@ -253,7 +266,10 @@ export function VirtualizedTimeline() {
           <div className="timeline-backdrop-edge" />
           <div
             ref={parentRef}
-            className="relative z-10 h-full overflow-auto px-3 sm:px-4 py-2"
+            className={cn(
+              "relative z-10 h-full overflow-auto px-3 sm:px-4 py-2",
+              isTransitioning ? "timeline-transitioning" : "timeline-visible"
+            )}
             style={{ contain: 'strict' }}
           >
               <div

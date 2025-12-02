@@ -83,6 +83,56 @@ export const anchorIdAtom = Atom.searchParam("anchor_id", {
   schema: Schema.NumberFromString,
 });
 
+// =============================================================================
+// MBID Filter Params - for filtering timeline by entity
+// =============================================================================
+
+// Artist MBID filter
+export const artistMbidAtom = Atom.searchParam("artist_mbid", {
+  schema: Schema.String,
+});
+
+// Recording MBID filter
+export const recordingMbidAtom = Atom.searchParam("recording_mbid", {
+  schema: Schema.String,
+});
+
+// Release MBID filter
+export const releaseMbidAtom = Atom.searchParam("release_mbid", {
+  schema: Schema.String,
+});
+
+// Release Group MBID filter (album)
+export const releaseGroupMbidAtom = Atom.searchParam("release_group_mbid", {
+  schema: Schema.String,
+});
+
+/**
+ * Entity filter type for timeline filtering
+ */
+export type EntityFilter = {
+  type: "artist" | "recording" | "release" | "release_group";
+  mbid: string;
+};
+
+/**
+ * Derived atom: active filter computed from URL params.
+ * Returns the first active filter (priority: artist > recording > release > release_group)
+ * or null if no filter is active.
+ */
+export const activeFilterAtom = Atom.make((get): EntityFilter | null => {
+  const artist = Option.getOrUndefined(get(artistMbidAtom));
+  const recording = Option.getOrUndefined(get(recordingMbidAtom));
+  const release = Option.getOrUndefined(get(releaseMbidAtom));
+  const releaseGroup = Option.getOrUndefined(get(releaseGroupMbidAtom));
+
+  if (artist) return { type: "artist", mbid: artist };
+  if (recording) return { type: "recording", mbid: recording };
+  if (release) return { type: "release", mbid: release };
+  if (releaseGroup) return { type: "release_group", mbid: releaseGroup };
+  return null;
+});
+
 /**
  * Helper to remove undefined and empty string values from params.
  * The API expects params to be omitted entirely, not sent as empty strings.
@@ -116,6 +166,11 @@ export const timelineParamsAtom = Atom.make((get) => {
     until: Option.getOrUndefined(get(untilAtom)),
     percentage: Option.getOrUndefined(get(percentageAtom)),
     anchor_id: Option.getOrUndefined(get(anchorIdAtom)),
+    // MBID filter params
+    artist_mbid: Option.getOrUndefined(get(artistMbidAtom)),
+    recording_mbid: Option.getOrUndefined(get(recordingMbidAtom)),
+    release_mbid: Option.getOrUndefined(get(releaseMbidAtom)),
+    release_group_mbid: Option.getOrUndefined(get(releaseGroupMbidAtom)),
   };
 
   // Clean params: remove undefined and empty strings

@@ -59,17 +59,32 @@ const AlbumArtworkServiceLive = Layer.succeed(
           (a, b) => b.airdate.getTime() - a.airdate.getTime()
         );
 
-        // Filter plays with artwork and take max count
-        const withArtwork = sorted
-          .filter((play) => play.thumbnail_uri || play.image_uri)
-          .slice(0, maxCount);
+        // Filter plays with artwork
+        const withArtwork = sorted.filter(
+          (play) => play.thumbnail_uri || play.image_uri
+        );
+
+        // Dedupe by image URI to avoid visual repetition in the background grid
+        // Keep the first (most recent) occurrence of each unique album cover
+        const seenUris = new Set<string>();
+        const uniqueArtwork = withArtwork.filter((play) => {
+          const uri = play.image_uri || play.thumbnail_uri || "";
+          if (seenUris.has(uri)) {
+            return false;
+          }
+          seenUris.add(uri);
+          return true;
+        });
+
+        // Take max count from unique artwork
+        const finalArtwork = uniqueArtwork.slice(0, maxCount);
 
         yield* Effect.logInfo(
-          `Found ${withArtwork.length} plays with album artwork after sorting and filtering`
+          `Found ${withArtwork.length} plays with artwork, ${uniqueArtwork.length} unique covers, using ${finalArtwork.length}`
         );
 
         // Map to AlbumArtworkData structure
-        const artworkData = withArtwork.map((play) => ({
+        const artworkData = finalArtwork.map((play) => ({
           id: play.id,
           thumbnailUri: play.thumbnail_uri || play.image_uri || "",
           imageUri: play.image_uri || play.thumbnail_uri || "",

@@ -3,12 +3,13 @@
 KEXP Incremental Play Sync Script
 
 Fetches new plays from the KEXP API and updates the local database and play_ids
-alignment file. Designed to run every 2 minutes via cron.
+alignment file. Designed to run every 30 seconds via cron.
 
 Architecture:
 - Uses MAX(id) from database to determine last synced play
 - Fetches new plays from KEXP API with exponential backoff retry
 - Inserts plays into SQLite database with INSERT OR IGNORE
+- Inline cover art enrichment from Cover Art Archive for plays without images
 - Updates play_ids.npy atomically with temp file + rename
 - File-based locking to prevent concurrent executions
 - Structured JSON logging to stdout
@@ -56,9 +57,12 @@ class PlaySyncService:
     """
 
     KEXP_API_BASE = "https://api.kexp.org/v2"
+    CAA_RELEASE_URL = "https://coverartarchive.org/release"
+    CAA_RELEASE_GROUP_URL = "https://coverartarchive.org/release-group"
     LOCK_FILE = "/tmp/kexp_sync.lock"
     MAX_RETRIES = 3
     BASE_DELAY = 2  # seconds
+    CAA_RATE_LIMIT_DELAY = 1.0  # 1 second between CAA requests
 
     def __init__(self, db_path: str, play_ids_path: str):
         """
@@ -291,6 +295,111 @@ class PlaySyncService:
             self._log_error(f"Failed to update play_ids alignment: {e}")
             raise
 
+    def fetch_cover_art_url(self, mbid: str, mbid_type: str = "release") -> tuple[str, str] | None:
+        """
+        Fetch cover art URLs from Cover Art Archive.
+
+        Args:
+            mbid: MusicBrainz ID (release or release-group)
+            mbid_type: "release" or "release-group"
+
+        Returns:
+            Tuple of (image_uri, thumbnail_uri) or None if not found
+        """
+        base_url = self.CAA_RELEASE_URL if mbid_type == "release" else self.CAA_RELEASE_GROUP_URL
+        url = f"{base_url}/{mbid}/front-500"
+
+        try:
+            response = httpx.get(url, timeout=10.0, follow_redirects=True)
+            if response.status_code == 404:
+                return None
+            elif response.status_code != 200:
+                return None
+
+            # Get the final URL after redirect
+            image_uri = str(response.url)
+
+            # Construct thumbnail URL
+            thumbnail_uri = image_uri.replace("_thumb500.", "_thumb250.")
+            if "_thumb500." not in image_uri:
+                thumbnail_uri = image_uri.replace("-500.", "-250.")
+
+            return (image_uri, thumbnail_uri)
+
+        except Exception:
+            return None
+
+    def enrich_plays_cover_art(self, plays: list[TrackPlay | NonTrackPlay]) -> dict[str, int]:
+        """
+        Enrich newly inserted plays with cover art from Cover Art Archive.
+
+        Only enriches plays that:
+        - Have no image_uri from KEXP
+        - Have release_id or release_group_id for CAA lookup
+
+        Args:
+            plays: List of plays to potentially enrich
+
+        Returns:
+            Statistics dict with enrichment counts
+        """
+        stats = {"enriched": 0, "not_found": 0, "skipped": 0}
+
+        # Filter to plays needing enrichment
+        plays_to_enrich = [
+            p for p in plays
+            if isinstance(p, TrackPlay)
+            and not p.image_uri  # No image from KEXP
+            and (p.release_id or p.release_group_id)  # Has MBID for CAA lookup
+        ]
+
+        if not plays_to_enrich:
+            return stats
+
+        self._log_info(f"Enriching {len(plays_to_enrich)} plays with cover art from CAA")
+
+        for i, play in enumerate(plays_to_enrich):
+            result = None
+            source = None
+
+            # Try release_id first (more specific)
+            if play.release_id:
+                result = self.fetch_cover_art_url(str(play.release_id), "release")
+                if result:
+                    source = "release"
+
+            # If no result, try release_group_id
+            if result is None and play.release_group_id:
+                if play.release_id:
+                    time.sleep(self.CAA_RATE_LIMIT_DELAY)
+                result = self.fetch_cover_art_url(str(play.release_group_id), "release-group")
+                if result:
+                    source = "release-group"
+
+            if result:
+                image_uri, thumbnail_uri = result
+                try:
+                    conn = sqlite3.connect(self.db_path)
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "UPDATE fact_plays SET image_uri = ?, thumbnail_uri = ?, updated_at = ? WHERE id = ?",
+                        (image_uri, thumbnail_uri, datetime.now(timezone.utc).isoformat(), play.id)
+                    )
+                    conn.commit()
+                    conn.close()
+                    stats["enriched"] += 1
+                    self._log_info(f"Enriched play {play.id} with cover art from {source}")
+                except Exception as e:
+                    self._log_error(f"Failed to update play {play.id}: {e}")
+            else:
+                stats["not_found"] += 1
+
+            # Rate limit between plays
+            if i < len(plays_to_enrich) - 1:
+                time.sleep(self.CAA_RATE_LIMIT_DELAY)
+
+        return stats
+
     def sync(self) -> dict[str, Any]:
         """
         Main sync logic.
@@ -321,6 +430,11 @@ class PlaySyncService:
             inserted_ids = self.insert_plays(new_plays)
             self._log_info(f"Inserted {len(inserted_ids)} new plays into database")
 
+            # Enrich plays with cover art from CAA (for plays without KEXP images)
+            enrichment_stats = self.enrich_plays_cover_art(new_plays)
+            if enrichment_stats["enriched"] > 0:
+                self._log_info(f"Enriched {enrichment_stats['enriched']} plays with cover art")
+
             # TODO: Update alignment file when embedding generation is implemented
             # Skipping play_ids.npy update to avoid mismatch with embeddings
             # self.update_play_ids_alignment(inserted_ids)
@@ -332,6 +446,7 @@ class PlaySyncService:
 
             return {
                 "new_plays": len(inserted_ids),
+                "enriched": enrichment_stats["enriched"],
                 "last_id": new_last_id,
                 "duration_ms": duration_ms
             }

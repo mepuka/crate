@@ -17,15 +17,17 @@ export type { AlbumArtworkData };
 export const ALBUM_BAR_PLAY_COUNT = 250;
 
 /**
- * Reactive atom that loads album artwork using the Web Worker.
+ * Static atom that loads album artwork once on mount.
  *
  * Processing happens off the main thread:
  * 1. Fetches newest N plays from timeline KVS
  * 2. Sends to worker for filtering and processing
  * 3. Worker returns structured artwork data
- * 4. Automatically updates when timeline changes
  *
- * Uses Atom.withReactivity() to invalidate when plays change.
+ * NOTE: Does NOT use Atom.withReactivity() - the background grid should
+ * remain stable during navigation/filtering. It only needs to load once
+ * on initial page load.
+ *
  * Uses shared TimelineRuntime to ensure consistent state with timeline atoms.
  */
 export const recentAlbumArtAtom = TimelineRuntime.atom(
@@ -47,7 +49,9 @@ export const recentAlbumArtAtom = TimelineRuntime.atom(
 
     return artwork;
   })
-).pipe(Atom.withReactivity(["timeline:plays_chunk"]));
+);
+// Removed: .pipe(Atom.withReactivity(["timeline:plays_chunk"]))
+// The background should stay stable - no need to refresh on timeline changes
 
 /**
  * Animation speed for the scrolling bar (pixels per second)

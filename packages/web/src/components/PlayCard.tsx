@@ -1,7 +1,7 @@
 import { Play } from '@/domain'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
-import { formatPlayTime, formatRelativeTime } from '@/lib/date-utils'
+import { formatSemanticTime, formatRelativeTime } from '@/lib/date-utils'
 import { getNewMusicDataAttr, isNewMusic } from '@/lib/new-music-utils'
 import { forwardRef, memo, useCallback, useMemo } from 'react'
 import { AlbumArt } from './AlbumArt'
@@ -157,7 +157,7 @@ export const PlayCard = memo(forwardRef<HTMLDivElement, PlayCardProps>(
                   className="timestamp text-foreground/50 whitespace-nowrap shrink-0 text-[10px]"
                   dateTime={play.airdate.toISOString()}
                 >
-                  {formatPlayTime(play.airdate)}
+                  {formatSemanticTime(play.airdate)}
                 </time>
               )}
             </div>

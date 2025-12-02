@@ -194,6 +194,101 @@ export const formatPlayTime = (date: Date, locale?: string): string => {
 };
 
 /**
+ * Format time for timeline display with semantic awareness.
+ * Shows contextual time based on how old the play is:
+ * - < 1 hour: relative time ("5 min ago", "45 min ago")
+ * - Same day: time only ("3:45 PM")
+ * - Yesterday: "Yesterday, 3:45 PM"
+ * - This week: day + time ("Mon, 3:45 PM")
+ * - This year: month + day ("Jan 15")
+ * - Older: full date ("Jan 15, 2023")
+ *
+ * @param date - The date to format (JavaScript Date)
+ * @param locale - Optional locale string (defaults to browser locale or 'en-US')
+ * @returns Semantically appropriate time string
+ */
+export const formatSemanticTime = (date: Date, locale?: string): string => {
+  const effectiveLocale = locale ?? getDefaultLocale();
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  // Less than 1 hour ago - show relative
+  if (diffMinutes < 60) {
+    if (diffMinutes < 1) return "Just now";
+    return `${diffMinutes}m ago`;
+  }
+
+  // Less than 24 hours ago but check if same calendar day
+  const isToday =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
+  if (isToday) {
+    // Today - show time only
+    const dateTime = dateToDateTime(date);
+    return DateTime.formatLocal(dateTime, {
+      locale: effectiveLocale,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
+
+  // Check if yesterday
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday =
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear();
+
+  if (isYesterday) {
+    const dateTime = dateToDateTime(date);
+    const time = DateTime.formatLocal(dateTime, {
+      locale: effectiveLocale,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    return `Yesterday, ${time}`;
+  }
+
+  // Within last 7 days - show weekday + time
+  if (diffDays < 7) {
+    const dateTime = dateToDateTime(date);
+    return DateTime.formatLocal(dateTime, {
+      locale: effectiveLocale,
+      weekday: "short",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
+
+  // Same year - show month + day
+  if (date.getFullYear() === now.getFullYear()) {
+    const dateTime = dateToDateTime(date);
+    return DateTime.formatLocal(dateTime, {
+      locale: effectiveLocale,
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  // Older - show month, day, year
+  const dateTime = dateToDateTime(date);
+  return DateTime.formatLocal(dateTime, {
+    locale: effectiveLocale,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
+
+/**
  * Format date for date dividers (full month name, day, year).
  * Uses Effect's DateTime.formatLocal for timezone-aware formatting.
  *

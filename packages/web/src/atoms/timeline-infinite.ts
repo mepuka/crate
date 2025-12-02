@@ -27,6 +27,8 @@ import {
   untilAtom,
   percentageAtom,
   anchorIdAtom,
+  activeFilterAtom,
+  type EntityFilter,
 } from "./timeline-url-sync";
 import { playIdsAtom } from "./timeline";
 
@@ -68,6 +70,8 @@ export interface TimelineInfiniteState {
     readonly pageIndex: number;
     readonly itemIndex: number;
   };
+  // Active filter for this state (used to detect filter changes)
+  readonly activeFilter?: EntityFilter | null;
 }
 
 /**
@@ -222,6 +226,7 @@ export const loadInitialTimelinePageAtom = TimelineRuntime.fn<void>()(
   (_, get) =>
     Effect.gen(function* () {
       const config = get(timelineInitialConfigAtom);
+      const filter = get(activeFilterAtom);
 
       // Update state to loading-initial
       const loadingState: TimelineInfiniteState = {
@@ -229,6 +234,7 @@ export const loadInitialTimelinePageAtom = TimelineRuntime.fn<void>()(
         status: "loading-initial",
         initialParams: config.params,
         initialMethod: config.method,
+        activeFilter: filter,
       };
       get.set(timelineInfiniteStateAtom, loadingState);
 
@@ -243,6 +249,7 @@ export const loadInitialTimelinePageAtom = TimelineRuntime.fn<void>()(
         hasMore: result.response.has_more,
         initialParams: result.params,
         initialMethod: result.method,
+        activeFilter: filter,
         ...(result.response.next_cursor && { nextCursor: result.response.next_cursor }),
         ...(result.response.total_count !== null && result.response.total_count !== undefined && {
           totalCount: result.response.total_count
@@ -323,9 +330,15 @@ export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) =>
     // Mark cursor as in-flight
     inFlightCursors.add(cursorKey);
 
+    // Include MBID filters from initialParams for consistent filtering across pages
     const nextParams: TimelineParams = {
       limit: state.initialParams.limit,
       cursor: nextCursor,
+      // Preserve filter params from initial load
+      ...(state.initialParams.artist_mbid && { artist_mbid: state.initialParams.artist_mbid }),
+      ...(state.initialParams.recording_mbid && { recording_mbid: state.initialParams.recording_mbid }),
+      ...(state.initialParams.release_mbid && { release_mbid: state.initialParams.release_mbid }),
+      ...(state.initialParams.release_group_mbid && { release_group_mbid: state.initialParams.release_group_mbid }),
     };
 
     // Set loading state
@@ -430,12 +443,22 @@ export const allLoadedPlayIdsAtom = Atom.make((get) => {
     return kvsIds as number[];
   }
 
-  // Merge: Use paginated IDs as base, prepend any newer IDs from KVS
-  // KVS may have newer plays that arrived via FetchLatestLive
-  const paginatedSet = new Set(paginatedIds);
-  const newerFromKvs = kvsIds.filter((id) => !paginatedSet.has(id));
+  // Find the split point: where does the paginated history start in the KVS?
+  // We assume both lists are sorted by airdate (descending).
+  // We want to take everything from KVS that is NEWER than the first paginated play.
+  const newestPaginatedId = paginatedIds[0];
+  const splitIndex = kvsIds.indexOf(newestPaginatedId);
 
-  // Prepend newer KVS plays, then paginated plays
+  if (splitIndex === -1) {
+    // Edge case: Newest paginated play is not in KVS yet.
+    // Fallback to just returning paginatedIds to be safe and avoid showing older plays at the top.
+    return paginatedIds;
+  }
+
+  // Take plays from KVS that are strictly newer than the paginated start
+  const newerFromKvs = kvsIds.slice(0, splitIndex);
+
+  // Prepend newer KVS plays to paginated plays
   return [...newerFromKvs, ...paginatedIds];
 });
 
@@ -460,3 +483,33 @@ export const timelineLoadingStateAtom = Atom.make((get) => {
     hasMore: state.hasMore,
   };
 });
+
+/**
+ * Helper to compare filters for equality
+ */
+const filtersEqual = (a: EntityFilter | null | undefined, b: EntityFilter | null | undefined): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.type === b.type && a.mbid === b.mbid;
+};
+
+/**
+ * Derived atom: Detects when the URL filter differs from the loaded state filter.
+ * This is used by VirtualizedTimeline to trigger transition animations.
+ */
+export const filterNeedsReloadAtom = Atom.make((get) => {
+  const urlFilter = get(activeFilterAtom);
+  const state = get(timelineInfiniteStateAtom);
+  const stateFilter = state.activeFilter;
+
+  // If we have no pages yet, we need to load (but not a "reload")
+  if (state.pages.length === 0) {
+    return false;
+  }
+
+  // Check if filter changed from what we loaded
+  return !filtersEqual(urlFilter, stateFilter);
+});
+
+// Re-export activeFilterAtom for components to use
+export { activeFilterAtom };
