@@ -21,6 +21,7 @@ import type { PlayResult, TimelineParams } from "@crate/api";
 import type { MockSSEConfig } from "@/streams/timeline-mock-sse-stream";
 import { createTimelinePaginationStream } from "@/streams/timeline-pagination-stream";
 import { createMockSSEStream, createBurstMockSSEStream } from "@/streams/timeline-mock-sse-stream";
+import { playAtom } from "@/atoms/timeline";
 
 /**
  * Stream mode for testing different patterns
@@ -247,20 +248,34 @@ export const switchStreamModeAtom = TimelineRuntime.fn<StreamMode>()(
 );
 
 /**
- * Derived atom: Get actual plays from KVS using stream play IDs.
- * This demonstrates how stream atoms integrate with existing KVS infrastructure.
+ * Derived atom: Stream play IDs as a Chunk for UI consumption.
+ * Components should use these IDs with playAtom(id) to get actual play data.
+ * Only returns IDs collected during the current stream session.
  */
-export const streamPlaysAtom = TimelineRuntime.atom(
-  Effect.gen(function* () {
-    const kvs = yield* TimelineKVS;
+export const streamPlaysAtom = Atom.make((get) => {
+  const streamStatus = get(streamStatusAtom);
+  const streamIds = get(streamPlayIdsAtom);
 
-    // Get the full plays chunk from KVS
-    // The chunk is already sorted newest first
-    const playsChunk = yield* kvs.getPlaysChunk();
+  // Return empty if stream is off or no IDs collected
+  if (streamStatus.status === "off" || streamIds.length === 0) {
+    return Chunk.empty<number>();
+  }
 
-    return playsChunk;
-  })
-).pipe(Atom.withReactivity(["timeline:play", "timeline:plays_chunk"]));
+  return Chunk.fromIterable(streamIds);
+});
+
+/**
+ * Derived atom: Full play data for stream plays.
+ * Reads each play via playAtom(id) and returns array of Result<Option<PlayResult>>.
+ * This atom solves the React Rules of Hooks violation by doing the mapping at the atom level
+ * instead of in a component render function.
+ */
+export const streamPlaysDataAtom = Atom.make((get) => {
+  const playIdsChunk = get(streamPlaysAtom);
+  const playIds = Chunk.toReadonlyArray(playIdsChunk);
+  // Read each play using playAtom - this is safe at the atom level
+  return playIds.map((id) => get(playAtom(id)));
+});
 
 /**
  * Atom: Recent N plays from stream (for display)

@@ -9,13 +9,13 @@
 
 import { useAtomValue, Result } from "@effect-atom/atom-react";
 import {
-  streamPlaysAtom,
+  streamPlaysDataAtom,
   streamPlayCountAtom,
   streamStatusAtom,
 } from "@/atoms/timeline-stream-atoms";
 import { StreamTestControls } from "@/components/StreamTestControls";
 import type { PlayResult } from "@crate/api";
-import { Chunk } from "effect";
+import { Option } from "effect";
 
 function PlayCard({ play }: { play: PlayResult }) {
   return (
@@ -90,22 +90,28 @@ function PlayList({ plays }: { plays: readonly PlayResult[] }) {
 export function StreamTimelineDemo() {
   const status = useAtomValue(streamStatusAtom);
   const playCount = useAtomValue(streamPlayCountAtom);
-  const playsResult = useAtomValue(streamPlaysAtom);
 
-  // Convert Result<Chunk<PlayResult>> to readonly PlayResult[]
-  // Effect Atom handles reactivity - no need for useEffect + local state
-  const plays = Result.matchWithWaiting(playsResult, {
-    onWaiting: () => [] as readonly PlayResult[],
-    onSuccess: (s) => Chunk.toReadonlyArray(s.value),
-    onError: (e) => {
-      console.error("[StreamTimelineDemo] Error loading plays:", e);
-      return [] as readonly PlayResult[];
-    },
-    onDefect: (d) => {
-      console.error("[StreamTimelineDemo] Defect loading plays:", d);
-      return [] as readonly PlayResult[];
-    },
-  });
+  // Use the derived atom that safely fetches all play data
+  // This avoids the Rules of Hooks violation by doing the mapping at the atom level
+  const playResults = useAtomValue(streamPlaysDataAtom);
+
+  // Convert Result<Option<PlayResult>>[] to readonly PlayResult[]
+  // Filter out any plays that are still loading, have errors, or are None
+  const plays: readonly PlayResult[] = playResults.flatMap((result) =>
+    Result.matchWithWaiting(result, {
+      onWaiting: () => [],
+      onSuccess: (s) =>
+        Option.isSome(s.value) ? [s.value.value] : [],
+      onError: (e) => {
+        console.error("[StreamTimelineDemo] Error loading play:", e);
+        return [];
+      },
+      onDefect: (d) => {
+        console.error("[StreamTimelineDemo] Defect loading play:", d);
+        return [];
+      },
+    })
+  );
 
   return (
     <div className="max-w-7xl mx-auto p-6">
