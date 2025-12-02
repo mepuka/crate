@@ -13,16 +13,32 @@ Production-ready FastAPI service for semantic search over 2.2M KEXP music plays 
 | Total Vectors | 2,198,906 |
 | Memory Usage | ~3.2GB |
 
-See [SEARCH_SERVICE.md](SEARCH_SERVICE.md) for comprehensive production documentation.
+---
+
+## Documentation
+
+📚 **[Complete Documentation Index](DOCUMENTATION_INDEX.md)** - Full documentation by topic and role
+
+**Quick Links:**
+- **[Database Schema](DATABASE_SCHEMA.md)** - Complete database schema and table documentation
+- **[Enrichment Pipeline](ENRICHMENT_PIPELINE.md)** - Enrichment scripts, schedules, and workflows
+- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Production deployment and operations
+- **[Timeline API](TIMELINE_API.md)** - Timeline browsing and navigation
+- **[Embedding Endpoints](EMBEDDING_ENDPOINTS.md)** - Embedding generation and integration
+- **[MBID Filtering](MBID_FILTERING.md)** - MusicBrainz entity filtering and play counts
+
+---
 
 ## Features
 
 - **Fast Semantic Search:** ~800ms query latency using FAISS IVFFlat index
 - **BGE-small Embeddings:** 384d native vectors, no PCA required
+- **Real-time Play Sync:** New plays synced from KEXP API every 30 seconds
+- **Timeline API:** Browse 2.2M+ plays chronologically with cursor pagination
+- **Enrichment Pipeline:** MusicBrainz metadata, cover art, and link content extraction
 - **Full Type Safety:** Pydantic V2 models with validation
 - **Auto-Generated Docs:** OpenAPI/Swagger at `/docs`
 - **Production-Ready:** Docker deployment, health checks, structured logging
-- **Future-Proof:** Index-to-ID mapping for safe re-indexing
 
 ## Quick Start
 
@@ -117,17 +133,35 @@ conn.close()
 
 ## API Endpoints
 
-### POST /api/search
+### Core Endpoints
 
-Semantic search over music plays.
+| Endpoint | Method | Description | Documentation |
+|----------|--------|-------------|---------------|
+| `/api/search` | POST | Semantic search over plays | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) |
+| `/api/plays/timeline` | GET | Browse plays chronologically | [TIMELINE_API.md](TIMELINE_API.md) |
+| `/api/plays/{id}` | GET | Get single play by ID | - |
+| `/api/plays/count` | GET | Get play counts by entity | [MBID_FILTERING.md](MBID_FILTERING.md) |
+| `/api/health` | GET | Health check | - |
+
+### Embedding Endpoints
+
+| Endpoint | Method | Description | Documentation |
+|----------|--------|-------------|---------------|
+| `/api/embeddings/pending` | GET | Get plays needing embeddings | [EMBEDDING_ENDPOINTS.md](EMBEDDING_ENDPOINTS.md) |
+| `/api/embeddings/add` | POST | Add embeddings to FAISS index | [EMBEDDING_ENDPOINTS.md](EMBEDDING_ENDPOINTS.md) |
+| `/api/embeddings/pca-model` | GET | Download PCA transformer (legacy) | [EMBEDDING_ENDPOINTS.md](EMBEDDING_ENDPOINTS.md) |
+
+### Example: Semantic Search
 
 **Request:**
-```json
-{
-  "query": "psychedelic rock",
-  "limit": 20,
-  "offset": 0
-}
+```bash
+curl -X POST https://cratemusic.duckdns.org/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "psychedelic rock",
+    "limit": 20,
+    "offset": 0
+  }'
 ```
 
 **Response:**
@@ -148,13 +182,18 @@ Semantic search over music plays.
 }
 ```
 
-### GET /api/health
+### Example: Timeline Browsing
 
-Health check endpoint.
+```bash
+# First page (newest plays)
+curl https://cratemusic.duckdns.org/api/plays/timeline?limit=50
 
-### GET /api/plays/{play_id}
+# Jump to March 2015
+curl https://cratemusic.duckdns.org/api/plays/timeline?since=2015-03-01T00:00:00&limit=50
 
-Get single play by ID.
+# Next page using cursor
+curl https://cratemusic.duckdns.org/api/plays/timeline?cursor={next_cursor}&limit=50
+```
 
 ## Configuration
 
@@ -281,6 +320,90 @@ Query → FastAPI → SearchService (FAISS) → indices
 
 **Note:** BM25/Hybrid search is disabled due to memory constraints on 4GB droplet.
 
+## Enrichment Pipeline
+
+The API includes several enrichment scripts that run on scheduled intervals:
+
+| Script | Schedule | Purpose | Status |
+|--------|----------|---------|--------|
+| `sync_plays.py` | Every 30s | Sync new plays from KEXP API | ✅ Running |
+| `embed_pending.py` | Hourly | Generate embeddings for new plays | ✅ Running |
+| `enrich_mb_entities.py` | Manual | Fetch MusicBrainz entity metadata | ⚠️ Manual |
+| `enrich_cover_art.py` | Manual | Fetch missing cover art | ⚠️ Manual |
+| `extract_links.py` | Manual | Extract and fetch link content | ⚠️ Manual |
+
+See [ENRICHMENT_PIPELINE.md](ENRICHMENT_PIPELINE.md) for detailed documentation.
+
+### Running Enrichment Scripts
+
+```bash
+# Enrich MusicBrainz metadata for top 100 artists
+python scripts/enrich_mb_entities.py --entity-type artist --batch-size 100
+
+# Extract links from DJ comments
+python scripts/extract_links.py --batch-size 100 --verbose
+
+# Backfill cover art
+python scripts/enrich_cover_art.py --batch-size 100
+```
+
+---
+
+## Database Schema
+
+The database includes the following table groups:
+
+- **Core Tables:** `fact_plays` (2.2M+ rows)
+- **MusicBrainz Entities:** `mb_artists`, `mb_labels`, `mb_recordings`, `mb_releases`, `mb_release_groups`, `mb_tracks`
+- **Link Content:** `link_content`, `play_links`
+- **Enrichments:** `enrichment_types`, `enrichments`
+- **Relationships:** `master_relations`
+- **Search:** `entities_fts` (FTS5 full-text search)
+
+See [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) for complete schema documentation.
+
+---
+
+## Monitoring
+
+### Check Logs
+
+```bash
+# Sync logs (30s intervals)
+docker exec kexp-search-api tail -f /app/logs/sync.log
+
+# Embedding logs (hourly)
+docker exec kexp-search-api tail -f /app/logs/embed.log
+
+# API logs
+docker-compose logs -f api
+```
+
+### Check Service Health
+
+```bash
+# Health endpoint
+curl https://cratemusic.duckdns.org/api/health | jq
+
+# Memory usage
+docker stats --no-stream kexp-search-api
+```
+
+### Database Stats
+
+```bash
+# Total plays
+sqlite3 data/music_kb.sqlite "SELECT COUNT(*) FROM fact_plays;"
+
+# Enriched entities
+sqlite3 data/music_kb.sqlite "SELECT COUNT(*) FROM mb_artists WHERE enriched_at IS NOT NULL;"
+
+# Link content stats
+sqlite3 data/music_kb.sqlite "SELECT fetch_status, COUNT(*) FROM link_content GROUP BY fetch_status;"
+```
+
+---
+
 ## Troubleshooting
 
 ### Service won't start
@@ -292,7 +415,7 @@ docker-compose logs api
 
 Common issues:
 - Missing data files → Verify all files in `data/`
-- Out of memory → Reduce FAISS_NLIST or allocate more RAM
+- Out of memory → Check `docker stats`, may need to increase container memory
 - Port conflict → Change PORT in docker-compose.yml
 
 ### Search returns no results
@@ -301,11 +424,29 @@ Common issues:
 - Check FAISS index loaded: `curl /api/health`
 - Increase FAISS_NPROBE for better recall
 
+### Enrichment scripts not running
+
+```bash
+# Check cron is running
+docker exec kexp-search-api ps aux | grep cron
+
+# Check crontab is installed
+docker exec kexp-search-api crontab -l
+
+# Reinstall crontab
+docker exec kexp-search-api crontab /app/crontab
+docker exec kexp-search-api service cron start
+```
+
 ## License
 
 See parent project LICENSE
 
 ## References
 
+- [Database Schema Documentation](DATABASE_SCHEMA.md)
+- [Enrichment Pipeline Documentation](ENRICHMENT_PIPELINE.md)
+- [Timeline API Documentation](TIMELINE_API.md)
+- [Embedding Endpoints Documentation](EMBEDDING_ENDPOINTS.md)
 - Design Doc: `docs/plans/2025-11-11-faiss-search-api-design.md`
 - Notebook: `analysis/notebooks/03_faiss_search_exploration.ipynb`
