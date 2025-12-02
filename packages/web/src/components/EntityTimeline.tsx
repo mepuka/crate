@@ -77,7 +77,8 @@ export function EntityTimeline({ filter }: EntityTimelineProps) {
 
   // Infinite scroll trigger
   useEffect(() => {
-    if (!loadingState.hasMore || loadingState.isLoadingMore) {
+    // Don't load more if: no more pages, already loading, or in error state
+    if (!loadingState.hasMore || loadingState.isLoadingMore || loadingState.isError) {
       return;
     }
 
@@ -89,7 +90,7 @@ export function EntityTimeline({ filter }: EntityTimelineProps) {
     if (playIds.length - lastVirtualItem.index <= LOAD_MORE_THRESHOLD) {
       loadMore();
     }
-  }, [virtualItems, playIds.length, loadingState.hasMore, loadingState.isLoadingMore, loadMore]);
+  }, [virtualItems, playIds.length, loadingState.hasMore, loadingState.isLoadingMore, loadingState.isError, loadMore]);
 
   // Handle initial loading
   if (loadingState.isLoadingInitial) {
