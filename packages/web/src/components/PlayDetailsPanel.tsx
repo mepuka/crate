@@ -15,10 +15,9 @@ import { Option } from "effect";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatSemanticTime } from "@/lib/date-utils";
 import { AlbumArt } from "./AlbumArt";
-import { X, User, Disc, Music } from "lucide-react";
+import { X } from "lucide-react";
 import { CommentWithLinks } from "./CommentWithLinks";
 import { LinksByCategory } from "./LinksByCategory";
-import { Link } from "@tanstack/react-router";
 
 export function PlayDetailsPanel() {
   const [selectedId, setSelectedId] = useAtom(selectedPlayIdAtom);
@@ -214,42 +213,6 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                   className="text-base leading-relaxed text-foreground/90 italic border-l-2 border-primary/30 pl-4"
                 >
                   <CommentWithLinks playId={play.id} comment={play.comment} variant="details" />
-                </div>
-              )}
-
-              {/* Explore KEXP - Action buttons */}
-              {!isNonTrackPlay && (play.artist_mbid?.length || play.release_group_mbid || play.recording_mbid) && (
-                <div className="flex flex-wrap gap-2">
-                  {play.artist_mbid && play.artist_mbid.length > 0 && (
-                    <Link
-                      to="/artist/$mbid"
-                      params={{ mbid: play.artist_mbid[0] }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card/50 border border-border/30 hover:bg-primary/10 hover:border-primary/30 transition-all text-sm"
-                    >
-                      <User className="h-3.5 w-3.5 text-primary/70" />
-                      <span>More by {play.artist}</span>
-                    </Link>
-                  )}
-                  {play.release_group_mbid && play.album && (
-                    <Link
-                      to="/album/$mbid"
-                      params={{ mbid: play.release_group_mbid }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card/50 border border-border/30 hover:bg-primary/10 hover:border-primary/30 transition-all text-sm"
-                    >
-                      <Disc className="h-3.5 w-3.5 text-primary/70" />
-                      <span>From this album</span>
-                    </Link>
-                  )}
-                  {play.recording_mbid && (
-                    <Link
-                      to="/recording/$mbid"
-                      params={{ mbid: play.recording_mbid }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card/50 border border-border/30 hover:bg-primary/10 hover:border-primary/30 transition-all text-sm"
-                    >
-                      <Music className="h-3.5 w-3.5 text-primary/70" />
-                      <span>This track</span>
-                    </Link>
-                  )}
                 </div>
               )}
 
