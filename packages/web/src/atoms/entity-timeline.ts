@@ -184,11 +184,31 @@ const loadInitialEntityPageEffect = (filter: EntityFilter) =>
 /**
  * Action atom: Load initial entity timeline page.
  * Uses get.set() to update state reactively.
+ * Uses Effect.ensuring for guaranteed cleanup of in-flight tracking.
  */
 export const loadInitialEntityPageAtom = Atom.family((filter: EntityFilter) =>
   TimelineRuntime.fn<void>()((_, get) =>
     Effect.gen(function* () {
       const key = entityFilterKey(filter);
+      const map = get(entityTimelineStateMapAtom);
+      const existingState = map.get(key);
+
+      // Guard: don't load if already loading initial
+      if (existingState?.status === "loading-initial") {
+        yield* Effect.log(
+          `Skipping entity initial load: already loading for ${key}`
+        );
+        return;
+      }
+
+      // Request deduplication
+      const requestKey = getEntityRequestKey(filter, undefined);
+      if (inFlightEntityRequests.has(requestKey)) {
+        yield* Effect.log(`Skipping entity initial load: request ${requestKey} already in flight`);
+        return;
+      }
+
+      inFlightEntityRequests.add(requestKey);
 
       // Set loading state reactively
       const loadingState: EntityTimelineState = {
@@ -197,33 +217,39 @@ export const loadInitialEntityPageAtom = Atom.family((filter: EntityFilter) =>
       };
       updateEntityStateMap(get, key, loadingState);
 
-      // Execute the load
-      const result = yield* loadInitialEntityPageEffect(filter);
+      // Execute load with guaranteed cleanup via Effect.ensuring
+      yield* pipe(
+        Effect.gen(function* () {
+          const result = yield* loadInitialEntityPageEffect(filter);
 
-      // Update state with successful page
-      const successState: EntityTimelineState = {
-        pages: [{ params: result.params, response: result.response }],
-        status: "idle",
-        hasMore: result.response.has_more,
-        filter,
-        ...(result.response.next_cursor && { nextCursor: result.response.next_cursor }),
-      };
-      updateEntityStateMap(get, key, successState);
-    }).pipe(
-      Effect.catchAll((error) =>
-        Effect.logError(`Entity initial page load failed: ${error}`).pipe(
-          Effect.andThen(Effect.sync(() => {
-            const key = entityFilterKey(filter);
-            const errorState: EntityTimelineState = {
-              ...initialEntityTimelineState(filter),
-              status: "error",
-              error,
-            };
-            updateEntityStateMap(get, key, errorState);
-          }))
-        )
-      )
-    )
+          // Update state with successful page
+          const successState: EntityTimelineState = {
+            pages: [{ params: result.params, response: result.response }],
+            status: "idle",
+            hasMore: result.response.has_more,
+            filter,
+            ...(result.response.next_cursor && { nextCursor: result.response.next_cursor }),
+          };
+          updateEntityStateMap(get, key, successState);
+        }),
+        Effect.catchAll((error) =>
+          Effect.logError(`Entity initial page load failed: ${error}`).pipe(
+            Effect.andThen(Effect.sync(() => {
+              const key = entityFilterKey(filter);
+              const errorState: EntityTimelineState = {
+                ...initialEntityTimelineState(filter),
+                status: "error",
+                error,
+              };
+              updateEntityStateMap(get, key, errorState);
+            }))
+          )
+        ),
+        Effect.ensuring(Effect.sync(() => {
+          inFlightEntityRequests.delete(requestKey);
+        }))
+      );
+    })
   )
 );
 
