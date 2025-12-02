@@ -13,10 +13,9 @@ import { selectedPlayIdAtom } from "@/atoms/play-details";
 import { playAtom } from "@/atoms/timeline";
 import { Option } from "effect";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatPlayTime } from "@/lib/date-utils";
+import { formatSemanticTime } from "@/lib/date-utils";
 import { AlbumArt } from "./AlbumArt";
 import { X, User, Disc, Music } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { CommentWithLinks } from "./CommentWithLinks";
 import { LinksByCategory } from "./LinksByCategory";
 import { Link } from "@tanstack/react-router";
@@ -30,20 +29,12 @@ export function PlayDetailsPanel() {
   // Close handler - removes playId from URL
   const handleClose = () => setSelectedId(Option.none());
 
+  // Parent controls visibility, this just renders the content
+  if (!isOpen) return null;
+
   return (
-    <div
-      className={cn(
-        "fixed top-0 right-0 h-screen overflow-y-auto",
-        "transition-all duration-300 ease-out",
-        // When open: full width on mobile, remaining space on desktop (after 420-480px timeline)
-        isOpen
-          ? "w-full lg:left-[420px] xl:left-[480px] lg:w-[calc(100%-420px)] xl:w-[calc(100%-480px)]"
-          : "w-0 opacity-0 pointer-events-none"
-      )}
-    >
-      {isOpen && (
-        <div className="h-full px-4 sm:px-6 lg:px-10 pt-20 pb-12">
-          <div className="relative bg-background rounded-2xl shadow-2xl p-8 sm:p-10 border border-primary/10 min-h-full backdrop-blur-sm">
+    <div className="h-full px-4 sm:px-6 pt-12 pb-12 overflow-y-auto">
+      <div className="relative bg-background rounded-2xl shadow-2xl p-8 sm:p-10 border border-primary/10 min-h-full backdrop-blur-sm">
             {/* Glassy backdrop layer - same as timeline */}
             <div className="timeline-backdrop" />
             {/* Glassy border edge */}
@@ -58,16 +49,14 @@ export function PlayDetailsPanel() {
               <X className="h-5 w-5 text-foreground/70 hover:text-primary" />
             </button>
 
-            {/* Content */}
-            <div className="relative z-10">
+            {/* Content - with padding to clear close button */}
+            <div className="relative z-10 pr-12">
               {Option.match(selectedId, {
                 onNone: () => null,
                 onSome: (playId) => <PlayDetailsContent playId={playId} />,
               })}
             </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -121,319 +110,162 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
           const isNonTrackPlay = !play.song && !play.artist && play.comment;
 
           return (
-            <div className="space-y-8">
-              {/* Album Art and Info Side by Side */}
-              <div className="flex flex-col sm:flex-row gap-8">
+            <div className="space-y-6">
+              {/* Album Art and Track Info - Side by Side */}
+              <div className="flex flex-col sm:flex-row gap-6">
                 {/* Album Art - Left */}
-                <div className="relative shrink-0 group">
+                <div className="relative shrink-0">
                   <AlbumArt
                     src={play.image_uri || play.thumbnail_uri}
                     alt={isNonTrackPlay ? "Special program segment" : `${play.album} by ${play.artist}`}
                     size={400}
-                    className="w-full sm:w-80 rounded-2xl shadow-2xl shadow-primary/5 ring-1 ring-primary/10"
+                    className="w-full sm:w-56 rounded-xl shadow-xl ring-1 ring-white/10"
                   />
-                  {/* Subtle glow on hover */}
-                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
                 </div>
 
-                {/* Info - Right */}
-                <div className="flex-1 space-y-6">
-                  {/* Title and Artist Info - Extreme size contrast */}
-                  <div className="space-y-3">
-                    {isNonTrackPlay ? (
-                      <>
-                        <div className="text-xs uppercase tracking-wider mb-2"
-                          style={{
-                            fontSize: 'var(--font-time)',
-                            color: 'hsl(var(--foreground) / 0.5)'
-                          }}
-                        >
-                          Special Program Segment
-                        </div>
-                        <h1
-                          className="text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight"
-                          style={{
-                            fontFamily: 'var(--font-family-display)',
-                            letterSpacing: '-0.025em',
-                            color: 'hsl(var(--foreground))'
-                          }}
-                        >
-                          {play.comment}
-                        </h1>
-                      </>
-                    ) : (
-                      <>
-                        <h1
-                          className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight"
-                          style={{
-                            fontFamily: 'var(--font-family-display)',
-                            letterSpacing: '-0.025em',
-                            color: 'hsl(var(--foreground))'
-                          }}
-                        >
-                          {play.song || "Untitled"}
-                        </h1>
-                        <h2
-                          className="text-xl sm:text-2xl lg:text-3xl"
-                          style={{
-                            fontFamily: 'var(--font-family-body)',
-                            fontWeight: 'var(--weight-artist)',
-                            color: 'hsl(var(--foreground) / 0.7)'
-                          }}
-                        >
-                          {play.artist || "Unknown Artist"}
-                        </h2>
-                        {play.album && (
-                          <p
-                            className="text-base sm:text-lg"
-                            style={{
-                              fontFamily: 'var(--font-family-body)',
-                              fontWeight: 'var(--weight-artist)',
-                              color: 'hsl(var(--foreground) / 0.55)'
-                            }}
-                          >
-                            {play.album}
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </div>
+                {/* Track Info Only - Right */}
+                <div className="flex-1 space-y-3">
+                  {isNonTrackPlay ? (
+                    <>
+                      <div className="text-xs uppercase tracking-wider text-muted-foreground/60">
+                        Program Segment
+                      </div>
+                      <h1
+                        className="text-2xl sm:text-3xl font-bold leading-tight break-words"
+                        style={{
+                          fontFamily: 'var(--font-family-display)',
+                          letterSpacing: '-0.02em',
+                          wordBreak: 'break-word'
+                        }}
+                      >
+                        {play.comment}
+                      </h1>
+                    </>
+                  ) : (
+                    <>
+                      {/* Song Title */}
+                      <h1
+                        className="text-2xl sm:text-3xl font-bold leading-tight break-words"
+                        style={{
+                          fontFamily: 'var(--font-family-display)',
+                          letterSpacing: '-0.02em',
+                          wordBreak: 'break-word'
+                        }}
+                      >
+                        {play.song || "Untitled"}
+                      </h1>
+                      {/* Artist */}
+                      <h2
+                        className="text-lg text-foreground/70"
+                        style={{ fontFamily: 'var(--font-family-body)' }}
+                      >
+                        {play.artist || "Unknown Artist"}
+                      </h2>
+                      {/* Album • Year • Label */}
+                      {(play.album || releaseYear || (play.labels && play.labels.length > 0)) && (
+                        <p className="text-sm text-muted-foreground">
+                          {[
+                            play.album,
+                            releaseYear,
+                            play.labels?.join(", ")
+                          ].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                    </>
+                  )}
 
-                  {/* Play Time - Temporal indicator in orange */}
-                  {play.airdate && (
-                    <div className="pt-4">
+                  {/* Time + Status Badges */}
+                  <div className="flex flex-wrap items-center gap-2 pt-2">
+                    {play.airdate && (
                       <time
-                        className="text-sm font-medium font-mono"
+                        className="text-sm text-primary font-medium"
                         dateTime={play.airdate.toISOString()}
-                        style={{
-                          color: 'hsl(var(--primary))'
-                        }}
                       >
-                        {formatPlayTime(play.airdate)}
+                        {formatSemanticTime(play.airdate)}
                       </time>
-                    </div>
-                  )}
+                    )}
+                    {!isNonTrackPlay && play.is_live && (
+                      <span className="px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 text-xs font-medium">
+                        Live
+                      </span>
+                    )}
+                    {!isNonTrackPlay && play.is_request && (
+                      <span className="px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 text-xs font-medium">
+                        Request
+                      </span>
+                    )}
+                    {!isNonTrackPlay && play.is_local && (
+                      <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-xs font-medium">
+                        Local
+                      </span>
+                    )}
+                    {!isNonTrackPlay && play.rotation_status && (
+                      <span className="px-2 py-0.5 rounded-full bg-accent/15 text-accent text-xs font-medium">
+                        {play.rotation_status}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Details Section */}
-              <div className="space-y-5 border-t border-border/50 pt-6">
-                <h3
-                  className="text-xl font-bold"
-                  style={{
-                    fontFamily: 'var(--font-family-display)',
-                    letterSpacing: '-0.02em'
-                  }}
+              {/* DJ Comment - Below the header section */}
+              {!isNonTrackPlay && play.comment && (
+                <div
+                  className="text-base leading-relaxed text-foreground/90 italic border-l-2 border-primary/30 pl-4"
                 >
-                  Details
-                </h3>
-
-                <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm">
-                  <dt
-                    className="uppercase tracking-wider font-medium"
-                    style={{
-                      fontSize: 'var(--font-time)',
-                      color: 'hsl(var(--foreground) / 0.5)'
-                    }}
-                  >
-                    Play ID
-                  </dt>
-                  <dd className="font-mono text-accent font-medium">{play.id}</dd>
-
-                  {!isNonTrackPlay && releaseYear && (
-                    <>
-                      <dt
-                        className="uppercase tracking-wider font-medium"
-                        style={{
-                          fontSize: 'var(--font-time)',
-                          color: 'hsl(var(--foreground) / 0.5)'
-                        }}
-                      >
-                        Released
-                      </dt>
-                      <dd className="font-mono font-medium">{releaseYear}</dd>
-                    </>
-                  )}
-
-                  {!isNonTrackPlay && play.rotation_status && (
-                    <>
-                      <dt
-                        className="uppercase tracking-wider font-medium"
-                        style={{
-                          fontSize: 'var(--font-time)',
-                          color: 'hsl(var(--foreground) / 0.5)'
-                        }}
-                      >
-                        Rotation
-                      </dt>
-                      <dd className="font-medium">{play.rotation_status}</dd>
-                    </>
-                  )}
-
-                  {!isNonTrackPlay && play.labels && play.labels.length > 0 && (
-                    <>
-                      <dt
-                        className="uppercase tracking-wider font-medium"
-                        style={{
-                          fontSize: 'var(--font-time)',
-                          color: 'hsl(var(--foreground) / 0.5)'
-                        }}
-                      >
-                        Labels
-                      </dt>
-                      <dd className="font-medium">{play.labels.join(", ")}</dd>
-                    </>
-                  )}
-
-                  {!isNonTrackPlay && play.is_local && (
-                    <>
-                      <dt
-                        className="uppercase tracking-wider font-medium"
-                        style={{
-                          fontSize: 'var(--font-time)',
-                          color: 'hsl(var(--foreground) / 0.5)'
-                        }}
-                      >
-                        Origin
-                      </dt>
-                      <dd className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-500/10 text-green-500 font-medium text-xs">
-                        Local
-                      </dd>
-                    </>
-                  )}
-
-                  {!isNonTrackPlay && play.is_request && (
-                    <>
-                      <dt
-                        className="uppercase tracking-wider font-medium"
-                        style={{
-                          fontSize: 'var(--font-time)',
-                          color: 'hsl(var(--foreground) / 0.5)'
-                        }}
-                      >
-                        Type
-                      </dt>
-                      <dd className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-500/10 text-purple-500 font-medium text-xs">
-                        Listener Request
-                      </dd>
-                    </>
-                  )}
-
-                  {!isNonTrackPlay && play.is_live && (
-                    <>
-                      <dt
-                        className="uppercase tracking-wider font-medium"
-                        style={{
-                          fontSize: 'var(--font-time)',
-                          color: 'hsl(var(--foreground) / 0.5)'
-                        }}
-                      >
-                        Performance
-                      </dt>
-                      <dd className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-500/10 text-red-500 font-medium text-xs">
-                        Live
-                      </dd>
-                    </>
-                  )}
-                </dl>
-
-                {!isNonTrackPlay && play.comment && (
-                  <div className="mt-6 pt-6 border-t border-border/50">
-                    <h4
-                      className="font-semibold mb-4 text-lg"
-                      style={{
-                        fontFamily: 'var(--font-family-display)',
-                        letterSpacing: '-0.01em',
-                        color: 'hsl(var(--foreground) / 0.8)'
-                      }}
-                    >
-                      DJ Comment
-                    </h4>
-                    <div className="text-base leading-relaxed">
-                      <CommentWithLinks playId={play.id} comment={play.comment} variant="details" />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Links Section - More subtle */}
-              <div className="space-y-4 border-t border-border/30 pt-6 opacity-90">
-                <LinksByCategory playId={play.id} />
-              </div>
-
-              {/* Explore KEXP Section - MBID Links */}
-              {!isNonTrackPlay && (play.artist_mbid?.length || play.release_group_mbid || play.recording_mbid) && (
-                <div className="space-y-4 border-t border-border/50 pt-6">
-                  <h3
-                    className="text-xl font-bold"
-                    style={{
-                      fontFamily: 'var(--font-family-display)',
-                      letterSpacing: '-0.02em'
-                    }}
-                  >
-                    Explore on KEXP
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {/* Artist link */}
-                    {play.artist_mbid && play.artist_mbid.length > 0 && (
-                      <Link
-                        to="/artist/$mbid"
-                        params={{ mbid: play.artist_mbid[0] }}
-                        className="mbid-link inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-card/50 border border-border/50 hover:bg-primary/10 hover:border-primary/30 transition-all"
-                      >
-                        <User className="h-4 w-4 text-primary/70" />
-                        <span className="text-sm">All plays by {play.artist}</span>
-                      </Link>
-                    )}
-
-                    {/* Album link (release_group) */}
-                    {play.release_group_mbid && play.album && (
-                      <Link
-                        to="/album/$mbid"
-                        params={{ mbid: play.release_group_mbid }}
-                        className="mbid-link inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-card/50 border border-border/50 hover:bg-primary/10 hover:border-primary/30 transition-all"
-                      >
-                        <Disc className="h-4 w-4 text-primary/70" />
-                        <span className="text-sm">All plays from {play.album}</span>
-                      </Link>
-                    )}
-
-                    {/* Recording link */}
-                    {play.recording_mbid && (
-                      <Link
-                        to="/recording/$mbid"
-                        params={{ mbid: play.recording_mbid }}
-                        className="mbid-link inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-card/50 border border-border/50 hover:bg-primary/10 hover:border-primary/30 transition-all"
-                      >
-                        <Music className="h-4 w-4 text-primary/70" />
-                        <span className="text-sm">All plays of this track</span>
-                      </Link>
-                    )}
-                  </div>
+                  <CommentWithLinks playId={play.id} comment={play.comment} variant="details" />
                 </div>
               )}
 
-              {/* Future Analysis Section Placeholder */}
-              <div className="space-y-4 border-t border-border/50 pt-6">
-                <h3
-                  className="text-xl font-bold"
-                  style={{
-                    fontFamily: 'var(--font-family-display)',
-                    letterSpacing: '-0.02em',
-                    color: 'hsl(var(--foreground) / 0.5)'
-                  }}
-                >
-                  Analysis
-                </h3>
-                <p
-                  className="text-sm"
-                  style={{
-                    fontFamily: 'var(--font-family-body)',
-                    color: 'hsl(var(--foreground) / 0.5)'
-                  }}
-                >
-                  Detailed play analysis and recommendations will appear here.
+              {/* Explore KEXP - Action buttons */}
+              {!isNonTrackPlay && (play.artist_mbid?.length || play.release_group_mbid || play.recording_mbid) && (
+                <div className="flex flex-wrap gap-2">
+                  {play.artist_mbid && play.artist_mbid.length > 0 && (
+                    <Link
+                      to="/artist/$mbid"
+                      params={{ mbid: play.artist_mbid[0] }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card/50 border border-border/30 hover:bg-primary/10 hover:border-primary/30 transition-all text-sm"
+                    >
+                      <User className="h-3.5 w-3.5 text-primary/70" />
+                      <span>More by {play.artist}</span>
+                    </Link>
+                  )}
+                  {play.release_group_mbid && play.album && (
+                    <Link
+                      to="/album/$mbid"
+                      params={{ mbid: play.release_group_mbid }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card/50 border border-border/30 hover:bg-primary/10 hover:border-primary/30 transition-all text-sm"
+                    >
+                      <Disc className="h-3.5 w-3.5 text-primary/70" />
+                      <span>From this album</span>
+                    </Link>
+                  )}
+                  {play.recording_mbid && (
+                    <Link
+                      to="/recording/$mbid"
+                      params={{ mbid: play.recording_mbid }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card/50 border border-border/30 hover:bg-primary/10 hover:border-primary/30 transition-all text-sm"
+                    >
+                      <Music className="h-3.5 w-3.5 text-primary/70" />
+                      <span>This track</span>
+                    </Link>
+                  )}
+                </div>
+              )}
+
+              {/* External Links */}
+              <div className="opacity-80">
+                <LinksByCategory playId={play.id} />
+              </div>
+
+              {/* Footer - Analysis placeholder + Play ID */}
+              <div className="pt-4 border-t border-border/20 flex items-center justify-between">
+                <p className="text-xs text-muted-foreground/50">
+                  Analysis coming soon
                 </p>
+                <span className="text-xs text-muted-foreground/40 font-mono">
+                  #{play.id}
+                </span>
               </div>
             </div>
           );

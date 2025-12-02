@@ -1,12 +1,18 @@
 /**
- * Artist Page Route
+ * Artist Page Route - Redirect
  *
- * Displays all plays by an artist, filtered by artist MBID.
+ * Redirects to main timeline with artist_mbid filter.
+ * Old URLs: /artist/$mbid -> New: /?artist_mbid=$mbid
  */
 
-import { createFileRoute } from "@tanstack/react-router";
-import { EntityPage } from "@/components/EntityPage";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/artist/$mbid")({
-  component: () => <EntityPage type="artist" />,
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/",
+      search: { artist_mbid: params.mbid },
+    });
+  },
+  component: () => null, // Never rendered
 });

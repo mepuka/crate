@@ -15,13 +15,41 @@
 import { Atom } from "@effect-atom/atom-react";
 import { TimelineRuntime, TimelineClient } from "@/lib/http-runtime";
 import { Effect } from "effect";
-import {
-  entityFilterKey,
-  buildEntityTimelineParams,
-  type EntityType,
-  type EntityFilter,
-} from "./entity-timeline";
+import { type EntityFilter } from "./timeline-url-sync";
 import type { PlayCountParams } from "@crate/api";
+
+/**
+ * Entity type alias for backwards compatibility with EntityHeader.
+ */
+export type EntityType = EntityFilter["type"];
+
+/**
+ * Convert EntityFilter to a stable string key for atomFamily.
+ */
+const entityFilterKey = (filter: EntityFilter): string =>
+  `${filter.type}:${filter.mbid}`;
+
+/**
+ * Build timeline params with MBID filter for a given entity.
+ */
+const buildEntityTimelineParams = (
+  filter: EntityFilter,
+  cursor?: string,
+  limit: number = 50
+) => {
+  const base = { limit, cursor };
+
+  switch (filter.type) {
+    case "artist":
+      return { ...base, artist_mbid: filter.mbid };
+    case "recording":
+      return { ...base, recording_mbid: filter.mbid };
+    case "release":
+      return { ...base, release_mbid: filter.mbid };
+    case "release_group":
+      return { ...base, release_group_mbid: filter.mbid };
+  }
+};
 
 /**
  * Entity metadata for display in headers.

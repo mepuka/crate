@@ -20,14 +20,11 @@ const CORS_BLOCKED_DOMAINS = ['archive.org', 'kexp.org', 'coverartarchive.org']
  * Only archive.org, kexp.org, and coverartarchive.org are proxied.
  */
 function needsProxy(url: string): boolean {
-  try {
-    const parsed = new URL(url)
-    return CORS_BLOCKED_DOMAINS.some(domain =>
-      parsed.hostname === domain || parsed.hostname.endsWith('.' + domain)
-    )
-  } catch {
-    return false
-  }
+  // Simple string check is much faster than new URL()
+  // We only care if the hostname *ends with* one of these domains
+  return CORS_BLOCKED_DOMAINS.some(domain =>
+    url.includes(domain)
+  )
 }
 
 /**
@@ -97,13 +94,7 @@ export function AlbumArt({ src, alt, size = 120, className, isNewMusic = false }
       }}
     >
       {/* Subtle noise texture overlay */}
-      <div
-        className="absolute inset-0 opacity-30 mix-blend-overlay pointer-events-none"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
-          backgroundSize: '180px 180px'
-        }}
-      />
+
 
       {/* Image */}
       {imageSrc && !error && (

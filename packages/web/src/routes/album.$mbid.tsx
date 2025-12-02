@@ -1,13 +1,18 @@
 /**
- * Album Page Route
+ * Album Page Route - Redirect
  *
- * Displays all plays from an album (release group - all versions),
- * filtered by release_group MBID.
+ * Redirects to main timeline with release_group_mbid filter.
+ * Old URLs: /album/$mbid -> New: /?release_group_mbid=$mbid
  */
 
-import { createFileRoute } from "@tanstack/react-router";
-import { EntityPage } from "@/components/EntityPage";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/album/$mbid")({
-  component: () => <EntityPage type="release_group" />,
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/",
+      search: { release_group_mbid: params.mbid },
+    });
+  },
+  component: () => null, // Never rendered
 });

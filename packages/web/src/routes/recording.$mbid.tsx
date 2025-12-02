@@ -1,12 +1,18 @@
 /**
- * Recording Page Route
+ * Recording Page Route - Redirect
  *
- * Displays all plays of a specific recording (track), filtered by recording MBID.
+ * Redirects to main timeline with recording_mbid filter.
+ * Old URLs: /recording/$mbid -> New: /?recording_mbid=$mbid
  */
 
-import { createFileRoute } from "@tanstack/react-router";
-import { EntityPage } from "@/components/EntityPage";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/recording/$mbid")({
-  component: () => <EntityPage type="recording" />,
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/",
+      search: { recording_mbid: params.mbid },
+    });
+  },
+  component: () => null, // Never rendered
 });

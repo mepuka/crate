@@ -11,15 +11,15 @@ export const Route = createFileRoute('/')({
 })
 
 /**
- * HomePage - Split-view layout for timeline and play details
+ * HomePage - Centered split-view layout
  *
  * Layout strategy:
- * - Mobile (<768px): Timeline full-width, panel overlays as modal
- * - Tablet+ (≥768px): Side-by-side split view
- *   - Timeline takes left portion, shrinks when panel opens
- *   - Panel slides in from right as fixed sidebar
- *
- * Optimized for iPad (768-1024px) and MacBook Air (1280-1440px)
+ * - When closed: timeline centered with max-width (672px)
+ * - When open: both timeline + panel together are centered
+ *   - Timeline shrinks to narrower width (~320px)
+ *   - Panel takes up to ~768px
+ *   - Total ~1100px centered on screen
+ * - Smooth transition between states
  */
 function HomePage() {
   const selectedId = useAtomValue(selectedPlayIdAtom)
@@ -27,44 +27,39 @@ function HomePage() {
 
   return (
     <div className="relative min-h-screen w-full">
-      {/*
-        Split-view container:
-        - On mobile: timeline is full width, panel overlays
-        - On tablet+: flexbox layout with timeline shrinking when panel opens
-      */}
-      <div className="flex h-screen">
-        {/* Timeline column - responsive width */}
-        <div
-          className={cn(
-            "h-screen transition-all duration-300 ease-out",
-            // Mobile: always full width
-            "w-full",
-            // Tablet+: shrink when panel opens to make room
-            isPanelOpen
-              ? "md:w-[45%] lg:w-[50%] xl:w-[55%]"
-              : "md:w-full"
-          )}
-        >
-          <VirtualizedTimeline />
-        </div>
+      {/* Container that centers the whole layout */}
+      <div
+        className={cn(
+          "h-screen mx-auto transition-all duration-300 ease-out",
+          // When closed: max-width for timeline only
+          // When open: wider max-width to fit both components
+          isPanelOpen
+            ? "max-w-6xl" // ~1152px to fit timeline (320) + panel (768) + gaps
+            : "max-w-2xl" // ~672px for timeline alone
+        )}
+      >
+        {/* Flex container for the two panels */}
+        <div className="h-full flex">
+          {/* Timeline - shrinks when panel opens */}
+          <div
+            className={cn(
+              "h-screen transition-all duration-300 ease-out shrink-0",
+              // Hide on mobile when panel is open
+              isPanelOpen
+                ? "hidden md:block md:w-[320px] lg:w-[360px]"
+                : "w-full"
+            )}
+          >
+            <VirtualizedTimeline />
+          </div>
 
-        {/* Panel column - only visible on tablet+ when open */}
-        <div
-          className={cn(
-            "hidden md:block h-screen overflow-hidden",
-            "transition-all duration-300 ease-out",
-            isPanelOpen
-              ? "md:w-[55%] lg:w-[50%] xl:w-[45%]"
-              : "md:w-0"
+          {/* Panel - takes remaining space */}
+          {isPanelOpen && (
+            <div className="flex-1 h-screen overflow-y-auto">
+              <PlayDetailsPanel />
+            </div>
           )}
-        >
-          <PlayDetailsPanel variant="sidebar" />
         </div>
-      </div>
-
-      {/* Mobile overlay panel - only on small screens */}
-      <div className="md:hidden">
-        <PlayDetailsPanel variant="overlay" />
       </div>
     </div>
   )
