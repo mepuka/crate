@@ -7,7 +7,7 @@
  * @module
  */
 
-import { Schema } from "effect"
+import { Schema } from "effect";
 
 // -----------------------------------------------------------------------------
 // Entity References
@@ -54,14 +54,14 @@ export class LabelRef extends Schema.Class<LabelRef>("LabelRef")({
 /**
  * Confidence level for extracted insights
  */
-export const Confidence = Schema.Literal("high", "medium", "low")
-export type Confidence = typeof Confidence.Type
+export const Confidence = Schema.Literal("high", "medium", "low");
+export type Confidence = typeof Confidence.Type;
 
 /**
  * Source type indicating where the insight came from
  */
-export const SourceType = Schema.Literal("extraction", "database", "external")
-export type SourceType = typeof SourceType.Type
+export const SourceType = Schema.Literal("extraction", "database", "external");
+export type SourceType = typeof SourceType.Type;
 
 // -----------------------------------------------------------------------------
 // Base Insight
@@ -77,7 +77,7 @@ const BaseInsightFields = {
   sourceReleaseMbid: Schema.NullOr(Schema.String),
   confidence: Confidence,
   sourceType: SourceType,
-}
+};
 
 // -----------------------------------------------------------------------------
 // Extraction Insights (from DJ comments/play data)
@@ -102,26 +102,25 @@ const BaseInsightFields = {
  * }
  * ```
  */
-export class ConcertInsight extends Schema.Class<ConcertInsight>(
-  "ConcertInsight"
-)({
-  _tag: Schema.Literal("Concert"),
-  ...BaseInsightFields,
-  artist: ArtistRef,
-  venue: Schema.NullOr(Schema.String),
-  date: Schema.NullOr(Schema.String), // ISO date string
-  time: Schema.NullOr(Schema.String), // e.g. "8:00 PM"
-  city: Schema.NullOr(Schema.String),
-  ticketUrl: Schema.NullOr(Schema.String),
-  tourName: Schema.NullOr(Schema.String),
-  sourceQuote: Schema.String,
-}) {}
+export class ConcertInsight extends Schema.TaggedClass<ConcertInsight>()(
+  "Concert",
+  {
+    ...BaseInsightFields,
+    artist: ArtistRef,
+    venue: Schema.NullOr(Schema.String),
+    date: Schema.NullOr(Schema.String), // ISO date string
+    time: Schema.NullOr(Schema.String), // e.g. "8:00 PM"
+    city: Schema.NullOr(Schema.String),
+    ticketUrl: Schema.NullOr(Schema.String),
+    tourName: Schema.NullOr(Schema.String),
+    sourceQuote: Schema.String,
+  }
+) {}
 
 /**
  * Cover song reference
  */
-export class CoverInsight extends Schema.Class<CoverInsight>("CoverInsight")({
-  _tag: Schema.Literal("Cover"),
+export class CoverInsight extends Schema.TaggedClass<CoverInsight>()("Cover", {
   ...BaseInsightFields,
   original: RecordingRef,
   sourceQuote: Schema.String,
@@ -130,12 +129,12 @@ export class CoverInsight extends Schema.Class<CoverInsight>("CoverInsight")({
 /**
  * Sample/sampling relationship
  */
-export const SampleDirection = Schema.Literal("samples", "sampled_by")
-export type SampleDirection = typeof SampleDirection.Type
+export const SampleDirection = Schema.Literal("samples", "sampled_by");
+export type SampleDirection = typeof SampleDirection.Type;
 
-export class SampleInsight extends Schema.Class<SampleInsight>("SampleInsight")(
+export class SampleInsight extends Schema.TaggedClass<SampleInsight>()(
+  "Sample",
   {
-    _tag: Schema.Literal("Sample"),
     ...BaseInsightFields,
     sampled: RecordingRef,
     direction: SampleDirection,
@@ -155,8 +154,8 @@ export const EntityType = Schema.Literal(
   "artist",
   "release",
   "release_group"
-)
-export type EntityType = typeof EntityType.Type
+);
+export type EntityType = typeof EntityType.Type;
 
 /**
  * First/last play reference
@@ -182,18 +181,18 @@ export class NotableComment extends Schema.Class<NotableComment>(
 /**
  * Play history insight for an entity
  */
-export class PlayHistoryInsight extends Schema.Class<PlayHistoryInsight>(
-  "PlayHistoryInsight"
-)({
-  _tag: Schema.Literal("PlayHistory"),
-  ...BaseInsightFields,
-  entityMbid: Schema.String,
-  entityType: EntityType,
-  totalPlays: Schema.Number,
-  firstPlay: Schema.NullOr(PlayReference),
-  lastPlay: Schema.NullOr(PlayReference),
-  notableComments: Schema.NullOr(Schema.Array(NotableComment)),
-}) {}
+export class PlayHistoryInsight extends Schema.TaggedClass<PlayHistoryInsight>()(
+  "PlayHistory",
+  {
+    ...BaseInsightFields,
+    entityMbid: Schema.String,
+    entityType: EntityType,
+    totalPlays: Schema.Number,
+    firstPlay: Schema.NullOr(PlayReference),
+    lastPlay: Schema.NullOr(PlayReference),
+    notableComments: Schema.NullOr(Schema.Array(NotableComment)),
+  }
+) {}
 
 /**
  * Connection type between artists
@@ -203,24 +202,24 @@ export const ConnectionType = Schema.Literal(
   "collaborator",
   "member_of",
   "same_release_group"
-)
-export type ConnectionType = typeof ConnectionType.Type
+);
+export type ConnectionType = typeof ConnectionType.Type;
 
 /**
  * Artist/label connection insight
  */
-export class ConnectionInsight extends Schema.Class<ConnectionInsight>(
-  "ConnectionInsight"
-)({
-  _tag: Schema.Literal("Connection"),
-  ...BaseInsightFields,
-  fromArtist: ArtistRef,
-  toArtist: ArtistRef,
-  connectionType: ConnectionType,
-  viaLabel: Schema.NullOr(LabelRef),
-  mbRelationshipType: Schema.NullOr(Schema.String),
-  explanation: Schema.String,
-}) {}
+export class ConnectionInsight extends Schema.TaggedClass<ConnectionInsight>()(
+  "Connection",
+  {
+    ...BaseInsightFields,
+    fromArtist: ArtistRef,
+    toArtist: ArtistRef,
+    connectionType: ConnectionType,
+    viaLabel: Schema.NullOr(LabelRef),
+    mbRelationshipType: Schema.NullOr(Schema.String),
+    explanation: Schema.String,
+  }
+) {}
 
 // -----------------------------------------------------------------------------
 // External Insights (from links/web)
@@ -237,20 +236,19 @@ export const LinkType = Schema.Literal(
   "video",
   "social",
   "other"
-)
-export type LinkType = typeof LinkType.Type
+);
+export type LinkType = typeof LinkType.Type;
 
 /**
  * Related entity for a link (can be artist, recording, or release)
  */
-export const RelatedEntity = Schema.Union(ArtistRef, RecordingRef, ReleaseRef)
-export type RelatedEntity = typeof RelatedEntity.Type
+export const RelatedEntity = Schema.Union(ArtistRef, RecordingRef, ReleaseRef);
+export type RelatedEntity = typeof RelatedEntity.Type;
 
 /**
  * Link content insight
  */
-export class LinkInsight extends Schema.Class<LinkInsight>("LinkInsight")({
-  _tag: Schema.Literal("Link"),
+export class LinkInsight extends Schema.TaggedClass<LinkInsight>()("Link", {
   ...BaseInsightFields,
   relatedEntity: Schema.NullOr(RelatedEntity),
   url: Schema.String,
@@ -270,8 +268,8 @@ export const ExtractionInsight = Schema.Union(
   ConcertInsight,
   CoverInsight,
   SampleInsight
-)
-export type ExtractionInsight = typeof ExtractionInsight.Type
+);
+export type ExtractionInsight = typeof ExtractionInsight.Type;
 
 /**
  * Union of all database insight types
@@ -279,14 +277,14 @@ export type ExtractionInsight = typeof ExtractionInsight.Type
 export const DatabaseInsight = Schema.Union(
   PlayHistoryInsight,
   ConnectionInsight
-)
-export type DatabaseInsight = typeof DatabaseInsight.Type
+);
+export type DatabaseInsight = typeof DatabaseInsight.Type;
 
 /**
  * Union of all external insight types
  */
-export const ExternalInsight = LinkInsight
-export type ExternalInsight = typeof ExternalInsight.Type
+export const ExternalInsight = LinkInsight;
+export type ExternalInsight = typeof ExternalInsight.Type;
 
 /**
  * Union of all insight types
@@ -298,14 +296,14 @@ export const Insight = Schema.Union(
   PlayHistoryInsight,
   ConnectionInsight,
   LinkInsight
-)
-export type Insight = typeof Insight.Type
+);
+export type Insight = typeof Insight.Type;
 
 /**
  * Array of insights (the typical agent output)
  */
-export const InsightArray = Schema.Array(Insight)
-export type InsightArray = typeof InsightArray.Type
+export const InsightArray = Schema.Array(Insight);
+export type InsightArray = typeof InsightArray.Type;
 
 // -----------------------------------------------------------------------------
 // Helper Functions
@@ -317,17 +315,17 @@ export type InsightArray = typeof InsightArray.Type
 export function getInsightLabel(insight: Insight): string {
   switch (insight._tag) {
     case "Concert":
-      return "Concert"
+      return "Concert";
     case "Cover":
-      return "Cover Song"
+      return "Cover Song";
     case "Sample":
-      return insight.direction === "samples" ? "Samples" : "Sampled By"
+      return insight.direction === "samples" ? "Samples" : "Sampled By";
     case "PlayHistory":
-      return "Play History"
+      return "Play History";
     case "Connection":
-      return "Connection"
+      return "Connection";
     case "Link":
-      return "Link"
+      return "Link";
   }
 }
 
@@ -337,17 +335,17 @@ export function getInsightLabel(insight: Insight): string {
 export function getInsightSummary(insight: Insight): string {
   switch (insight._tag) {
     case "Concert":
-      return `${insight.artist.name} at ${insight.venue ?? "venue"} on ${insight.date ?? "TBD"}`
+      return `${insight.artist.name} at ${insight.venue ?? "venue"} on ${insight.date ?? "TBD"}`;
     case "Cover":
-      return `Cover of "${insight.original.title}" by ${insight.original.artists.map((a) => a.name).join(", ")}`
+      return `Cover of "${insight.original.title}" by ${insight.original.artists.map((a) => a.name).join(", ")}`;
     case "Sample":
-      return `${insight.direction === "samples" ? "Samples" : "Sampled by"} "${insight.sampled.title}"`
+      return `${insight.direction === "samples" ? "Samples" : "Sampled by"} "${insight.sampled.title}"`;
     case "PlayHistory":
-      return `${insight.totalPlays} plays on KEXP`
+      return `${insight.totalPlays} plays on KEXP`;
     case "Connection":
-      return `${insight.fromArtist.name} → ${insight.toArtist.name} (${insight.connectionType})`
+      return `${insight.fromArtist.name} → ${insight.toArtist.name} (${insight.connectionType})`;
     case "Link":
-      return `${insight.linkType}: ${insight.title}`
+      return `${insight.linkType}: ${insight.title}`;
   }
 }
 
@@ -392,6 +390,25 @@ export const CrateInsights = {
   // Helpers
   getInsightLabel,
   getInsightSummary,
-}
+};
 
-export default CrateInsights
+export default CrateInsights;
+
+// -----------------------------------------------------------------------------
+// Encoded Schemas for generateObject (JSON Schema Compatibility)
+// -----------------------------------------------------------------------------
+
+/**
+ * Schemas used by generateObject for structured insights output.
+ *
+ * We reuse the canonical Insight union so there is a single source of truth
+ * for the insight shape. The model's JSON is validated against these schemas.
+ */
+export const InsightEncoded = Insight;
+
+export const InsightArrayEncoded = InsightArray;
+
+export const InsightsResponseEncoded = Schema.Struct({
+  insights: InsightArrayEncoded,
+});
+export type InsightsResponseEncoded = typeof InsightsResponseEncoded.Type;
