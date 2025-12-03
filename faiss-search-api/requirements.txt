@@ -19,3 +19,4 @@ httpx==0.27.0
 
 # Optional: for joblib PCA files
 joblib==1.4.2
+orjson==3.10.7

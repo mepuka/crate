@@ -90,6 +90,7 @@ class FAISSSearchService:
         self.model_name: Optional[str] = None
         self.embedding_dim: int = 384  # Default to BGE-small
         self.pca_applied: bool = False  # True only for legacy indexes
+        self.dirty: bool = False  # Track if index has unsaved changes
 
     def load_metadata(self) -> dict:
         """Load metadata.json to get model information."""
@@ -126,8 +127,9 @@ class FAISSSearchService:
         if not self.play_ids_path.exists():
             raise FileNotFoundError(f"Play IDs mapping not found: {self.play_ids_path}")
 
-        logger.info(f"Loading play IDs from {self.play_ids_path}")
-        self.play_ids = np.load(self.play_ids_path).astype('int64')
+        logger.info(f"Loading play IDs from {self.play_ids_path} (mmap)")
+        # Use mmap_mode='r' to map file into memory without loading fully
+        self.play_ids = np.load(self.play_ids_path, mmap_mode='r')
         logger.info(f"✓ Loaded play IDs: {self.play_ids.shape}")
 
         # Verify alignment (only if embeddings were loaded)
@@ -171,8 +173,9 @@ class FAISSSearchService:
         if not self.index_path.exists():
             raise FileNotFoundError(f"FAISS index not found: {self.index_path}")
 
-        logger.info(f"Loading FAISS index from {self.index_path}")
-        self.index = faiss.read_index(str(self.index_path))
+        logger.info(f"Loading FAISS index from {self.index_path} (mmap)")
+        # Use IO_FLAG_MMAP to map index into memory
+        self.index = faiss.read_index(str(self.index_path), faiss.IO_FLAG_MMAP)
         self.index.nprobe = self.nprobe
         logger.info(f"✓ Index loaded: {self.index.ntotal:,} vectors")
 
@@ -304,7 +307,11 @@ class FAISSSearchService:
         total_before = self.index.ntotal
         self.index.add(embeddings)
 
-        # Update play_ids mapping
+        # Update play_ids mapping - must convert to non-mmap array to append
+        # This will trigger a copy, but play_ids is much smaller than the index
+        if isinstance(self.play_ids, np.memmap):
+            self.play_ids = np.array(self.play_ids)
+        
         new_ids_array = np.array(play_ids, dtype=np.int64)
         self.play_ids = np.append(self.play_ids, new_ids_array)
 
@@ -313,13 +320,13 @@ class FAISSSearchService:
             f"({total_before:,} → {self.index.ntotal:,} vectors)"
         )
 
-        # Persist to disk atomically
-        persisted = self._persist_index()
-
+        # Mark as dirty instead of persisting immediately
+        self.dirty = True
+        
         return {
             "added": n_new,
             "total_vectors": self.index.ntotal,
-            "persisted": persisted
+            "persisted": False  # Defer persistence
         }
 
     def _persist_index(self) -> bool:
@@ -371,6 +378,23 @@ class FAISSSearchService:
                     except Exception:
                         pass
             return False
+
+    def persist_if_needed(self) -> bool:
+        """
+        Persist index if it has unsaved changes.
+        
+        Returns:
+            True if persisted, False if no changes or failed
+        """
+        if not self.dirty:
+            return False
+            
+        logger.info("Persisting dirty index...")
+        if self._persist_index():
+            self.dirty = False
+            return True
+            
+        return False
 
     def generate_embeddings(self, texts: list[str]) -> np.ndarray:
         """
