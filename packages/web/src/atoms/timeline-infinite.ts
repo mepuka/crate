@@ -459,7 +459,12 @@ export const allLoadedPlayIdsAtom = Atom.make((get) => {
   const newerFromKvs = kvsIds.slice(0, splitIndex);
 
   // Prepend newer KVS plays to paginated plays
-  return [...newerFromKvs, ...paginatedIds];
+  const mergedIds = [...newerFromKvs, ...paginatedIds];
+
+  // FOOL-PROOF DEDUPLICATION:
+  // Even with the logic above, edge cases in sorting or KVS updates might cause duplicates.
+  // We explicitly dedupe the final list to guarantee uniqueness in the UI.
+  return EffectArray.dedupe(mergedIds);
 });
 
 /**

@@ -14,7 +14,7 @@ import {
   Schema,
 } from "effect";
 import { KexpApi, PlayResult } from "@crate/api";
-import { sortPlaysByAirdateDesc } from "./timeline-utils";
+import { sortPlaysByAirdateThenId } from "./timeline-utils";
 import { AlbumBarWorkerClient } from "@/workers/album-bar-worker-client";
 
 // Combined runtime with configured HTTP client and Reactivity support
@@ -72,6 +72,9 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
     const playsChunkStore = kvs.forSchema(Schema.Chunk(PlayResult));
     const playIdsHashSetStore = kvs.forSchema(Schema.HashSet(Schema.Number));
 
+    // Initialize semaphore to serialize writes and prevent race conditions
+    const semaphore = yield* Effect.makeSemaphore(1);
+
     // Reconstruct chunk from all individual plays in KVS
     // This is the single source of truth - loads ALL plays stored individually
     // Uses the HashSet stored in KVS to get all play IDs (no direct localStorage access)
@@ -118,7 +121,7 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
         const validPlayIdsSet = HashSet.fromIterable(validPlayIds);
 
         // Sort by airdate (newest first) using Order utilities
-        const sortedPlays = sortPlaysByAirdateDesc(Chunk.fromIterable(plays));
+        const sortedPlays = sortPlaysByAirdateThenId(Chunk.fromIterable(plays));
 
         // Persist the reconstructed chunk and updated HashSet
         yield* playsChunkStore.set("timeline:plays_chunk", sortedPlays);
@@ -159,7 +162,7 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
     // Store a play by ID and maintain both HashSet and cached Chunk
     // Uses incremental chunk updates instead of full reconstruction for better performance
     const storePlay = (play: PlayResult) =>
-      Effect.gen(function* () {
+      semaphore.withPermits(1)(Effect.gen(function* () {
         // Store individual play (single source of truth)
         yield* playStore.set(`timeline:play:${play.id}`, play);
 
@@ -174,12 +177,26 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
         );
 
         // Fast O(1) lookup to check if play already exists
-        const isNew = !HashSet.has(currentHashSet, play.id);
+        const isNewInSet = !HashSet.has(currentHashSet, play.id);
 
         // Get current cached chunk (if exists)
         const currentChunkOption = yield* playsChunkStore.get(
           "timeline:plays_chunk"
         );
+        
+        let currentChunk = Option.getOrElse(currentChunkOption, () =>
+          Chunk.empty<PlayResult>()
+        );
+
+        // SAFETY CHECK: Ensure play isn't already in chunk even if Set says it's new
+        // This handles cases where Set and Chunk got out of sync
+        const isAlreadyInChunk = Chunk.some(currentChunk, (p) => p.id === play.id);
+        
+        if (isNewInSet && isAlreadyInChunk) {
+             yield* Effect.logWarning(`[TimelineKVS] Play ${play.id} missing from Set but present in Chunk. Repairing Set.`);
+        }
+
+        const isNew = isNewInSet && !isAlreadyInChunk;
 
         if (isNew) {
           // New play - add to HashSet
@@ -187,12 +204,7 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
           yield* playIdsHashSetStore.set("timeline:play_ids_set", newHashSet);
 
           // Incremental update to cached chunk (prepend new play)
-          const currentChunk = Option.getOrElse(currentChunkOption, () =>
-            Chunk.empty<PlayResult>()
-          );
-
           // PERF OPTIMIZATION: Skip sorting if new play is clearly newest
-          // This is the common case for live updates - play just aired
           const firstPlay = Chunk.head(currentChunk);
           const needsSort = Option.match(firstPlay, {
             onNone: () => false, // Empty chunk, no sort needed
@@ -206,7 +218,7 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
           });
 
           const updatedChunk = needsSort
-            ? sortPlaysByAirdateDesc(Chunk.prepend(currentChunk, play))
+            ? sortPlaysByAirdateThenId(Chunk.prepend(currentChunk, play))
             : Chunk.prepend(currentChunk, play);
 
           // Persist updated chunk
@@ -217,10 +229,8 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
           );
         } else {
           // Existing play - update in chunk if cached (metadata update, enrichment, etc.)
-          if (Option.isSome(currentChunkOption)) {
-            const currentChunk = currentChunkOption.value;
-
-            // Replace the play in the chunk
+          if (Option.isSome(currentChunkOption) || isAlreadyInChunk) {
+             // Replace the play in the chunk
             const updatedChunk = Chunk.map(
               currentChunk,
               (p) => (p.id === play.id ? play : p)
@@ -228,6 +238,12 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
 
             // Persist updated chunk
             yield* playsChunkStore.set("timeline:plays_chunk", updatedChunk);
+            
+            // If we repaired the set, save it too
+            if (isNewInSet && isAlreadyInChunk) {
+                 const newHashSet = HashSet.add(currentHashSet, play.id);
+                 yield* playIdsHashSetStore.set("timeline:play_ids_set", newHashSet);
+            }
 
             yield* Effect.logDebug(
               `[TimelineKVS] Play updated: ${play.id}, chunk size: ${Chunk.size(updatedChunk)}`
@@ -250,12 +266,12 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
         yield* Effect.logTrace(
           `[TimelineKVS] Reactivity invalidated for play ${play.id}`
         );
-      });
+      }));
 
     // BATCH STORE: Store multiple plays efficiently with single reactivity invalidation
     // This is much faster than calling storePlay() for each play individually
     const storePlays = (plays: readonly PlayResult[]) =>
-      Effect.gen(function* () {
+      semaphore.withPermits(1)(Effect.gen(function* () {
         if (plays.length === 0) return;
 
         yield* Effect.log(`[TimelineKVS] Batch storing ${plays.length} plays`);
@@ -273,11 +289,46 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
         for (const play of plays) {
           yield* playStore.set(`timeline:play:${play.id}`, play);
 
-          const isNew = !HashSet.has(currentHashSet, play.id);
-          if (isNew) {
-            currentHashSet = HashSet.add(currentHashSet, play.id);
-            currentChunk = Chunk.prepend(currentChunk, play);
-            newPlayIds.push(play.id);
+          const isNewInSet = !HashSet.has(currentHashSet, play.id);
+          
+          // SAFETY CHECK: Ensure play isn't already in chunk
+          // We use find because we might have added it in this very batch loop if duplicates exist in input
+          // But input duplicates should be handled by logic below?
+          // Actually, let's check currentChunk.
+          // Note: Chunk.some is O(N). For batch of 200, doing this 200 times is 200*N.
+          // But N can be large (thousands). This is slow.
+          // Optimization: Build a Set of IDs from currentChunk once?
+          // But currentChunk changes in the loop.
+          
+          // Better: We rely on HashSet for speed, but if HashSet says NEW, we verify with Chunk once?
+          // Or we trust the Semaphore to keep them in sync.
+          // The Semaphore guarantees no other writers.
+          // So if we maintain the invariant that Set and Chunk are in sync, we are good.
+          // But we want "fool proof".
+          
+          // Let's trust HashSet BUT handle the case where we might have duplicates in the INPUT `plays` array.
+          // And also check if we already added it in this batch.
+          
+          if (isNewInSet) {
+             // Check if we already added it in this batch (e.g. input has duplicates)
+             if (newPlayIds.includes(play.id)) {
+                 continue; 
+             }
+             
+             // Check if it's in the chunk (repair logic)
+             const isInChunk = Chunk.some(currentChunk, p => p.id === play.id);
+             
+             if (isInChunk) {
+                 // Repair Set
+                 currentHashSet = HashSet.add(currentHashSet, play.id);
+                 // Update play in chunk
+                 currentChunk = Chunk.map(currentChunk, (p) => (p.id === play.id ? play : p));
+             } else {
+                 // Truly new
+                 currentHashSet = HashSet.add(currentHashSet, play.id);
+                 currentChunk = Chunk.prepend(currentChunk, play);
+                 newPlayIds.push(play.id);
+             }
           } else {
             // Update existing play in chunk
             currentChunk = Chunk.map(currentChunk, (p) => (p.id === play.id ? play : p));
@@ -286,7 +337,7 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
 
         // Sort once at the end (instead of per-play)
         if (newPlayIds.length > 0) {
-          currentChunk = sortPlaysByAirdateDesc(currentChunk);
+          currentChunk = sortPlaysByAirdateThenId(currentChunk);
         }
 
         // Persist updated state
@@ -299,7 +350,7 @@ export class TimelineKVS extends Effect.Service<TimelineKVS>()("TimelineKVS", {
         yield* Effect.log(
           `[TimelineKVS] Batch stored ${plays.length} plays (${newPlayIds.length} new), chunk size: ${Chunk.size(currentChunk)}`
         );
-      });
+      }));
 
     // Get a play by ID (for use in atoms - Effect Atom handles reactivity)
     const getPlay = (id: number) => playStore.get(`timeline:play:${id}`);
