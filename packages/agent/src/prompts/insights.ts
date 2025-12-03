@@ -69,11 +69,16 @@ export type SourceType = typeof SourceType.Type;
 
 /**
  * Common fields shared by all insight types
+ *
+ * Note: sourceArtistMbids defaults to empty array when not provided,
+ * allowing graceful handling of plays without resolved artist MBIDs.
  */
 const BaseInsightFields = {
   playId: Schema.Number,
   sourceRecordingMbid: Schema.NullOr(Schema.String),
-  sourceArtistMbids: Schema.Array(Schema.String),
+  sourceArtistMbids: Schema.optionalWith(Schema.Array(Schema.String), {
+    default: () => [],
+  }),
   sourceReleaseMbid: Schema.NullOr(Schema.String),
   confidence: Confidence,
   sourceType: SourceType,
@@ -180,12 +185,15 @@ export class NotableComment extends Schema.Class<NotableComment>(
 
 /**
  * Play history insight for an entity
+ *
+ * Note: entityMbid is nullable to handle cases where an entity
+ * (artist, recording, etc.) has play history but no resolved MBID.
  */
 export class PlayHistoryInsight extends Schema.TaggedClass<PlayHistoryInsight>()(
   "PlayHistory",
   {
     ...BaseInsightFields,
-    entityMbid: Schema.String,
+    entityMbid: Schema.NullOr(Schema.String),
     entityType: EntityType,
     totalPlays: Schema.Number,
     firstPlay: Schema.NullOr(PlayReference),

@@ -115,13 +115,13 @@ const kexpPlayToPlayContext = (play: Kexp.KexpTrackPlay): PlayContext => ({
   artist: play.artist || "Unknown Artist",
   track: play.song || "Unknown Track",
   album: play.album,
-  labels: [...play.labels],
+  labels: play.labels ? [...play.labels] : [],
   releaseDate: play.release_date,
-  artistMbids: [...play.artist_ids],
+  artistMbids: play.artist_ids ? [...play.artist_ids] : [],
   recordingMbid: play.recording_id,
   releaseMbid: play.release_id,
   releaseGroupMbid: play.release_group_id,
-  labelMbids: [...play.label_ids],
+  labelMbids: play.label_ids ? [...play.label_ids] : [],
   rotationStatus: play.rotation_status,
   isLocal: play.is_local,
   isRequest: play.is_request,
@@ -274,9 +274,10 @@ const makePromptBuilderService = Effect.gen(function* () {
           ? enrichShowContext(options.showContext, assets.findDjBio)
           : undefined
 
-        // Build prompt context
+        // Build prompt context - use play's airdate for temporal reasoning
+        // so "tonight" in DJ comments resolves relative to when the music aired
         const promptContext: PromptContext = {
-          currentTime: new Date(),
+          currentTime: new Date(play.airdate),
           playData: play,
           ...(enrichedShowContext ? { showContext: enrichedShowContext } : {}),
           ...(options.recentInsights ? { recentInsights: options.recentInsights } : {}),
@@ -346,9 +347,10 @@ const makePromptBuilderService = Effect.gen(function* () {
           ? kexpShowToShowContext(options.show)
           : undefined
 
-        // Build prompt context
+        // Build prompt context - use play's airdate for temporal reasoning
+        // so "tonight" in DJ comments resolves relative to when the music aired
         const promptContext: PromptContext = {
-          currentTime: new Date(),
+          currentTime: new Date(playContext.airdate),
           playData: playContext,
           ...(showContext ? { showContext } : {}),
           ...(options.recentInsights ? { recentInsights: options.recentInsights } : {}),
@@ -394,43 +396,55 @@ const makePromptBuilderService = Effect.gen(function* () {
       recentInsights?: InsightSummary[]
     } = {}
   ): Effect.Effect<Prompt.Prompt, PromptBuildError> =>
-    Effect.try({
-      try: () => {
-        const playContext = kexpPlayToPlayContext(play)
+    pipe(
+      Effect.try({
+        try: () => {
+          const playContext = kexpPlayToPlayContext(play)
 
-        const showContext = options.show
-          ? kexpShowToShowContext(options.show)
-          : undefined
+          const showContext = options.show
+            ? kexpShowToShowContext(options.show)
+            : undefined
 
-        const promptContext: PromptContext = {
-          currentTime: new Date(),
-          playData: playContext,
-          ...(showContext ? { showContext } : {}),
-          ...(options.recentInsights ? { recentInsights: options.recentInsights } : {}),
-        }
+          // Use play's airdate for temporal reasoning so "tonight" in DJ
+          // comments resolves relative to when the music aired
+          const promptContext: PromptContext = {
+            currentTime: new Date(playContext.airdate),
+            playData: playContext,
+            ...(showContext ? { showContext } : {}),
+            ...(options.recentInsights ? { recentInsights: options.recentInsights } : {}),
+          }
 
-        // Build system prompt using CratePrompt
-        const systemPrompt = CratePrompt.buildSystemPrompt(promptContext)
+          // Build system prompt using CratePrompt
+          const systemPrompt = CratePrompt.buildSystemPrompt(promptContext)
 
-        // Merge with user message using Prompt.merge
-        return pipe(
-          systemPrompt,
-          Prompt.merge(
-            Prompt.make([
-              {
-                role: "user",
-                content: [{ type: "text", text: buildPlayMessage(playContext) }],
-              },
-            ])
+          // Merge with user message using Prompt.merge
+          return pipe(
+            systemPrompt,
+            Prompt.merge(
+              Prompt.make([
+                {
+                  role: "user",
+                  content: [{ type: "text", text: buildPlayMessage(playContext) }],
+                },
+              ])
+            )
           )
-        )
-      },
-      catch: (error) =>
-        new PromptBuildError({
-          message: "Failed to build @effect/ai prompt for KEXP play",
-          cause: error,
-        }),
-    })
+        },
+        catch: (error) =>
+          new PromptBuildError({
+            message: "Failed to build @effect/ai prompt for KEXP play",
+            cause: error,
+          }),
+      }),
+      Effect.tap(() =>
+        Effect.annotateCurrentSpan({
+          play_id: play.id,
+          artist: play.artist ?? "Unknown",
+          has_show: !!options.show,
+        })
+      ),
+      Effect.withSpan("PromptBuilder.buildPromptForKexpPlay")
+    )
 
   return {
     buildForPlay,

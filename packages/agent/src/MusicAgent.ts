@@ -4,28 +4,39 @@
  * AI agent for enriching KEXP plays with insights using Effect AI.
  * Uses Anthropic Claude with tools for research and analysis.
  *
+ * DEPENDENCY INJECTION PATTERN:
+ * This service REQUIRES LanguageModel.LanguageModel as a dependency.
+ * The actual Anthropic configuration is provided via MusicAgentLive layer
+ * which composes the Anthropic client and model at the app boundary.
+ *
  * @module
  */
 
-import { Effect, Layer, Data, Schema } from "effect";
+import { Effect, Data, Schema, Layer, pipe } from "effect";
 import { LanguageModel, Chat, Prompt, Tool, Toolkit } from "@effect/ai";
-import { AnthropicLanguageModel, AnthropicClient } from "@effect/ai-anthropic";
-import { NodeHttpClient } from "@effect/platform-node";
 import type * as Kexp from "@crate/domain/kexp/schemas";
-import { EnrichmentRequest, EnrichmentItem } from "@crate/domain/faiss/schemas";
+// EnrichmentRequest and EnrichmentItem no longer used - using postInsights directly
 import { FaissClient } from "./FaissClient.js";
+import type { InsightRecord } from "@crate/domain/faiss/schemas";
 import {
   PromptBuilderService,
   PromptBuilderServiceFull,
+  InsightSessionService,
+  InsightSessionServiceLive,
 } from "./services/index.js";
 import { CrateToolkit } from "./tools/definitions.js";
-import { CrateToolsLive } from "./layers.js";
-import { AnthropicConfig } from "./config.js";
-import { InsightArray, Insight } from "./prompts/insights.js";
+import { CrateToolsLive, AnthropicModelLive } from "./layers.js";
+import {
+  InsightArray,
+  InsightsResponseEncoded,
+  Insight,
+  getInsightSummary,
+} from "./prompts/insights.js";
+import type { InsightSummary } from "./tools/schemas.js";
 
 /**
- * Wrapper schema for generateObject - wraps InsightArray in a struct
- * to satisfy Record<string, unknown> constraint
+ * Full InsightsResponse schema - used for decoding after generateObject.
+ * This schema produces typed class instances (TaggedClass).
  */
 const InsightsResponse = Schema.Struct({
   insights: InsightArray,
@@ -42,8 +53,149 @@ export class MusicAgentError extends Data.TaggedError("MusicAgentError")<{
 }> {}
 
 // =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Convert an InsightRecord (from database) to InsightSummary for session pre-seeding
+ *
+ * InsightRecord comes from GET /api/insights/plays/{play_id} endpoint.
+ * We extract the key fields and mark it as coming from the database.
+ */
+const insightRecordToSummary = (
+  record: InsightRecord,
+  play: { artist?: string; song?: string }
+): InsightSummary => {
+  // Extract artist and track from the stored data or fall back to play info
+  const data = record.data as Record<string, unknown>;
+  const artist = (data?.artist as string) || play.artist || "Unknown";
+  const track = (data?.song as string) || play.song || "Unknown";
+
+  // Collect all referenced MBIDs
+  const entityMbids: string[] = [];
+  if (record.source_recording_mbid)
+    entityMbids.push(record.source_recording_mbid);
+  if (record.source_release_mbid) entityMbids.push(record.source_release_mbid);
+  if (record.referenced_artist_mbid)
+    entityMbids.push(record.referenced_artist_mbid);
+  if (record.referenced_recording_mbid)
+    entityMbids.push(record.referenced_recording_mbid);
+  if (record.referenced_release_mbid)
+    entityMbids.push(record.referenced_release_mbid);
+  if (record.referenced_label_mbid)
+    entityMbids.push(record.referenced_label_mbid);
+
+  return {
+    id: `db-${record.id}`, // Prefix with db- to indicate it's from database
+    play_id: record.play_id,
+    artist,
+    track,
+    insight_type: record.insight_type,
+    summary: record.summary ?? `${record.insight_type} insight`,
+    created_at: record.created_at,
+    entity_mbids: [...new Set(entityMbids)], // Dedupe
+  };
+};
+
+/**
+ * Convert an Insight to InsightSummary for session storage
+ *
+ * InsightSummary is a simplified format used by get_recent_insights tool
+ * to help the agent avoid duplicate research.
+ */
+const insightToSummary = (insight: Insight): InsightSummary => {
+  // Collect all MBIDs from the insight
+  const entityMbids: string[] = [];
+
+  // Add source MBIDs
+  if (insight.sourceRecordingMbid) {
+    entityMbids.push(insight.sourceRecordingMbid);
+  }
+  if (insight.sourceReleaseMbid) {
+    entityMbids.push(insight.sourceReleaseMbid);
+  }
+  entityMbids.push(...insight.sourceArtistMbids);
+
+  // Add type-specific MBIDs
+  switch (insight._tag) {
+    case "Concert":
+      if (insight.artist.mbid) entityMbids.push(insight.artist.mbid);
+      break;
+    case "Cover":
+      if (insight.original.mbid) entityMbids.push(insight.original.mbid);
+      insight.original.artists.forEach((a) => {
+        if (a.mbid) entityMbids.push(a.mbid);
+      });
+      break;
+    case "Sample":
+      if (insight.sampled.mbid) entityMbids.push(insight.sampled.mbid);
+      insight.sampled.artists.forEach((a) => {
+        if (a.mbid) entityMbids.push(a.mbid);
+      });
+      break;
+    case "PlayHistory":
+      entityMbids.push(insight.entityMbid);
+      break;
+    case "Connection":
+      if (insight.fromArtist.mbid) entityMbids.push(insight.fromArtist.mbid);
+      if (insight.toArtist.mbid) entityMbids.push(insight.toArtist.mbid);
+      if (insight.viaLabel?.mbid) entityMbids.push(insight.viaLabel.mbid);
+      break;
+    case "Link":
+      // RelatedEntity can be ArtistRef, RecordingRef, or ReleaseRef
+      if (insight.relatedEntity && "mbid" in insight.relatedEntity) {
+        if (insight.relatedEntity.mbid)
+          entityMbids.push(insight.relatedEntity.mbid);
+      }
+      break;
+  }
+
+  // Deduplicate MBIDs
+  const uniqueMbids = [...new Set(entityMbids)];
+
+  // Get artist/track info for display (varies by insight type)
+  let artist = "Unknown";
+  let track = "Unknown";
+
+  switch (insight._tag) {
+    case "Concert":
+      artist = insight.artist.name;
+      track = `Concert at ${insight.venue ?? "venue"}`;
+      break;
+    case "Cover":
+    case "Sample":
+    case "PlayHistory":
+    case "Connection":
+    case "Link":
+      // These don't have direct artist/track - use summary
+      artist = getInsightSummary(insight);
+      track = insight._tag;
+      break;
+  }
+
+  return {
+    id: `${insight._tag}-${insight.playId}-${Date.now()}`,
+    play_id: insight.playId,
+    artist,
+    track,
+    insight_type: insight._tag,
+    summary: getInsightSummary(insight),
+    created_at: new Date().toISOString(),
+    entity_mbids: uniqueMbids,
+  };
+};
+
+// =============================================================================
 // Service Interface
 // =============================================================================
+
+/**
+ * Requirements for MusicAgent methods
+ *
+ * The agent needs LanguageModel to generate insights.
+ * This requirement is exposed so callers can satisfy it at the app boundary.
+ */
+export type MusicAgentRequirements = LanguageModel.LanguageModel;
 
 export interface MusicAgentInterface {
   /**
@@ -54,10 +206,16 @@ export interface MusicAgentInterface {
    * 2. Use tools to research (search_plays, semantic_search, resolve_mbid, fetch_link, get_recent_insights)
    * 3. Generate insights based on triggers in the system prompt
    * 4. Post enrichments back to FAISS API
+   *
+   * @requires LanguageModel.LanguageModel - Provide via AnthropicModelLive or mock layer
    */
   readonly enrichPlays: (
     playIds: number[]
-  ) => Effect.Effect<{ count: number }, MusicAgentError>;
+  ) => Effect.Effect<
+    { count: number },
+    MusicAgentError,
+    MusicAgentRequirements
+  >;
 }
 
 // =============================================================================
@@ -66,49 +224,40 @@ export interface MusicAgentInterface {
 
 /**
  * MusicAgent service for AI-powered play enrichment
+ *
+ * Requires LanguageModel.LanguageModel to be provided via the R channel.
+ * Use MusicAgentLive layer which composes the Anthropic model.
  */
 export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
   effect: Effect.gen(function* () {
     const promptBuilder = yield* PromptBuilderService;
     const faissClient = yield* FaissClient;
     const toolkit = yield* CrateToolkit;
-    const anthropicConfig = yield* AnthropicConfig;
-
-    // Create fully provided layers for the agent loop
-    // These will be used when calling LanguageModel.generateText
-    const anthropicClientLayer = AnthropicClient.layer({
-      apiKey: anthropicConfig.apiKey,
-    }).pipe(Layer.provide(NodeHttpClient.layerUndici));
-
-    const model = AnthropicLanguageModel.model("claude-sonnet-4-5");
-    const modelLayer = model.pipe(Layer.provide(anthropicClientLayer));
-
-    // Combined layer with model + toolkit handlers
-    // This ensures the agent loop can use tools properly
-    const agentLayer = Layer.mergeAll(modelLayer, CrateToolsLive);
+    const insightSession = yield* InsightSessionService;
+    // LanguageModel is now required via the R channel - no internal layer creation
 
     // =============================================================================
     // Agent Loop Helper
     // =============================================================================
 
     /**
-     * Agent state for iteration
+     * Agent state for research iteration (uses generateText)
      */
-    type AgentState<Tools extends Record<string, Tool.Any>> = {
+    type ResearchState<Tools extends Record<string, Tool.Any>> = {
       readonly chat: Chat.Service;
       readonly iteration: number;
-      readonly response: LanguageModel.GenerateObjectResponse<
-        Tools,
-        InsightsResponse
-      > | null;
+      readonly response: LanguageModel.GenerateTextResponse<Tools> | null;
     };
 
     /**
-     * Run agent loop with Chat API for automatic history management
+     * Run two-phase agent loop:
+     * 1. Research phase: Use generateText with forced tool calls to gather data
+     * 2. Output phase: Use generateObject to produce structured insights
      *
-     * Uses Effect.iterate for declarative stateful iteration and Chat API
-     * to automatically manage conversation history including tool calls and results.
-     * Uses generateObject to get structured InsightArray output.
+     * This split is necessary because generateObject in @effect/ai-anthropic
+     * overrides toolChoice to force the schema tool, ignoring our research
+     * tool requirements. By separating the phases, we can force tool usage
+     * during research while still getting structured output.
      *
      * @param initialPrompt - The initial prompt from CratePrompt
      * @param toolkit - The toolkit with tools and handlers
@@ -119,83 +268,154 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
       toolkit: Toolkit.WithHandler<Tools>,
       maxIterations: number = 10
     ): Effect.Effect<
-      LanguageModel.GenerateObjectResponse<Tools, InsightsResponse>,
+      LanguageModel.GenerateObjectResponse<Tools, InsightsResponseEncoded>,
       MusicAgentError,
-      // Note: Chat.Service is NOT required - Chat.fromPrompt returns a self-contained
-      // Service value. Only LanguageModel and toolkit context are needed.
-      | LanguageModel.LanguageModel
-      | LanguageModel.ExtractContext<{ toolkit: Toolkit.WithHandler<Tools> }>
+      MusicAgentRequirements
     > =>
       Effect.gen(function* () {
         // Initialize chat with CratePrompt system prompt and user message
         const chat = yield* Chat.fromPrompt(initialPrompt);
 
-        return yield* Effect.iterate(
+        // =============================================================================
+        // Phase 1: Research - use generateText with forced tool calls
+        // =============================================================================
+        yield* Effect.logDebug("Starting research phase");
+
+        yield* Effect.iterate(
           {
             chat,
             iteration: 0,
             response: null,
-          } as AgentState<Tools>,
+          } as ResearchState<Tools>,
           {
+            // Continue while:
+            // - First iteration (no response yet) OR
+            // - There are tool calls AND we haven't hit max iterations
             while: (state) =>
               state.response === null ||
               (state.response.toolCalls.length > 0 &&
                 state.iteration < maxIterations),
             body: (state) =>
-              Effect.gen(function* () {
-                yield* Effect.log(
-                  `Agent iteration ${state.iteration + 1}/${maxIterations}`
-                );
-
-                // Chat maintains history automatically, so we pass empty prompt
-                // Tool results from previous iteration are already in chat history
-                // Use generateObject to get structured insights output
-                // Wrap array in struct to satisfy Record<string, unknown> constraint
-                const response = yield* state.chat
-                  .generateObject({
-                    prompt: [], // Empty - Chat maintains full history automatically
-                    toolkit,
-                    schema: InsightsResponse,
-                    objectName: "insights",
-                  })
-                  .pipe(
-                    Effect.mapError(
-                      (error) =>
-                        new MusicAgentError({
-                          message: `Agent iteration ${state.iteration + 1} failed`,
-                          cause: error,
-                        })
-                    )
+              pipe(
+                Effect.gen(function* () {
+                  yield* Effect.logDebug(
+                    `Research iteration ${state.iteration + 1}`
                   );
+                  yield* Effect.annotateCurrentSpan({
+                    phase: "research",
+                    iteration: state.iteration + 1,
+                    max_iterations: maxIterations,
+                  });
 
-                // If no tool calls, we're done
-                if (response.toolCalls.length === 0) {
-                  yield* Effect.log(
-                    `Agent completed after ${state.iteration + 1} iterations`
-                  );
-                }
+                  // Use generateText with toolChoice to force tool calls
+                  // On first iteration, REQUIRE a tool call
+                  // On subsequent iterations, allow auto (model decides)
+                  const response = yield* chat
+                    .generateText({
+                      prompt: [], // Empty - Chat maintains full history
+                      toolkit,
+                      toolChoice:
+                        state.iteration === 0
+                          ? {
+                              mode: "required" as const,
+                              oneOf: [
+                                "get_recent_insights",
+                                "search_plays",
+                                "semantic_search",
+                                "resolve_mbid",
+                                "fetch_link",
+                              ],
+                            }
+                          : "auto",
+                    })
+                    .pipe(
+                      Effect.mapError(
+                        (error) =>
+                          new MusicAgentError({
+                            message: `Research iteration ${state.iteration + 1} failed`,
+                            cause: error,
+                          })
+                      )
+                    );
 
-                // Chat automatically added tool results to history via Prompt.fromResponseParts
-                // No manual prompt merging needed!
+                  const toolCallCount = response.toolCalls.length;
 
-                return {
-                  chat: state.chat,
-                  iteration: state.iteration + 1,
-                  response,
-                } as AgentState<Tools>;
-              }),
+                  yield* Effect.annotateCurrentSpan({
+                    tool_call_count: toolCallCount,
+                  });
+
+                  if (toolCallCount > 0) {
+                    const toolNames = response.toolCalls
+                      .map((tc) => tc.name)
+                      .join(", ");
+                    yield* Effect.logDebug(`Tool calls: ${toolNames}`);
+                    yield* Effect.annotateCurrentSpan("tool_calls", toolNames);
+                  } else {
+                    yield* Effect.logDebug(
+                      `Research complete after ${state.iteration + 1} iterations`
+                    );
+                  }
+
+                  return {
+                    chat,
+                    iteration: state.iteration + 1,
+                    response,
+                  } as ResearchState<Tools>;
+                }),
+                Effect.withSpan("MusicAgent.researchIteration", {
+                  attributes: { iteration: state.iteration + 1 },
+                })
+              ),
           }
-        ).pipe(
-          Effect.map((finalState) => {
-            if (finalState.response === null) {
-              throw new MusicAgentError({
-                message: "Agent loop completed without response",
-              });
-            }
-            return finalState.response;
-          })
         );
-      });
+
+        // =============================================================================
+        // Phase 2: Output - use generateObject to produce structured insights
+        // =============================================================================
+        yield* Effect.logDebug("Starting output phase");
+
+        // Now that research is complete, ask the model to produce structured insights
+        // based on all the tool results accumulated in chat history
+        const response = yield* chat
+          .generateObject({
+            prompt: [
+              {
+                role: "user",
+                content:
+                  "Based on your research above, now produce your final insights. Return the insights JSON object.",
+              },
+            ],
+            toolkit, // Include toolkit so tool results stay in context
+            schema: InsightsResponseEncoded,
+            objectName: "insights",
+          })
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new MusicAgentError({
+                  message: "Output phase failed",
+                  cause: error,
+                })
+            ),
+            Effect.withSpan("MusicAgent.outputPhase")
+          );
+
+        const rawInsights =
+          (response.value as any)?.insights &&
+          Array.isArray((response.value as any).insights)
+            ? (response.value as any).insights
+            : [];
+
+        yield* Effect.logInfo(
+          `Agent completed with ${rawInsights.length} insights`
+        );
+        yield* Effect.annotateCurrentSpan({
+          phase: "complete",
+          insight_count: rawInsights.length,
+        });
+
+        return response;
+      }).pipe(Effect.withSpan("MusicAgent.runAgentLoop"));
 
     /**
      * Enrich multiple plays with full agent loop
@@ -212,168 +432,295 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
      * 5. Posts enrichments to FAISS API
      */
     const enrichPlays = (playIds: number[]) =>
-      Effect.gen(function* () {
-        yield* Effect.log(`Starting enrichment for ${playIds.length} plays`);
-
-        // Fetch plays from FAISS API
-        const batchResponse = yield* faissClient.getPlaysBatch(playIds).pipe(
-          Effect.mapError(
-            (error) =>
-              new MusicAgentError({
-                message: "Failed to fetch plays",
-                cause: error,
-              })
-          )
-        );
-
-        const plays = batchResponse.plays as unknown as Kexp.KexpTrackPlay[];
-        yield* Effect.log(`Fetched ${plays.length} plays`);
-
-        /**
-         * Process a single play and return its enrichment items
-         */
-        const processPlay = (play: Kexp.KexpTrackPlay) =>
-          Effect.gen(function* () {
-            yield* Effect.log(
-              `Processing play ${play.id}: ${play.artist} - ${play.song}`
-            );
-
-            // Build prompt with full context (show, time, recent insights)
-            // The prompt includes instructions for using tools and producing insights
-            // buildPromptForKexpPlay returns Prompt.Prompt object from CratePrompt
-            const prompt = yield* promptBuilder
-              .buildPromptForKexpPlay(play)
-              .pipe(
-                Effect.mapError(
-                  (error) =>
-                    new MusicAgentError({
-                      message: `Failed to build prompt for play ${play.id}`,
-                      cause: error,
-                    })
-                )
-              );
-
-            // Run agent loop with Chat API and Effect.iterate
-            // Chat automatically manages conversation history including tool calls and results
-            // Effect.iterate provides declarative stateful iteration
-            const response = yield* runAgentLoop(prompt, toolkit, 10).pipe(
-              Effect.provide(agentLayer),
-              Effect.mapError(
-                (error) =>
-                  new MusicAgentError({
-                    message: `Failed to generate insights for play ${play.id}`,
-                    cause: error,
-                  })
-              )
-            );
-
-            // Extract insights from structured output
-            // generateObject already validates against the schema, so response.value is typed correctly
-            const insights = response.value.insights;
-
-            yield* Effect.log(
-              `Agent completed for play ${play.id}. Produced ${insights.length} insights`
-            );
-
-            // Log insight types produced
-            if (insights.length > 0) {
-              const insightTypes = insights.map((i) => i._tag).join(", ");
-              yield* Effect.log(
-                `Insights for play ${play.id}: ${insightTypes}`
-              );
-            } else {
-              yield* Effect.log(
-                `No insights produced for play ${play.id} (0 insights is valid)`
-              );
-            }
-
-            // Create enrichment items from insights
-            // Each insight becomes a separate enrichment item
-            // Encode insights to plain JSON objects for API compatibility
-            const enrichmentItems = yield* Effect.all(
-              insights.map((insight) =>
-                Schema.encode(Insight)(insight).pipe(
-                  Effect.mapError(
-                    (error) =>
-                      new MusicAgentError({
-                        message: `Failed to encode insight for play ${play.id}`,
-                        cause: error,
-                      })
-                  ),
-                  Effect.map(
-                    (encodedInsight) =>
-                      ({
-                        play_id: play.id,
-                        data: encodedInsight as any, // Schema.Unknown accepts any JSON object
-                      }) as EnrichmentItem
-                  )
-                )
-              ),
-              { concurrency: "unbounded" }
-            );
-
-            return enrichmentItems;
+      pipe(
+        Effect.gen(function* () {
+          yield* Effect.logInfo(
+            `Starting enrichment for ${playIds.length} plays`
+          );
+          yield* Effect.annotateCurrentSpan({
+            play_count: playIds.length,
+            play_ids: playIds.join(","),
           });
 
-        // Process all plays concurrently with a concurrency limit
-        // This prevents overwhelming the system while still getting parallelization benefits
-        const enrichmentArrays = yield* Effect.forEach(plays, processPlay, {
-          concurrency: 5, // Process 5 plays at a time
-        }).pipe(
-          Effect.mapError(
-            (error) =>
-              new MusicAgentError({
-                message: "Failed to process plays",
-                cause: error,
-              })
-          )
-        );
-
-        // Flatten the array of arrays into a single array
-        const enrichments = enrichmentArrays.flat();
-
-        // Post enrichments back to FAISS API
-        // If no enrichments were produced, skip posting
-        if (enrichments.length === 0) {
-          yield* Effect.log(`No enrichments to post for ${plays.length} plays`);
-          return { count: 0 };
-        }
-
-        const enrichmentRequest: EnrichmentRequest = {
-          enrichment_type: "insights",
-          enrichments,
-        };
-
-        const enrichmentResponse = yield* faissClient
-          .postEnrichments(enrichmentRequest)
-          .pipe(
+          // Fetch plays from FAISS API
+          const batchResponse = yield* faissClient.getPlaysBatch(playIds).pipe(
             Effect.mapError(
               (error) =>
                 new MusicAgentError({
-                  message: "Failed to post enrichments",
+                  message: "Failed to fetch plays",
+                  cause: error,
+                })
+            ),
+            Effect.withSpan("MusicAgent.fetchPlays")
+          );
+
+          const plays = batchResponse.plays as unknown as Kexp.KexpTrackPlay[];
+          yield* Effect.logDebug(`Fetched ${plays.length} plays from API`);
+
+          /**
+           * Process a single play and return its enrichment items
+           */
+          const processPlay = (play: Kexp.KexpTrackPlay) =>
+            pipe(
+              Effect.gen(function* () {
+                yield* Effect.logInfo(
+                  `Processing play: ${play.artist} - ${play.song}`
+                );
+                yield* Effect.annotateCurrentSpan({
+                  play_id: play.id,
+                  artist: play.artist ?? "Unknown",
+                  song: play.song ?? "Unknown",
+                });
+
+                // Clear session for this play to prevent cross-contamination
+                // Each play gets its own clean session with only its existing insights
+                yield* insightSession.clear();
+
+                // Pre-seed session with existing insights from database
+                // This allows the agent to see its previous work and decide if new insights add value
+                const existingInsights = yield* faissClient
+                  .getInsightsForPlay(play.id)
+                  .pipe(
+                    Effect.map((response) =>
+                      response.insights.map((record) =>
+                        insightRecordToSummary(record, {
+                          artist: play.artist ?? "Unknown",
+                          song: play.song ?? "Unknown",
+                        })
+                      )
+                    ),
+                    // Don't fail if we can't fetch existing insights - just proceed without them
+                    Effect.catchAll((error) => {
+                      return Effect.logWarning(
+                        `Failed to fetch existing insights for play ${play.id}: ${error.message}`
+                      ).pipe(Effect.map(() => [] as InsightSummary[]));
+                    }),
+                    Effect.withSpan("MusicAgent.fetchExistingInsights")
+                  );
+
+                if (existingInsights.length > 0) {
+                  yield* insightSession.seedWithExistingInsights(
+                    existingInsights
+                  );
+                  yield* Effect.logDebug(
+                    `Pre-seeded session with ${existingInsights.length} existing insights for play ${play.id}`
+                  );
+                  yield* Effect.annotateCurrentSpan({
+                    existing_insight_count: existingInsights.length,
+                  });
+                }
+
+                // Build prompt with full context (show, time, recent insights)
+                // The prompt includes instructions for using tools and producing insights
+                // buildPromptForKexpPlay returns Prompt.Prompt object from CratePrompt
+                const prompt = yield* promptBuilder
+                  .buildPromptForKexpPlay(play)
+                  .pipe(
+                    Effect.mapError(
+                      (error) =>
+                        new MusicAgentError({
+                          message: `Failed to build prompt for play ${play.id}`,
+                          cause: error,
+                        })
+                    ),
+                    Effect.tap((p) =>
+                      Effect.gen(function* () {
+                        // Extract system and user text for logging / debugging
+                        const systemMessages = p.content.filter(
+                          (m) => m.role === "system"
+                        );
+                        const userMessages = p.content.filter(
+                          (m) => m.role === "user"
+                        );
+
+                        const systemText = systemMessages
+                          .map((m) =>
+                            typeof (m as any).content === "string"
+                              ? (m as any).content
+                              : ""
+                          )
+                          .join("\n\n");
+
+                        const userText = userMessages
+                          .map((m) => {
+                            const content = (m as any).content;
+                            if (Array.isArray(content)) {
+                              return content
+                                .filter(
+                                  (part: any) =>
+                                    part &&
+                                    part.type === "text" &&
+                                    typeof part.text === "string"
+                                )
+                                .map((part: any) => part.text)
+                                .join("\n\n");
+                            }
+                            if (typeof content === "string") {
+                              return content;
+                            }
+                            return "";
+                          })
+                          .join("\n\n");
+
+                        const truncate = (value: string, max: number) =>
+                          value.length > max
+                            ? `${value.slice(0, max)}...[truncated]`
+                            : value;
+
+                        const systemPreview = truncate(systemText, 2000);
+                        const userPreview = truncate(userText, 1000);
+
+                        yield* Effect.annotateCurrentSpan({
+                          prompt_system_preview: systemPreview,
+                          prompt_user_preview: userPreview,
+                        });
+
+                        // Also log previews so they are visible in standard logs
+                        yield* Effect.logDebug(
+                          `Prompt system text (truncated):\n${systemPreview}`
+                        );
+                        yield* Effect.logDebug(
+                          `Prompt user text (truncated):\n${userPreview}`
+                        );
+                      })
+                    ),
+                    Effect.withSpan("MusicAgent.buildPrompt")
+                  );
+
+                // Run agent loop with Chat API and Effect.iterate
+                // Chat automatically manages conversation history including tool calls and results
+                // Effect.iterate provides declarative stateful iteration
+                // LanguageModel is provided externally via MusicAgentLive layer
+                const response = yield* runAgentLoop(prompt, toolkit, 10).pipe(
+                  Effect.mapError(
+                    (error) =>
+                      new MusicAgentError({
+                        message: `Failed to generate insights for play ${play.id}`,
+                        cause: error,
+                      })
+                  )
+                );
+
+                // Decode from encoded schema to get typed class instances
+                // generateObject uses InsightsResponseEncoded (plain struct for JSON Schema compatibility)
+                // We decode with InsightsResponse to get TaggedClass instances
+                const decoded = yield* Schema.decodeUnknown(InsightsResponse)(
+                  response.value
+                ).pipe(
+                  Effect.mapError(
+                    (error) =>
+                      new MusicAgentError({
+                        message: `Failed to decode insights for play ${play.id}`,
+                        cause: error,
+                      })
+                  )
+                );
+
+                // Extract insights from decoded response
+                const insights = decoded.insights;
+
+                // Annotate span with insight count and types
+                const insightTypes = insights.map((i) => i._tag);
+                yield* Effect.annotateCurrentSpan({
+                  insight_count: insights.length,
+                  insight_types: insightTypes.join(","),
+                });
+
+                // Log insight types produced
+                if (insights.length > 0) {
+                  yield* Effect.logInfo(
+                    `Produced ${insights.length} insights: ${insightTypes.join(", ")}`
+                  );
+
+                  // Add insights to session for get_recent_insights tool
+                  // This enables the agent to recall previous findings and avoid duplicates
+                  yield* Effect.forEach(
+                    insights,
+                    (insight) =>
+                      insightSession.addInsight(insightToSummary(insight)),
+                    { discard: true }
+                  );
+                  yield* Effect.logDebug(
+                    `Added ${insights.length} insights to session`
+                  );
+                } else {
+                  yield* Effect.logDebug(
+                    "No insights produced (0 insights is valid)"
+                  );
+                }
+
+                // Return the decoded insights directly (not wrapped in EnrichmentItem)
+                // The insights will be posted to /api/insights which expects raw Insight objects
+                return insights;
+              }),
+              Effect.withSpan("MusicAgent.processPlay", {
+                attributes: { play_id: play.id },
+              })
+            );
+
+          // Process plays sequentially to ensure session isolation
+          // Each play clears the session then seeds with its own existing insights.
+          // Sequential processing prevents race conditions on the shared session state.
+          // Future: use per-play scoped sessions to enable parallelization
+          const enrichmentArrays = yield* Effect.forEach(plays, processPlay, {
+            concurrency: 1, // Sequential to maintain session isolation
+          }).pipe(
+            Effect.mapError(
+              (error) =>
+                new MusicAgentError({
+                  message: "Failed to process plays",
                   cause: error,
                 })
             )
           );
 
-        yield* Effect.log(
-          `Enrichment complete: ${enrichmentResponse.count} insight enrichments posted (from ${plays.length} plays)`
-        );
+          // Flatten the array of arrays into a single array of Insight objects
+          const insights = enrichmentArrays.flat();
 
-        return { count: enrichmentResponse.count };
-      });
+          // Post insights back to FAISS API via /api/insights endpoint
+          // If no insights were produced, skip posting
+          if (insights.length === 0) {
+            yield* Effect.logInfo(
+              `No insights to post for ${plays.length} plays`
+            );
+            yield* Effect.annotateCurrentSpan("insights_posted", 0);
+            return { count: 0 };
+          }
+
+          const insightsResponse = yield* faissClient
+            .postInsights(insights)
+            .pipe(
+              Effect.mapError(
+                (error) =>
+                  new MusicAgentError({
+                    message: "Failed to post insights",
+                    cause: error,
+                  })
+              ),
+              Effect.withSpan("MusicAgent.postInsights")
+            );
+
+          yield* Effect.logInfo(
+            `Enrichment complete: ${insightsResponse.count} insights posted from ${plays.length} plays`
+          );
+          yield* Effect.annotateCurrentSpan({
+            insights_posted: insightsResponse.count,
+            plays_processed: plays.length,
+          });
+
+          return { count: insightsResponse.count };
+        }),
+        Effect.withSpan("MusicAgent.enrichPlays")
+      );
 
     return {
-      enrichPlays: enrichPlays as MusicAgentInterface["enrichPlays"],
+      enrichPlays,
     } satisfies MusicAgentInterface;
   }),
-  dependencies: [
-    PromptBuilderServiceFull,
-    FaissClient.Default,
-    CrateToolsLive,
-    AnthropicConfig.Default,
-    NodeHttpClient.layerUndici,
-  ],
+  // Note: LanguageModel.LanguageModel is NOT listed here because it's provided
+  // at the app boundary via MusicAgentLive layer composition in layers.ts.
+  // This service only lists dependencies needed for its own construction.
+  dependencies: [PromptBuilderServiceFull, FaissClient.Default, CrateToolsLive],
 }) {}
 
 // =============================================================================
@@ -381,6 +728,50 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
 // =============================================================================
 
 /**
- * Complete MusicAgent layer with all dependencies
+ * Base MusicAgent layer - provides the MusicAgent service
+ *
+ * This layer provides all non-LLM dependencies. The MusicAgent.enrichPlays
+ * method still requires LanguageModel.LanguageModel to be provided.
+ *
+ * For production, combine with AnthropicModelLive:
+ * ```ts
+ * const program = Effect.gen(function* () {
+ *   const agent = yield* MusicAgent
+ *   return yield* agent.enrichPlays([1, 2, 3])
+ * }).pipe(
+ *   Effect.provide(MusicAgentLive),
+ *   Effect.provide(AnthropicModelLive)
+ * )
+ * ```
+ *
+ * For testing, combine with a mock LanguageModel:
+ * ```ts
+ * const testProgram = Effect.gen(function* () {
+ *   const agent = yield* MusicAgent
+ *   return yield* agent.enrichPlays([1, 2, 3])
+ * }).pipe(
+ *   Effect.provide(MusicAgentLive),
+ *   Effect.provide(MockLanguageModelLayer)
+ * )
+ * ```
  */
 export const MusicAgentLive = MusicAgent.Default;
+
+/**
+ * Complete MusicAgent layer with Anthropic model included
+ *
+ * This is a fully self-contained layer for production use.
+ * It provides both MusicAgent service and satisfies the LanguageModel requirement.
+ *
+ * @example
+ * ```ts
+ * const program = Effect.gen(function* () {
+ *   const agent = yield* MusicAgent
+ *   return yield* agent.enrichPlays([1, 2, 3])
+ * }).pipe(Effect.provide(MusicAgentWithAnthropicLive))
+ * ```
+ */
+export const MusicAgentWithAnthropicLive = Layer.merge(
+  MusicAgentLive,
+  AnthropicModelLive
+);

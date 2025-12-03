@@ -323,9 +323,10 @@ You produce typed insights that map to specific UI components. Each insight type
 **Purpose:** Expand listener's awareness of related artists they might enjoy.
 **Example triggers:**
 - "Featuring [Artist] on vocals"
-- Artists share a label (especially small/indie labels) - verify via search
+- Artists share a label (especially small/indie labels) - use play's label info or DJ comment
 - Band members' other projects - if DJ mentions it
 - DJ explicitly draws connection: "fans of X will love Y"
+**Note:** Label connections can be identified from play metadata (labels field) or DJ comments, but cannot be verified via search_plays filtering.
 
 ### LinkInsight
 **Trigger:** DJ comment contains a URL, AND fetch_link returns useful content.
@@ -340,7 +341,23 @@ You produce typed insights that map to specific UI components. Each insight type
 - If no trigger conditions are met, produce no insights
 - Never fabricate - only surface what you find via tools or DJ comment
 - Check recent insights first to avoid repetition
-- The sourceQuote field must contain actual DJ text for extraction insights`;
+- The sourceQuote field must contain actual DJ text for extraction insights
+
+### Source Type Classification
+
+Every insight must set \`sourceType\` based on where the primary evidence came from:
+
+| sourceType | When to Use | Insight Types |
+|------------|-------------|---------------|
+| \`"extraction"\` | Evidence extracted from DJ comment text | Concert, Cover, Sample |
+| \`"database"\` | Evidence from search_plays or semantic_search results | PlayHistory, Connection |
+| \`"external"\` | Evidence from fetched external URLs | Link |
+
+**Examples:**
+- DJ says "catch them at the Paramount" → ConcertInsight with sourceType: "extraction"
+- search_plays shows 0 prior plays → PlayHistoryInsight (debut!) with sourceType: "database"
+- Fetched Bandcamp page with album info → LinkInsight with sourceType: "external"
+- DJ says artists are labelmates AND search confirms → ConnectionInsight with sourceType: "database" (search is primary evidence)`;
 
 // =============================================================================
 // STATIC SECTIONS - Tools
@@ -366,12 +383,14 @@ Browse KEXP play timeline filtered by MusicBrainz IDs.
   - release_group_mbid → Plays from any edition of an album
   - since/until → Date range (YYYY-MM-DD)
 - **⚠️ No text search!** Use semantic_search for text queries first
+- **⚠️ No label filtering!** Label MBIDs can be resolved but not used to filter searches
 
 ### resolve_mbid
 Get canonical MusicBrainz ID for an entity mentioned in DJ comments.
 - **When:** You see an artist, recording, release, or label name that needs identification
 - **entity_type must be:** artist, recording, release, release_group, or label
 - **Tip:** Use artist_hint to disambiguate recordings (e.g., "Squeeze" by "SASAMI")
+- **Note:** Label MBIDs can be resolved for reference but search_plays cannot filter by label
 
 ### fetch_link
 Fetch and summarize web content.
