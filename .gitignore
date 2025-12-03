@@ -35,6 +35,10 @@ analysis/.venv/
 analysis/__pycache__/
 analysis/.ipynb_checkpoints/
 
+# FAISS API data files
+faiss-search-api/data/*.db
+faiss-search-api/data/*.sqlite
+
 # Ignore build artifacts in source directories
 packages/*/src/**/*.js
 packages/*/src/**/*.js.map
