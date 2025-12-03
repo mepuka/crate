@@ -76,6 +76,13 @@ class PlaySyncService:
         self.play_ids_path = play_ids_path
         self.lock_fd = None
 
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get database connection with proper settings."""
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        return conn
+
     def acquire_lock(self) -> bool:
         """
         Acquire exclusive lock to prevent concurrent executions.
@@ -120,7 +127,7 @@ class PlaySyncService:
             Last play ID or None if database is empty
         """
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._get_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT MAX(id) FROM fact_plays")
             result = cursor.fetchone()
@@ -218,7 +225,7 @@ class PlaySyncService:
             return []
 
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._get_connection()
             cursor = conn.cursor()
 
             # Prepare rows for insertion
@@ -379,7 +386,7 @@ class PlaySyncService:
             if result:
                 image_uri, thumbnail_uri = result
                 try:
-                    conn = sqlite3.connect(self.db_path)
+                    conn = self._get_connection()
                     cursor = conn.cursor()
                     cursor.execute(
                         "UPDATE fact_plays SET image_uri = ?, thumbnail_uri = ?, updated_at = ? WHERE id = ?",

@@ -76,6 +76,13 @@ class MusicBrainzEnrichmentService:
             "rate_limited": 0
         }
 
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get database connection with proper settings."""
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        return conn
+
     def log(self, message: str) -> None:
         """Print message if verbose mode enabled."""
         if self.verbose:
@@ -149,7 +156,7 @@ class MusicBrainzEnrichmentService:
 
     def get_artists_needing_enrichment(self, limit: int) -> list[dict]:
         """Query artists that haven't been enriched yet."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -190,7 +197,7 @@ class MusicBrainzEnrichmentService:
             self.log(f"  [DRY RUN] Would update artist {mbid}")
             return True
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -230,7 +237,7 @@ class MusicBrainzEnrichmentService:
 
     def get_labels_needing_enrichment(self, limit: int) -> list[dict]:
         """Query labels that haven't been enriched yet."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -266,7 +273,7 @@ class MusicBrainzEnrichmentService:
             self.log(f"  [DRY RUN] Would update label {mbid}")
             return True
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -300,7 +307,7 @@ class MusicBrainzEnrichmentService:
 
     def get_recordings_needing_enrichment(self, limit: int) -> list[dict]:
         """Query recordings that haven't been enriched yet."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -336,7 +343,7 @@ class MusicBrainzEnrichmentService:
             self.log(f"  [DRY RUN] Would update recording {mbid}")
             return True
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -366,7 +373,7 @@ class MusicBrainzEnrichmentService:
 
     def get_releases_needing_enrichment(self, limit: int) -> list[dict]:
         """Query releases that haven't been enriched yet."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -403,7 +410,7 @@ class MusicBrainzEnrichmentService:
             self.log(f"  [DRY RUN] Would update release {mbid}")
             return True
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -439,7 +446,7 @@ class MusicBrainzEnrichmentService:
 
     def get_release_groups_needing_enrichment(self, limit: int) -> list[dict]:
         """Query release groups that haven't been enriched yet."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -475,7 +482,7 @@ class MusicBrainzEnrichmentService:
             self.log(f"  [DRY RUN] Would update release_group {mbid}")
             return True
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""

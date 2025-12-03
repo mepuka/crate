@@ -185,7 +185,8 @@ async function enrichLogs(lines = 30) {
   const stats = await runSSH(`
     cd /root/faiss-search-api && python3 -c "
 import sqlite3
-conn = sqlite3.connect('data/music_kb.sqlite')
+conn = sqlite3.connect('data/music_kb.sqlite', timeout=30.0)
+conn.execute('PRAGMA busy_timeout=30000')
 cursor = conn.cursor()
 for table in ['mb_artists', 'mb_labels', 'mb_recordings', 'mb_releases', 'mb_release_groups']:
     cursor.execute(f'SELECT COUNT(*) FROM {table} WHERE enriched_at IS NOT NULL')
@@ -231,7 +232,8 @@ async function linksLogs(lines = 30) {
   const stats = await runSSH(`
     cd /root/faiss-search-api && python3 -c "
 import sqlite3
-conn = sqlite3.connect('data/music_kb.sqlite')
+conn = sqlite3.connect('data/music_kb.sqlite', timeout=30.0)
+conn.execute('PRAGMA busy_timeout=30000')
 cursor = conn.cursor()
 
 cursor.execute('SELECT COUNT(*) FROM link_content')

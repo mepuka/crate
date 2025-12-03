@@ -70,6 +70,13 @@ class CoverArtEnrichmentService:
             "errors": 0
         }
 
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get database connection with proper settings."""
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        return conn
+
     def get_plays_needing_cover_art(self, limit: int) -> list[dict]:
         """
         Query plays that have release_id OR release_group_id but no image_uri.
@@ -80,7 +87,7 @@ class CoverArtEnrichmentService:
         Returns:
             List of play dictionaries with id, release_id, release_group_id
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -170,7 +177,7 @@ class CoverArtEnrichmentService:
             True if update succeeded
         """
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._get_connection()
             cursor = conn.cursor()
 
             cursor.execute("""
