@@ -13,7 +13,7 @@
  * @module
  */
 
-import { Console, Effect, Layer, Option } from "effect";
+import { Console, Effect } from "effect";
 import {
   SearchPlaysService,
   SearchPlaysServiceFull,
@@ -23,9 +23,8 @@ import {
   SemanticSearchServiceTest,
   InsightSessionService,
   InsightSessionServiceLive,
-  makeInsightSessionServiceTestWithData,
-  type InsightSummary,
 } from "./index.js";
+import type { InsightSummary } from "../tools/schemas.js";
 
 // =============================================================================
 // Test Helpers

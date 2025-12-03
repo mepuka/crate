@@ -7,17 +7,18 @@
 
 import { Config, Data, Effect, Schema } from "effect";
 import {
+  FetchHttpClient,
   HttpBody,
   HttpClient,
   HttpClientRequest,
   HttpClientResponse,
 } from "@effect/platform";
-import { NodeHttpClient } from "@effect/platform-node";
 import {
   BatchPlaysResponse,
   EnrichmentRequest,
   EnrichmentResponse,
   InsightsResponse,
+  PlayInsightsResponse,
   PlayResult as PlayResultSchema,
   SearchParams,
   SearchResponse as SearchResponseSchema,
@@ -208,9 +209,29 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                 })
             )
           ),
+
+      /**
+       * GET insights for a specific play
+       *
+       * Fetches all previously generated insights for a play from the database.
+       * Used to pre-seed session context so the agent can see its own past work.
+       */
+      getInsightsForPlay: (playId: number) =>
+        client.get(`/api/insights/plays/${playId}`).pipe(
+          Effect.flatMap(
+            HttpClientResponse.schemaBodyJson(PlayInsightsResponse)
+          ),
+          Effect.mapError(
+            (error) =>
+              new FaissApiError({
+                message: `Get insights for play ${playId} failed`,
+                cause: error,
+              })
+          )
+        ),
     };
   }),
-  dependencies: [FaissConfig.Default, NodeHttpClient.layerUndici],
+  dependencies: [FaissConfig.Default, FetchHttpClient.layer],
 }) {}
 
 /**

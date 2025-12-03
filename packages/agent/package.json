@@ -26,6 +26,8 @@
     "@crate/api": "workspace:^",
     "@crate/domain": "workspace:^",
     "@effect/ai": "^0.32.1",
+    "@effect/ai-anthropic": "^0.22.0",
+    "@effect/ai-google": "^0.11.0",
     "@effect/ai-openai": "^0.32.1",
     "@effect/platform": "^0.93.0",
     "@effect/platform-node": "^0.100.0",

@@ -5,27 +5,42 @@
  */
 
 import { Layer } from "effect"
-import { NodeHttpClient } from "@effect/platform-node"
+import { FetchHttpClient } from "@effect/platform"
 import { FaissConfig, FaissClient } from "./FaissClient.js"
-import { MusicAgent } from "./MusicAgent.js"
+import { MusicAgentLive, MusicAgentWithAnthropicLive } from "./MusicAgent.js"
 
-// Core services
+// =============================================================================
+// Legacy Services (FaissClient, MusicAgent)
+// =============================================================================
 export { FaissConfig, FaissClient, FaissApiError, FaissClientLive } from "./FaissClient.js"
 export type { PlayResult, SearchResponse, TimelineResponse } from "./FaissClient.js"
-export { MusicAgent, MusicAgentLive } from "./MusicAgent.js"
+export {
+  MusicAgent,
+  MusicAgentLive,
+  MusicAgentWithAnthropicLive,
+  MusicAgentError,
+  type MusicAgentInterface,
+  type MusicAgentRequirements
+} from "./MusicAgent.js"
 
-// Configuration services (new)
+// =============================================================================
+// Configuration Services
+// =============================================================================
 export {
   FaissConfig as FaissApiConfig,
   MusicBrainzConfig,
   JinaConfig,
+  AnthropicConfig,
   AgentConfigLive,
   type FaissConfigShape,
   type MusicBrainzConfigShape,
-  type JinaConfigShape
+  type JinaConfigShape,
+  type AnthropicConfigShape
 } from "./config.js"
 
-// Error types
+// =============================================================================
+// Error Types
+// =============================================================================
 export {
   ApiError,
   SearchPlaysError,
@@ -38,8 +53,11 @@ export {
   isToolError
 } from "./services/errors.js"
 
-// Services
+// =============================================================================
+// Services (Tool backends)
+// =============================================================================
 export {
+  // Assets service
   Assets,
   AssetsLive,
   AssetsTest,
@@ -48,6 +66,7 @@ export {
   type ShowDescription,
   DjBioSchema,
   normalizeName,
+  // PromptBuilder service
   PromptBuilderService,
   PromptBuilderServiceLive,
   PromptBuilderServiceFull,
@@ -61,10 +80,46 @@ export {
   type PlayContext,
   type ShowContext,
   type SimpleShowContext,
-  type PromptContext
+  type PromptContext,
+  // SearchPlays service
+  SearchPlaysService,
+  SearchPlaysServiceLive,
+  SearchPlaysServiceFull,
+  SearchPlaysServiceTest,
+  type SearchPlaysServiceInterface,
+  type SearchTimelineParams,
+  // SemanticSearch service
+  SemanticSearchService,
+  SemanticSearchServiceLive,
+  SemanticSearchServiceFull,
+  SemanticSearchServiceTest,
+  type SemanticSearchServiceInterface,
+  type SemanticSearchParams as SemanticSearchServiceParams,
+  // InsightSession service
+  InsightSessionService,
+  InsightSessionServiceLive,
+  InsightSessionServiceScoped,
+  InsightSessionServiceTest,
+  makeInsightSessionServiceTestWithData,
+  type InsightSessionServiceInterface,
+  type GetRecentInsightsResponse as InsightResponse,
+  // MbidResolver service
+  MbidResolverService,
+  MbidResolverServiceLive,
+  MbidResolverServiceFull,
+  MbidResolverServiceTest,
+  type MbidResolverServiceInterface,
+  // LinkFetcher service
+  LinkFetcherService,
+  LinkFetcherServiceLive,
+  LinkFetcherServiceFull,
+  LinkFetcherServiceTest,
+  type LinkFetcherServiceInterface
 } from "./services/index.js"
 
-// Tools (schemas and definitions)
+// =============================================================================
+// Tool Schemas and Definitions
+// =============================================================================
 export {
   // Common types
   MbEntityType,
@@ -94,12 +149,45 @@ export {
   type CrateToolkitType
 } from "./tools/index.js"
 
+// =============================================================================
+// Layer Composition
+// =============================================================================
+export {
+  ConfigLive,
+  InfraLive,
+  ServicesLive,
+  ServicesFull,
+  HandlersLive,
+  CrateToolsLive,
+  CrateToolsTest,
+  ServicesTest,
+  AnthropicModelLayer,
+  AnthropicModelLive,
+  type CrateToolServices,
+  type CrateToolsContext
+} from "./layers.js"
+
+// =============================================================================
+// MCP Server
+// =============================================================================
+export {
+  SERVER_INFO,
+  CrateMcpServerStdio,
+  CrateMcpServerHttp,
+  runStdio,
+  getClaudeDesktopConfig
+} from "./mcp/server.js"
+
+// =============================================================================
+// Legacy Layer (deprecated - use MusicAgentWithAnthropicLive instead)
+// =============================================================================
 /**
  * Complete agent runtime with all dependencies resolved
+ * @deprecated Use MusicAgentWithAnthropicLive for agent operations or CrateToolsLive for tools
  */
 export const AgentAppLive = Layer.mergeAll(
   FaissConfig.Default,
-  NodeHttpClient.layerUndici,
+  FetchHttpClient.layer,
   FaissClient.Default,
-  MusicAgent.Default
+  MusicAgentWithAnthropicLive
 )

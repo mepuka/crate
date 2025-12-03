@@ -109,3 +109,12 @@ export class GetInsightsResponse extends Schema.Class<GetInsightsResponse>("GetI
   insights: Schema.Array(InsightRecord),
   total: Schema.Number
 }) {}
+
+/**
+ * Response from /api/insights/plays/{play_id} GET
+ */
+export class PlayInsightsResponse extends Schema.Class<PlayInsightsResponse>("PlayInsightsResponse")({
+  play_id: Schema.Number,
+  insights: Schema.Array(InsightRecord),
+  total: Schema.Number
+}) {}

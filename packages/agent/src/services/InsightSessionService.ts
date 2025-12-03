@@ -47,6 +47,15 @@ export interface InsightSessionServiceInterface {
   ) => Effect.Effect<GetRecentInsightsResponse>
 
   /**
+   * Seed session with existing insights from database.
+   * Used to pre-populate context before enriching a play that may
+   * already have insights. Marks insights as from_database: true.
+   */
+  readonly seedWithExistingInsights: (
+    insights: readonly InsightSummary[]
+  ) => Effect.Effect<void>
+
+  /**
    * Clear all insights from the session
    */
   readonly clear: () => Effect.Effect<void>
@@ -107,6 +116,11 @@ const filterInsights = (
 ): readonly InsightSummary[] => {
   let filtered = insights
 
+  // Filter by play_id - useful for checking existing insights for current play
+  if (params.play_id !== undefined) {
+    filtered = filtered.filter((insight) => insight.play_id === params.play_id)
+  }
+
   if (params.artist_mbid) {
     filtered = filtered.filter((insight) =>
       insight.entity_mbids.includes(params.artist_mbid!)
@@ -152,6 +166,16 @@ const makeInsightSessionService = Effect.gen(function* () {
       })
     )
 
+  const seedWithExistingInsights = (
+    insights: readonly InsightSummary[]
+  ): Effect.Effect<void> =>
+    Ref.update(stateRef, (state) => ({
+      ...state,
+      // Prepend existing insights so they appear first (oldest first)
+      // New insights produced this session will be appended after
+      insights: [...insights, ...state.insights]
+    }))
+
   const clear = (): Effect.Effect<void> =>
     Ref.update(stateRef, (state) => ({
       sessionId: state.sessionId,
@@ -164,6 +188,7 @@ const makeInsightSessionService = Effect.gen(function* () {
   return {
     addInsight,
     getRecentInsights,
+    seedWithExistingInsights,
     clear,
     getSessionId
   } satisfies InsightSessionServiceInterface
@@ -200,6 +225,7 @@ export const InsightSessionServiceTest: Layer.Layer<InsightSessionService> = Lay
         total: 0,
         sessionId: "test_session"
       }),
+    seedWithExistingInsights: (_insights) => Effect.void,
     clear: () => Effect.void,
     getSessionId: () => Effect.succeed("test_session")
   } satisfies InsightSessionServiceInterface
@@ -216,6 +242,10 @@ export const makeInsightSessionServiceTestWithData = (
     addInsight: (_insight) => Effect.void,
     getRecentInsights: (params) => {
       let filtered = insights
+
+      if (params?.play_id !== undefined) {
+        filtered = filtered.filter((i) => i.play_id === params.play_id)
+      }
 
       if (params?.artist_mbid) {
         filtered = filtered.filter((i) =>
@@ -236,6 +266,7 @@ export const makeInsightSessionServiceTestWithData = (
         sessionId: "test_session"
       })
     },
+    seedWithExistingInsights: (_insights) => Effect.void,
     clear: () => Effect.void,
     getSessionId: () => Effect.succeed("test_session")
   } satisfies InsightSessionServiceInterface)

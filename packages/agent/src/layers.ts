@@ -4,20 +4,28 @@
  * Provides clean layer composition for all services and infrastructure.
  * Enables easy switching between live and test configurations.
  *
+ * LAYER COMPOSITION PATTERN:
+ * This module follows the Effect pattern of composing layers at the app boundary.
+ * Services declare their requirements via the R channel, and layers are composed
+ * here to satisfy those requirements. This enables:
+ * - Easy testing with mock layers
+ * - Clear separation between service logic and infrastructure
+ * - Swappable implementations (e.g., Anthropic vs OpenAI)
+ *
  * @module
  */
 
-import { Layer } from "effect"
-import { HttpClient } from "@effect/platform"
-import { NodeHttpClient } from "@effect/platform-node"
+import { Effect, Layer } from "effect";
+import { FetchHttpClient, HttpClient } from "@effect/platform";
+import { AnthropicLanguageModel, AnthropicClient } from "@effect/ai-anthropic";
 
 // Configuration services
 import {
   FaissConfig,
   MusicBrainzConfig,
   JinaConfig,
-  AgentConfigLive
-} from "./config.js"
+  AnthropicConfig,
+} from "./config.js";
 
 // Service imports
 import {
@@ -35,34 +43,42 @@ import {
   MbidResolverServiceTest,
   LinkFetcherService,
   LinkFetcherServiceLive,
-  LinkFetcherServiceTest
-} from "./services/index.js"
+  LinkFetcherServiceTest,
+} from "./services/index.js";
 
 // Tool handlers
-import { CrateToolHandlersLayer } from "./tools/handlers.js"
+import { CrateToolHandlersLayer } from "./tools/handlers.js";
 
 // Toolkit
-import { CrateToolkit } from "./tools/definitions.js"
 
 // =============================================================================
-// Infrastructure Layer
+// Configuration Layers (separated for flexibility)
 // =============================================================================
+
+/**
+ * Configuration layer for all services (without AnthropicConfig)
+ *
+ * This is the minimal config layer needed for tool operations.
+ * AnthropicConfig is only needed when using the LLM directly.
+ */
+export const ConfigLive = Layer.mergeAll(
+  FaissConfig.Default,
+  MusicBrainzConfig.Default,
+  JinaConfig.Default
+);
 
 /**
  * Infrastructure layer providing HTTP client and configuration
  *
+ * Uses FetchHttpClient for cross-platform compatibility (Node, Bun, Browser).
+ *
  * Provides:
- * - HttpClient (via Node's undici)
+ * - HttpClient (via fetch API - works in Bun)
  * - FaissConfig
  * - MusicBrainzConfig
  * - JinaConfig
  */
-export const InfraLive: Layer.Layer<
-  HttpClient.HttpClient | FaissConfig | MusicBrainzConfig | JinaConfig
-> = Layer.mergeAll(
-  NodeHttpClient.layerUndici,
-  AgentConfigLive
-)
+export const InfraLive = Layer.mergeAll(FetchHttpClient.layer, ConfigLive);
 
 // =============================================================================
 // Services Layer
@@ -84,34 +100,20 @@ export const InfraLive: Layer.Layer<
  * - MusicBrainzConfig
  * - JinaConfig
  */
-export const ServicesLive: Layer.Layer<
-  | SearchPlaysService
-  | SemanticSearchService
-  | InsightSessionService
-  | MbidResolverService
-  | LinkFetcherService,
-  never,
-  HttpClient.HttpClient | FaissConfig | MusicBrainzConfig | JinaConfig
-> = Layer.mergeAll(
+export const ServicesLive = Layer.mergeAll(
   SearchPlaysServiceLive,
   SemanticSearchServiceLive,
   InsightSessionServiceLive,
   MbidResolverServiceLive,
   LinkFetcherServiceLive
-)
+);
 
 /**
  * Services layer with all infrastructure dependencies resolved
  *
  * Fully self-contained layer providing all services.
  */
-export const ServicesFull: Layer.Layer<
-  | SearchPlaysService
-  | SemanticSearchService
-  | InsightSessionService
-  | MbidResolverService
-  | LinkFetcherService
-> = ServicesLive.pipe(Layer.provide(InfraLive))
+export const ServicesFull = ServicesLive.pipe(Layer.provide(InfraLive));
 
 // =============================================================================
 // Tool Handlers Layer
@@ -125,15 +127,7 @@ export const ServicesFull: Layer.Layer<
  *
  * Requires services to be provided.
  */
-export const HandlersLive: Layer.Layer<
-  typeof CrateToolkit.Service,
-  never,
-  | SearchPlaysService
-  | SemanticSearchService
-  | InsightSessionService
-  | MbidResolverService
-  | LinkFetcherService
-> = CrateToolHandlersLayer
+export const HandlersLive = CrateToolHandlersLayer;
 
 // =============================================================================
 // Full Layers
@@ -156,16 +150,9 @@ export const HandlersLive: Layer.Layer<
  * }).pipe(Effect.provide(CrateToolsLive))
  * ```
  */
-export const CrateToolsLive: Layer.Layer<
-  | typeof CrateToolkit.Service
-  | SearchPlaysService
-  | SemanticSearchService
-  | InsightSessionService
-  | MbidResolverService
-  | LinkFetcherService
-> = HandlersLive.pipe(
+export const CrateToolsLive = HandlersLive.pipe(
   Layer.provideMerge(ServicesFull)
-)
+);
 
 // =============================================================================
 // Test Layers
@@ -177,19 +164,13 @@ export const CrateToolsLive: Layer.Layer<
  * All services return empty/mock results suitable for testing
  * without external dependencies.
  */
-export const ServicesTest: Layer.Layer<
-  | SearchPlaysService
-  | SemanticSearchService
-  | InsightSessionService
-  | MbidResolverService
-  | LinkFetcherService
-> = Layer.mergeAll(
+export const ServicesTest = Layer.mergeAll(
   SearchPlaysServiceTest,
   SemanticSearchServiceTest,
   InsightSessionServiceTest,
   MbidResolverServiceTest,
   LinkFetcherServiceTest
-)
+);
 
 /**
  * Complete test layer with mock services
@@ -206,16 +187,56 @@ export const ServicesTest: Layer.Layer<
  * }).pipe(Effect.provide(CrateToolsTest))
  * ```
  */
-export const CrateToolsTest: Layer.Layer<
-  | typeof CrateToolkit.Service
-  | SearchPlaysService
-  | SemanticSearchService
-  | InsightSessionService
-  | MbidResolverService
-  | LinkFetcherService
-> = HandlersLive.pipe(
+export const CrateToolsTest = HandlersLive.pipe(
   Layer.provideMerge(ServicesTest)
-)
+);
+
+// =============================================================================
+// MusicAgent Layers
+// =============================================================================
+
+/**
+ * Anthropic LanguageModel layer
+ *
+ * Creates a fully-provided Anthropic Claude model layer.
+ * Requires AnthropicConfig to be provided for the API key.
+ *
+ * Uses:
+ * - claude-sonnet-4-5 model
+ * - FetchHttpClient for HTTP requests
+ * - AnthropicConfig for API key configuration
+ */
+export const AnthropicModelLayer = Layer.unwrapEffect(
+  Effect.gen(function* () {
+    const config = yield* AnthropicConfig;
+
+    // Create Anthropic client layer with API key and HTTP client.
+    // Use HttpClient.retryTransient to automatically retry common transient
+    // errors (rate limits, timeouts, network issues) at the HTTP layer.
+    const clientLayer = AnthropicClient.layer({
+      apiKey: config.apiKey,
+      // Transform the underlying HttpClient to add transient retries
+      // for all Anthropic requests.
+      transformClient: HttpClient.retryTransient({ times: 3 }),
+    }).pipe(Layer.provide(FetchHttpClient.layer));
+
+    // Create model layer and provide the client
+    // AnthropicLanguageModel.model returns an AiModel.Model which is both a Layer and Effect
+    return AnthropicLanguageModel.model("claude-sonnet-4-5").pipe(
+      Layer.provide(clientLayer)
+    );
+  })
+);
+
+/**
+ * Complete Anthropic model layer with config resolved
+ *
+ * This is a self-contained layer that provides LanguageModel.LanguageModel
+ * after reading ANTHROPIC_API_KEY from the environment.
+ */
+export const AnthropicModelLive = AnthropicModelLayer.pipe(
+  Layer.provide(AnthropicConfig.Default)
+);
 
 // =============================================================================
 // Type Exports
@@ -229,11 +250,9 @@ export type CrateToolServices =
   | SemanticSearchService
   | InsightSessionService
   | MbidResolverService
-  | LinkFetcherService
+  | LinkFetcherService;
 
 /**
  * Type for full Crate Tools context
  */
-export type CrateToolsContext =
-  | typeof CrateToolkit.Service
-  | CrateToolServices
+export type CrateToolsContext = CrateToolServices;

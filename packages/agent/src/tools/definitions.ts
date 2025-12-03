@@ -26,15 +26,28 @@ import {
 // =============================================================================
 
 /**
- * Search KEXP play history
+ * Browse KEXP play timeline
  *
- * Searches the KEXP play database for tracks matching the query.
- * Supports filtering by artist/recording MBID and date range.
+ * Browses the KEXP play timeline filtered by MusicBrainz IDs and/or date range.
+ * Use semantic_search for text queries - this tool is for MBID-based lookup.
  */
 export const SearchPlaysTool = Tool.make("search_plays", {
-  description: `Search KEXP play history for tracks, artists, or albums.
-Returns matching plays with metadata including airdate, labels, and MusicBrainz IDs.
-Use this when the user asks about specific artists, songs, or wants to find plays.`,
+  description: `Browse KEXP play timeline filtered by MusicBrainz IDs and/or date range.
+
+⚠️ IMPORTANT: This tool does NOT support text search. Use semantic_search to find plays by text, then use the returned MBIDs with this tool.
+
+**Filter options (use one or combine):**
+- artist_mbid → All plays by this artist (any album/track)
+- recording_mbid → All plays of this specific recording (same audio)
+- release_mbid → Plays from this specific album edition/pressing
+- release_group_mbid → Plays from any edition of this album
+- since/until → Date range filters (YYYY-MM-DD)
+
+**Typical workflow:**
+1. semantic_search("Fleet Foxes") → Returns plays with MBIDs
+2. search_plays(artist_mbid="...") → Gets full play history for that artist
+
+Returns plays with metadata including airdate, labels, and MusicBrainz IDs.`,
   parameters: SearchPlaysParams.fields,
   success: SearchPlaysResponse
 })
@@ -43,13 +56,19 @@ Use this when the user asks about specific artists, songs, or wants to find play
  * Semantic search for music
  *
  * Uses vector similarity to find music matching a natural language description.
- * Good for mood-based, genre-based, or conceptual queries.
+ * This is the primary tool for text-based music discovery.
  */
 export const SemanticSearchTool = Tool.make("semantic_search", {
-  description: `Semantic search using natural language descriptions.
-Find music by mood, genre, style, or any descriptive query.
-Examples: "upbeat jazz fusion", "melancholic indie folk", "energetic punk rock".
-Results are ranked by semantic similarity, not keyword matching.`,
+  description: `Search KEXP play history using natural language text queries.
+
+This is the PRIMARY tool for finding music by text. Use this when you want to:
+- Search by artist name: "Fleet Foxes", "SASAMI"
+- Search by song/album: "White Winter Hymnal", "Squeeze"
+- Search by mood/style: "upbeat jazz fusion", "melancholic indie folk"
+- Search by description: "Seattle indie bands from 2020"
+
+Returns plays ranked by semantic similarity with full metadata including MBIDs.
+Use the returned MBIDs with search_plays to get complete play history.`,
   parameters: SemanticSearchParams.fields,
   success: SemanticSearchResponse
 })
@@ -61,10 +80,17 @@ Results are ranked by semantic similarity, not keyword matching.`,
  * Use when you need to disambiguate or find official metadata.
  */
 export const ResolveMbidTool = Tool.make("resolve_mbid", {
-  description: `Resolve artist, recording, or release names to MusicBrainz IDs.
-Use this to find canonical identifiers for music entities.
-Helpful for disambiguation (e.g., multiple artists with same name) or
-linking to authoritative metadata.`,
+  description: `Resolve names to MusicBrainz IDs by searching the MusicBrainz database.
+
+Use this tool when:
+- You have an artist/track name but need the canonical MBID
+- You need to disambiguate entities (e.g., multiple "The National" artists)
+- Search results lack MBIDs and you need them for search_plays
+
+entity_type must be one of: artist, recording, release, release_group, label
+Use artist_hint to disambiguate recordings/releases (e.g., "Squeeze" by "SASAMI").
+
+Returns multiple matches ranked by relevance with disambiguation info.`,
   parameters: ResolveMbidParams.fields,
   success: ResolveMbidResponse
 })
@@ -77,9 +103,15 @@ linking to authoritative metadata.`,
  */
 export const FetchLinkTool = Tool.make("fetch_link", {
   description: `Fetch and extract content from a web URL.
-Use this to research additional context about artists, albums, or music topics.
-Good sources: Wikipedia, Bandcamp, artist websites, music publications.
-Returns cleaned text content suitable for analysis.`,
+
+Use this tool when:
+- DJ comment contains a URL you want to analyze
+- You need to research an artist/album from external sources
+
+Good sources: Wikipedia, Bandcamp, Discogs, Pitchfork, music publications.
+
+Set extract_links=true to also get links from the page for further research.
+Returns cleaned markdown text content suitable for analysis.`,
   parameters: FetchLinkParams.fields,
   success: FetchLinkResponse
 })
@@ -91,9 +123,16 @@ Returns cleaned text content suitable for analysis.`,
  * Use to avoid repeating research or to build on previous findings.
  */
 export const GetRecentInsightsTool = Tool.make("get_recent_insights", {
-  description: `Get insights from the current research session.
-Use this to check what you've already discovered about an artist or track.
-Helps avoid duplicate research and enables building on previous findings.`,
+  description: `Get insights you've already produced this session.
+
+⚠️ CALL THIS FIRST before producing any insights to avoid duplicates.
+
+Use this to:
+- Check if you've already covered this artist/track
+- Build on previous findings (e.g., "earlier we noted X, now we see Y")
+- Maintain coherence across plays in the same session
+
+Optional filters: artist_mbid, entity_type, limit`,
   parameters: GetRecentInsightsParams.fields,
   success: GetRecentInsightsResponse
 })

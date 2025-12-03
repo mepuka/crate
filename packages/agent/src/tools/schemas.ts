@@ -4,6 +4,11 @@
  * Schema definitions for all tool inputs/outputs.
  * Aligned with Python API models in faiss-search-api.
  *
+ * IMPORTANT: Tool parameter schemas MUST be JSON Schema compatible.
+ * Avoid Schema.pipe(), Schema.optionalWith(), Schema.brand(), etc.
+ * as these create Transformation AST nodes that can't be converted to JSON Schema.
+ * Use plain Schema.Struct with primitive fields for tool parameters.
+ *
  * @module
  */
 
@@ -24,15 +29,6 @@ export const MbEntityType = Schema.Literal(
   "label"
 )
 export type MbEntityType = typeof MbEntityType.Type
-
-/**
- * MusicBrainz ID (UUID format)
- */
-export const MbId = Schema.String.pipe(
-  Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
-  Schema.brand("MbId")
-)
-export type MbId = typeof MbId.Type
 
 // =============================================================================
 // Play Result Schema (matches Python PlayResult)
@@ -70,38 +66,50 @@ export type PlayResult = typeof PlayResultSchema.Type
 // =============================================================================
 
 /**
- * Parameters for searching KEXP play history
+ * Parameters for browsing KEXP play timeline
+ *
+ * NOTE: Uses plain Schema.String/Number without .pipe() to ensure JSON Schema compatibility.
+ * This tool browses the timeline by MBID/date filters - use semantic_search for text queries.
  */
 export const SearchPlaysParams = Schema.Struct({
-  /** Search query for KEXP play history (artist, song, album, etc.) */
-  query: Schema.String.pipe(
-    Schema.minLength(1),
-    Schema.maxLength(500)
-  ),
+  /** Filter by artist MusicBrainz ID - finds all plays by this artist */
+  artist_mbid: Schema.optional(Schema.String).annotations({
+    description: "Filter by artist MusicBrainz ID. Finds all plays by this artist across all releases."
+  }),
+  /** Filter by recording MusicBrainz ID - finds all plays of this specific recording */
+  recording_mbid: Schema.optional(Schema.String).annotations({
+    description: "Filter by recording MusicBrainz ID. Finds all plays of this exact recording (same audio)."
+  }),
+  /** Filter by release MusicBrainz ID - finds plays from this specific release edition */
+  release_mbid: Schema.optional(Schema.String).annotations({
+    description: "Filter by release MusicBrainz ID. Finds plays from this specific album edition/pressing."
+  }),
+  /** Filter by release group MusicBrainz ID - finds plays from any edition of this album */
+  release_group_mbid: Schema.optional(Schema.String).annotations({
+    description: "Filter by release group MusicBrainz ID. Finds plays from any edition of this album (includes remasters, represses)."
+  }),
   /** Maximum number of results to return (1-100, default 20) */
-  limit: Schema.optionalWith(
-    Schema.Number.pipe(Schema.greaterThanOrEqualTo(1), Schema.lessThanOrEqualTo(100)),
-    { default: () => 20 }
-  ),
-  /** Filter by artist MusicBrainz ID */
-  artist_mbid: Schema.optional(Schema.String),
-  /** Filter by recording MusicBrainz ID */
-  recording_mbid: Schema.optional(Schema.String),
+  limit: Schema.optional(Schema.Number).annotations({
+    description: "Maximum number of results to return (1-100, default 20)"
+  }),
   /** Filter plays after this ISO date */
-  since: Schema.optional(Schema.String),
+  since: Schema.optional(Schema.String).annotations({
+    description: "Filter plays after this ISO date (YYYY-MM-DD)"
+  }),
   /** Filter plays before this ISO date */
-  until: Schema.optional(Schema.String)
+  until: Schema.optional(Schema.String).annotations({
+    description: "Filter plays before this ISO date (YYYY-MM-DD)"
+  })
 })
 export type SearchPlaysParams = typeof SearchPlaysParams.Type
 
 /**
- * Response from play history search
+ * Response from play timeline browsing
  */
 export const SearchPlaysResponse = Schema.Struct({
   results: Schema.Array(PlayResultSchema),
   total: Schema.Number,
-  query_time_ms: Schema.Number,
-  query: Schema.String
+  query_time_ms: Schema.Number
 })
 export type SearchPlaysResponse = typeof SearchPlaysResponse.Type
 
@@ -111,18 +119,18 @@ export type SearchPlaysResponse = typeof SearchPlaysResponse.Type
 
 /**
  * Parameters for semantic/vector similarity search
+ *
+ * NOTE: Uses plain Schema.String/Number without .pipe() to ensure JSON Schema compatibility.
  */
 export const SemanticSearchParams = Schema.Struct({
   /** Natural language query for semantic search (e.g., 'upbeat jazz fusion') */
-  query: Schema.String.pipe(
-    Schema.minLength(1),
-    Schema.maxLength(500)
-  ),
+  query: Schema.String.annotations({
+    description: "Natural language query for semantic search (e.g., 'upbeat jazz fusion')"
+  }),
   /** Maximum number of results to return (1-100, default 20) */
-  limit: Schema.optionalWith(
-    Schema.Number.pipe(Schema.greaterThanOrEqualTo(1), Schema.lessThanOrEqualTo(100)),
-    { default: () => 20 }
-  )
+  limit: Schema.optional(Schema.Number).annotations({
+    description: "Maximum number of results to return (1-100, default 20)"
+  })
 })
 export type SemanticSearchParams = typeof SemanticSearchParams.Type
 
@@ -143,14 +151,22 @@ export type SemanticSearchResponse = typeof SemanticSearchResponse.Type
 
 /**
  * Parameters for resolving MusicBrainz IDs
+ *
+ * NOTE: Uses plain Schema.String without .pipe() to ensure JSON Schema compatibility.
  */
 export const ResolveMbidParams = Schema.Struct({
   /** Artist name, track title, or other text to search MusicBrainz */
-  query: Schema.String.pipe(Schema.minLength(1)),
+  query: Schema.String.annotations({
+    description: "Artist name, track title, or other text to search MusicBrainz"
+  }),
   /** Type of MusicBrainz entity to search for */
-  entity_type: MbEntityType,
+  entity_type: MbEntityType.annotations({
+    description: "Type of MusicBrainz entity to search for: artist, recording, release, release_group, or label"
+  }),
   /** Artist name to help disambiguate recordings/releases */
-  artist_hint: Schema.optional(Schema.String)
+  artist_hint: Schema.optional(Schema.String).annotations({
+    description: "Artist name to help disambiguate recordings/releases"
+  })
 })
 export type ResolveMbidParams = typeof ResolveMbidParams.Type
 
@@ -186,12 +202,18 @@ export type ResolveMbidResponse = typeof ResolveMbidResponse.Type
 
 /**
  * Parameters for fetching web content
+ *
+ * NOTE: Uses plain Schema.String without .pipe() to ensure JSON Schema compatibility.
  */
 export const FetchLinkParams = Schema.Struct({
   /** URL to fetch content from (must be http or https) */
-  url: Schema.String.pipe(Schema.pattern(/^https?:\/\/.+/)),
+  url: Schema.String.annotations({
+    description: "URL to fetch content from (must be http or https)"
+  }),
   /** Whether to extract and return links from the page (default false) */
-  extract_links: Schema.optionalWith(Schema.Boolean, { default: () => false })
+  extract_links: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether to extract and return links from the page (default false)"
+  })
 })
 export type FetchLinkParams = typeof FetchLinkParams.Type
 
@@ -223,17 +245,26 @@ export type FetchLinkResponse = typeof FetchLinkResponse.Type
 
 /**
  * Parameters for getting recent insights from session
+ *
+ * NOTE: Uses plain Schema.Number without .pipe() to ensure JSON Schema compatibility.
  */
 export const GetRecentInsightsParams = Schema.Struct({
   /** Maximum number of recent insights to return (1-50, default 10) */
-  limit: Schema.optionalWith(
-    Schema.Number.pipe(Schema.greaterThanOrEqualTo(1), Schema.lessThanOrEqualTo(50)),
-    { default: () => 10 }
-  ),
+  limit: Schema.optional(Schema.Number).annotations({
+    description: "Maximum number of recent insights to return (1-50, default 10)"
+  }),
+  /** Filter insights by play ID - shows insights already produced for this play */
+  play_id: Schema.optional(Schema.Number).annotations({
+    description: "Filter insights by play ID. Use this to see what insights already exist for the current play."
+  }),
   /** Filter insights by artist MBID */
-  artist_mbid: Schema.optional(Schema.String),
+  artist_mbid: Schema.optional(Schema.String).annotations({
+    description: "Filter insights by artist MusicBrainz ID"
+  }),
   /** Filter insights by entity type */
-  entity_type: Schema.optional(MbEntityType)
+  entity_type: Schema.optional(MbEntityType).annotations({
+    description: "Filter insights by entity type: artist, recording, release, release_group, or label"
+  })
 })
 export type GetRecentInsightsParams = typeof GetRecentInsightsParams.Type
 
