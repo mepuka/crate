@@ -402,13 +402,14 @@ export interface PlayContext {
 
 /**
  * Summary of a previously produced insight
+ *
+ * Re-exported from tools/schemas.ts - the canonical definition.
+ * Uses snake_case for API alignment.
  */
-export interface InsightSummary {
-  _tag: string
-  playId: number
-  entityMbids: string[]
-  summary: string
-}
+export type { InsightSummary } from "../tools/schemas.js"
+
+// Import for use in this file
+import type { InsightSummary } from "../tools/schemas.js"
 
 /**
  * Full context for building the prompt
@@ -513,6 +514,8 @@ export function formatShowContext(show: ShowContext | SimpleShowContext): string
 
 /**
  * Format recent insights for session coherence
+ *
+ * Uses snake_case fields from canonical InsightSummary schema (tools/schemas.ts)
  */
 export function formatRecentInsights(insights: InsightSummary[]): string {
   if (insights.length === 0) {
@@ -529,10 +532,11 @@ This is the first play of the session. No previous insights to reference.`
   ]
 
   for (const insight of insights) {
-    const mbidNote = insight.entityMbids.length > 0
-      ? ` [${insight.entityMbids[0].slice(0, 8)}...]`
+    const mbidNote = insight.entity_mbids.length > 0
+      ? ` [${insight.entity_mbids[0].slice(0, 8)}...]`
       : ""
-    lines.push(`- [${insight._tag}] Play #${insight.playId}${mbidNote}: ${insight.summary}`)
+    // Use insight_type (snake_case) instead of _tag
+    lines.push(`- [${insight.insight_type}] Play #${insight.play_id}${mbidNote}: ${insight.summary}`)
   }
 
   lines.push(``)
