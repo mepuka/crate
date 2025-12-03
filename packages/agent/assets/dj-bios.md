@@ -1,0 +1,747 @@
+# KEXP DJ Bios
+
+*Generated: 2025-12-03T00:52:28.367Z*
+
+---
+
+## 90.TEEN DJs
+
+90.TEEN is programmed by the participants in theKEXP Youth DJs program. The goal of this program is to teach young people confidence skills and develop career goals, positive thinking, practice, curation, technical and programmatic knowledge, and training through the art of broadcast journalism and DJing.
+
+### KEXP is excited to introduce the 2025-2026 90.TEEN DJs:
+
+ALL PHOTOS BY CARLOS CRUZ
+
+### Calla Hallmark
+
+Bio: Calla (like the flower) Hallmark (like the cards) has moved around Washington quite a bit, but one thing always stayed the same: KEXP playing in the background of her life. She has attended concerts and music festivals around the Seattle area since she was a little squirt- everything from indie, midwest emo, pop, hip-hop, electronic, and more. Suffice to say, Calla’s musical taste is eclectic; she prides herself on it and can’t wait for listeners to ride the genre roller coaster with her. Calla is currently a Junior at Gig Harbor High School, which is a big year with difficult but rewarding classes. After graduation, she hopes to pursue a career in Forensic Pathology and become a Medical Examiner. When she’s not studying, adding to her record collection, catching a concert in the city, or spending time with friends and family, Calla can usually be found in her favorite place- her bed- cuddled up with her cats, while watching a mystery and creating her playlists. Calla is thrilled to be a part of 90.teen this year and hopes her shows bring listeners as much comfort as they do her.
+
+### DJ Crystal
+
+Bio: DJ Crystal is a senior at Newport High School. She's an avid lover of live music and frequents shows in the Seattle music scene. Passionate about mental health advocacy, she also volunteers for Teen Link, a teen mental health hotline. In her free time, she enjoys thrifting, creating playlists, and exploring all the world has to offer.
+
+### DJ Darya
+
+Bio: Darya Kreymer is a senior in high school from the small town of Duvall. She is an illustrator who has been drawing since she could hold a pencil, and she has always carried a deep passion for music alongside her art. Whether it’s blasting music while working on a drawing or doodling in the corner of a vinyl shop, the two have always been intertwined in her life. Her musical tastes are wide in range, spanning everything from classics like new wave, synth pop, and shoegaze to electronic pop, indie sleaze, heavy metal, and hard rock: essentially anything loud enough to rattle the ears and spark inspiration. She loves exploring how different moods, tones, and textures in music can fuel creativity in unexpected ways, and she often finds herself pulling from what she listens to when creating her art. Through 90.TEEN, Darya is excited to continue expanding her knowledge of music, discover new sounds she may not have encountered otherwise, and share her favorite finds with a wider community.
+
+### DJ Max Savage
+
+Bio: My life in Seattle has always revolved around music, thanks in part to my record-fanatic grandfather. Even as a child, I was singing and dancing, though I didn't truly appreciate his expansive collection until later. When my grandfather — a longtime KEXP volunteer — passed away in 2020, he left me his massive collection of 2,100 records and 800 CDs, along with his turntable setup. Initially, I was terrified; I didn't know anything about artists like Frank Zappa, The Melvins, or Fiona Apple. It wasn't until later in high school, struggling to "find myself," that I finally set up the turntable. With help from my Uncle Paul, I played the first record: a Frank Zappa cover of "Stairway To Heaven." Dropping that needle was a transformative moment. I soon dove headfirst into the collection, discovering the energy of punk and grunge bands like Butthole Surfers and Mudhoney. Through this music, I've learned so much about myself, my grandfather, and the art of sound. Thank you to my grandfather and KEXP for keeping music at the center of my life.
+
+### DJ Phoenix
+
+Bio: DJ Phoenix is a Tacoma based singer and songwriter, whose passion for music extends across vast genres and eras in music history. In 2025, she graduated with honors as a Running Start student, and received her high school diploma and Associates of Arts degree from Tacoma Community College. Music has always been at the center of her life, and she was dancing before she could walk and singing songs (with dramatic dance moves!) to anyone who would listen. Phoenix moved to Tacoma from Golden, Colorado in 2021. The music scene of the Seattle area played a significant role in her family's choice to move here. Phoenix believes that music is a powerful tool for connection amongst people from varied backgrounds, and curating playlists is one of Phoenix’s strongest love languages, which is why she is so excited to connect with others through music on 90.TEEN.
+
+### DJ T
+
+Bio: Dear strangers, I am a fifteen year old songwriter from the Ballard area teaming with a passion for music and an equal curiosity. I find myself learning how to play several instruments which include all forms of guitar, ukulele, piano, glockenspiel, and maybe drums in the near future. I moved to Seattle when I was three and was immediately introduced to the wide variety of artists across genres, even lucky enough to have a few as teachers. I have the likes of Fleet Foxes, Nirvana, Death Cab for Cutie (which isn’t really Seattle but I still count it), and Townsend’s Solitaire to thank for my immense love of music and curiosity of instruments. I also have hip-hop as a genre to thank with artists like Kendrick Lamar, A Tribe Called Quest, and Nujabes showing me the fun in songwriting and the pure joy that comes with it. A huge shout out to all the creators at KEXP who inspired me to give music a shot. It's an intimidating road but your inspiring words have made me brave enough to travel it. I’ll try my best to create a delicate atmosphere of music that just might slow down time.
+
+### DJ ZOLA
+
+Bio: Zola is a high school student who loves spending time listening to, playing, and writing music. Starting at a young age, Zola has drawn so much inspiration from block parties and performances her parents took her to as a kid, as well as by listening to others talk about their personal connections to and inspiration from music. KEXP has always been an integral piece of her life, and she is so excited to be a part of it. As a choral soprano and violinist, as well as a sport fencer, rhythm is a key component in her life, which she loves to share on- air!
+
+---
+
+## Abbie
+
+I was born in the wee town nicknamed River City, IA by The Music Man himself, Meredith Willson. Archaeological music digging became an intense hobby of mine requiring late night hours watching music videos on MTV, scouring the internet for deep cuts of New Order, and mispronouncing Bjork's name at CD store located in the Surf Ballroom where Buddy Holly played his last show on Earth.
+
+Eventually, I escaped from the cornfields of Iowa and settled in the promised land of Prince (Minneapolis) where I graduated from the University of Minnesota-Twin Cities in Theatre and Psychology. In 2010, I walked to the top floor of the theatre building at the U of M and unearthed the college radio station, Radio K (KUOM). The Drums were loading in for an in-studio session and they needed someone to interview them, so I quickly volunteered and never looked back.
+
+At Radio K, I hosted the morning show, local show, and also served as Music Director. I also helped out at venues including First Avenue (cue "Purple Rain"), booked shows, and haven written for various music publications. In 2011, I briefly ran away to the Glasgow School of Art in Scotland and delved into the music scene where I interviewed new Scottish bands for Radio K, wrote for _The Pop Cop_, and went to shows almost every night. During my final semester of university, I began hustling marketing and press for many beloved artists that I grew up listening to at Saddle Creek Records.
+
+Then one day in August 2015, I visited Seattle and was magically offered a house to live in and a job at Sonic Boom Records. The universe seemed to be beckoning me to the West, so I packed up my car and moved a month later. I immediately started volunteering at KEXP: DJ assisting John in the Morning on Mondays and interning with the Business Support and Underwriting Department. Then on October 12th, 2016, I began my dream job hosting my very own show on KEXP every Wednesday! (It is LITERALLY my favorite day of the week) I am so lucky to share my passion for music with listeners who have become my family and friends.
+
+**Contact:** abbie@kexp.org
+
+---
+
+## Albina Cabrera
+
+**Albina Cabrera** is a radio host, content producer, and music publicist from Argentina. For more than a decade she has worked creating content about the independent music scene in Spanish. Her interest is to communicate identities, diversity, and gender perspectives in Latin American music. She worked in government dependencies such as the Secretary of Public Media of Argentina, Ministry of Culture, and Télam, the National News Agency. Albina created and coordinated radio and audiovisual projects such as Miernes, a platform for virtual concerts and interviews. In 2019, the Senate of Argentina awarded her with an honorable mention, Juana Azurduy de Padilla, for her performance in the culture of her country.
+
+Albina is a KEXP fan and that's why in 2018, she traveled to Seattle to collaborate on El Sonido as a volunteer. Currently, she makes podcasts for Radio Nacional Rock 93.7 (the public radio station of Argentina). Also, she works as a publicist for El Mató a un policía Motorizado, Benito Cerati, Terror Cactus, Tres Leches and as PR for LATAM of Devil in the Woods label, born in San Francisco and currently based on CDMX. Albina believes in the power of music to connect people regardless of borders, visas, or languages.
+
+---
+
+## Atticus
+
+I was born and raised in Seattle, and as a child, I listened to KEXP almost every day to and from school. I first started volunteering at KEXP during my senior year of high school, when I was just 17 years old, for our fellow DJ, Troy Nelson. After graduating from high school and a year of volunteering, I left to pursue my dreams in New York City. Those dreams soon turned expensive, so I moved back to Seattle after one year of college to figure out what I wanted to be. KEXP provided a space for me to explore my passion for music, and I slowly picked up volunteer shift after volunteer shift, working for several different teams over the following two years. I was hired as a DJ on the third anniversary of my first day volunteering at the ripe age of 20. I spent nearly 10 years as the host of the overnight show from Thursday night into Friday morning and am now hosting on Tuesday nights from 10 PM to 1 AM PT.
+
+In my spare time— and by "spare time," I mean full time job— I work at Sub Pop Records, working with independent record shops across the country. I am also an avid snowboarder, I enjoy traveling, and love playing basketball and Mario Kart with my friends.
+
+---
+
+## Brian Foss
+
+**Shows:** Sonic Reducer, Variety Mix, Seek & Destroy
+
+Brian bought his first album when he was 9 years old and since then he’s written for some ‘zines, ran a crappy record label in the mid 1990s, did some micro radio broadcasting & has been booking punk shows in Seattle since 1998. He also likes to pretend “Space Food Sticks” (The Food The Astronauts Eat!) is poop, but doesn’t like to talk about that too much.
+
+**Contact:** brian@kexp.org
+
+---
+
+## Brit Hansen
+
+**Shows:** Expansions
+
+Seattle's Brit Hansen has been an integral figure within the local electronic music community for the past two decades. She started making music in high school alongside Dave Pezzner as beloved duo Jacob London, together blazing a trail on funky underground dancefloors worldwide with a steady string of hotly-tipped 12” tech-house releases throughout the 2000s. While Jacob London continue to rock dancefloors today, Brit has also shifted focus over the past five years to her evolving solo works as Hanssen, steering away from club-centric creations in favor of cinematic, dreamy, synth-heavy leftfield soundscapes. Both as a producer and a DJ, Brit is inspired to take listeners on transportive sonic journeys full of weird, exciting, and unpredictable sounds. And her exclusive guest DJ mix for Midnight in a Perfect World does just that, gradually easing the listener into an absorbing and kaleidoscopic soundscape before unleashing a seamless string of hypnotic and groovy underground gems.
+
+---
+
+## Cheryl Waters
+
+**Shows:** The Midday Show
+
+Host of “The Midday Show” (Mon-Fri, 10 AM - 1 PM): Began DJing at KEXP (then KCMU) in April 1994 and still loves it as much today as I did then.
+
+**Contact:** waters@kexp.org
+
+---
+
+## Darek Mazzone
+
+My first time on the microphone was in 1987, I was covering a friend’s overnight shift at freeform radio station which happened to be just up the street from my home. I was terrified of course and mumbled my way through the vocal breaks . I had decent taste in music so the program sounded pretty good, but when I decided to play Van Halen it pissed off the eclectic listening public and I got a caller at 3:00 am telling me that i suck. I was hooked!
+
+I was born in Gdansk, Poland and spent the first 9 years of my life not knowing a word of English. Whatever I saw of Western Culture was filtered. We were told it was corrupt and bourgeois. But then there was also the thrill of hearing something verboten - my first taste of that was The Beatles, Tomorrow Never Knows. I was mesmerised. Mixed with the local sounds of the communist experiment. I was experiencing a world of music. This exposure seemed to have had a big impact on me since it's what I’m championing now on my show, Wo’Pop on KEXP.
+
+We moved to Boston when I was 9 and I had the basic immigrant experience in Boston. It was a tough town, there was racism, there were race riots and I learned how to use my voice; Boston is not a passive aggressive kind of place!
+
+My first hearing of KEXP was when it was KCMU in 1992. I had just arrived in Seattle after a long road trip from Boston and the car I was driving broke down outside of town. I found myself in the U District and Riz was on the air in the mid afternoon. I was completely blown away by the range of music I was hearing and wanted to check it out. I walked across campus to the station and in a sense, never left.
+
+When not on the air doing the World Music, Modern Global show Wo’ Pop I work in a variety of creative and technology fields. I have created videos and content as a Producer/Director for some of the biggest companies in the world where I include as much global music as possible. I’ve been DJ’ing in clubs since the 90’s and have shared the stage with too many artists to mention.
+
+Recently I’ve been working on getting indie music out of China to a broader audience through Wo’Pop and have had the pleasure of being on the nominating committee for the Indie award show in China, Abuidan, and Interviewing Polish artists at the OFF Festival in Katowice, Poland.
+
+Creating and Fostering opportunities for KEXP to grow through culture, community, and technology to become one of the most important channels for music discovery in the world.
+
+#### The Wo' Pop Video Playlist
+
+**Contact:** darek@kexp.org
+
+---
+
+## Diana Ratsamee
+
+**Diana Ratsamee** is a Lao-American musician, producer, and DJ based out of Seattle, Washington. Her passions lie in connecting people through storytelling, sound, and movement. She’s played at events and festivals throughout the Seattle underground dance scene and led experience design and programming for the Seattle Chinatown International Block Party and festivals throughout Washington.
+
+ Diana grew up between the CID and south Seattle. Her musical inspiration comes from her father, a Lao refugee who fled his home country of Laos to Seattle with dreams of becoming a musician. Navigating this new life in America, her father found refuge in music by playing in both an American and Lao rock band. Diana grew up watching her father take the stage in concert halls and small venues in the Lao community. This inspired her to explore the music and sounds that brought joy and unity to her community.
+
+ Her musical loves range from everything between disco to psychedelic Southeast Asian rock, city pop to traditional morlum music. Her musical diversity mirrors her dedication to celebrating unity and inclusivity through music.
+
+---
+
+## DJ Alex
+
+My name is Alex Ruder, simply known as DJ Alex on KEXP's airwaves. I'm a Seattle native who officially caught the radio bug while volunteering at UW’s Rainy Dawg Radio in the early 2000s, hosting two shows and serving as the station’s Electronic Music Director. I’ve been involved at KEXP since June 2005, starting out behind-the-scenes as a volunteer DJ assistant on Kevin Cole's Afternoon Show on Mondays. I started hosting on-air shows in 2008, handling a weekly overnight variety show from 2009-2017 and became part of the rotating DJ crew for KEXP’s Sunday night Electronic mix show, _Expansions_. I’m also the booker and producer for KEXP’s weekly guest DJ mix show _Midnight in a Perfect World_, a role I’ve handled since the show launched in 2015. I’ve been the host of KEXP’s Sunday morning ambient/neo-classical/bliss-out specialty show _Pacific Notions_ since its introduction to KEXP's programming at the beginning of 2019, and I’ve been working full-time at KEXP since the summer of 2023 when I was hired as KEXP’s Associate Music Director.
+
+**Contact:** alex@kexp.org
+
+---
+
+## DJ Chilly
+
+Chilly (William Myers) is a DJ, creative producer/audio editor and writer for Seattle-based radio station KEXP 90.3fm /www.kexp.org. He's the producer and host of KEXP's modern Latin mixshow "El Sonido" (Mondays 6-9pm PST), and is also a club DJ with the Seattle Latin/global bass crew ¡Manos Arriba! and an avid soul and funk vinyl collector and Polaroid photographer.
+
+Chilly has worked in radio, music business education, reporting, events, audio and DJing since moving to Seattle in the late ‘90s. Aside from passionately discovering and sharing music from Latin America and Spain, he’s also a huge hip-hop fan and classic funk and soul vinyl collector.
+
+* * *
+
+William Justin Myers, más conocido popularmente como Chilly, es el locutor de radio de programas de música de procedencia latina por excelencia. Chilly lleva años oficiando de prescriptor y personaje mediático dentro de la icónica emisora de radio de Seattle KEXP. Es el productor y presentador del programa radiofónico "El Sonido", que se emite cada lunes de 6 a 9 PM con una difusión sin parangón. También participa como DJ en la noche de música latina Manos Arriba! Desde su llegada a la capital del grunge en los 90, Chilly ha trabajado como locutor, profesor de Music Business, eventos de música en directo y solicitado DJ. Su pasión es descubrir y compartir nueva música proveniente de países latinos y divulgar este acervo cultural en Estados Unidos. ¿Un predicador fuera de su tierra? Sin duda.
+
+**Contact:** chilly@kexp.org
+
+---
+
+## DJ Jewel
+
+I grew up just a little north of KEXP in Everett where I was the quintessential band geek. I played bass clarinet in the wind ensemble, tenor saxophone in the jazz band, and was drum major of the marching band. I was never seen without my discman and I snuck it in to listen to Kid A while taking the WASL in 7th grade. In middle school, I bought a bass and learned the entirety of Pinkerton to impress a drummer I was crushing on (it didn’t work). But I did eventually use my bass playing skills to break into the local music scene, first with surf band Golden Idols, who was once described by Northwest Music Scene as “psychedelic…to an extent.” That led to me being recruited to become the bass player for The Grizzled Mighty. I also have a psychedelic dream pop project with my fiance called Frond.
+
+ When it comes to music, I’ve always been a seeker: ravenous to find novel things to listen to. Some of my favorite musical genres are modal jazz, Russian late Romantic era symphonies, afrobeat, and mid-aught’s indie sleaze. But more than anything, I love any music with a psychedelic bent to it. I love vocals dripping in reverb and so much delay on a guitar that you don’t know when one note ends and another begins. I love music that takes you on a journey inwards and leaves you on the other side as a changed person.
+
+ I’m very excited to bring a kaleidoscopic world of sound to the new psychedelic show, Astral Plane, for all my fellow KEXP lovers. I never could have imagined years ago while avoiding work at my day job by creating web scrapers to pull down all the KEXP playlist data so that I could obsessively make data dashboards of what songs and artists each of the DJs played that I would one day find myself among such great company.
+
+---
+
+## DJ Miss Ashley
+
+I've been a KEXP DJ since 2009. I've also had the opportunity to interview and host live bands in our studio and virtually, curate podcasts, write for our website, mentor our youth DJs for 90.Teen, and other fun, behind-the-scenes jobs!Discovering new music that excites me and sharing it with listeners is my favorite part of being a KEXP DJ! So, discover new music with me every Sunday, from noon to 3 PST. We'll explore a variety of genres, across generations and geographies. At 90.3fm in Seattle, kexp.org online or on the KEXP mobile app. Find me on socials: @missashleyam
+
+Here's some of my work off-air:
+
+2020 Lila Iké interview/live session
+
+2020 Sevana interview/live session
+
+2020 Top Ten albums list
+
+2020 Weekly Mix Podcast Vol. 735
+
+2020 Weekly Mix Podcast Vol. 720
+
+2019 Weekly Mix Podcast Vol. 654
+
+2019 Top Ten albums list
+
+2019 Ile interview
+
+2019 David Hinds interview
+
+2019 Marcus Gad interview
+
+2018 Top Ten albums list
+
+2018 Bad Bunny album review
+
+2018 Alex Anwandter interview
+
+2017 Jah9 interview/live session
+
+2016 La Santa Cecilia interview/live session
+
+* * *
+
+##### Made possible in part by:
+
+[](https://samaraseattle.com/)
+
+**Contact:** ashley@kexp.org
+
+---
+
+## DJ Riz
+
+**Shows:** Drive Time
+
+' i've been a dj since i was um about ten. a record player, a spindle, metal for the big records, and this circular pyramid for records with the big holes. i am from chicago, but not the chicago, you're thinking of. i live in seattle, but not the setalle you're thinking of. i like rock, hip hop, soul, gospel, funk, but not the rock, hip hop, soul, gospel, funk you're thinking of. my moms played jazz, but not the kind of jazz you're thinking of. i only remember my dad liking, miles and sinatra. but then he left.i was in a gospel group in bible college, but not the kind of bible college you're thinking of. i bought records, because nobody seemed to know how.at least not the people i lived with.i' have played music on turntable, transistor radio, teevee, 8 tracks, cassettes, reels, cd's, usb's,. i've hummed whistled, sang hooted, hooered music, but maybe not the music you're thinking of, in bedrooms ( lots of bedrooms , more bedrooms than i can remember). basements, alleys, libraries, church basements ( but prolly not the kind of churches, you're thinking of ),barns, in the woods, in the desert, on the ocean , in cities, villages, and lots and lots of clubs. for as few as 2 and as many as thousands. all my life but when my best friend john suggested that i be a dj at a radio station for a living, i told him, 'i couldn't possibly, because i didn't have the skills to do something as joyful as that.and then, maybe 2 years later ,i joined a radio station that was almost.thirty years ago.i been there since. I love to eat and to kiss. Music is not my first second, or even 3rd biggest love. When I’m down I pray. When I’m up I pray too.
+
+Words to live by:
+
+A shy ho is a broke ho.
+
+Life is sweet and then you die.
+
+The greatest of these is love!
+
+Thanks for listening and saying so,
+
+love,
+
+always,
+
+riz
+
+##### Made possible in part by:
+
+[](https://www.elysianbrewing.com/)
+
+**Contact:** riz@kexp.org
+
+---
+
+## DJ Yaddy
+
+**Shows:** Street Sounds
+
+From humble beginnings come great things, DJ Yaddy got her start to stardom long before she dropped beats on a controller. At just 11 years old Seattle Times named Yaddy the future of girls’ basketball and she went on to live up to that challenge earning a scholarship to play at Southern University, a historically black college in Baton Rouge Louisiana.
+
+On and off the court you can always catch something fire coming through her headphones and the power of good music has always been a part of DJ Yaddy’s journey. From her first childhood radio and the bloodline connection to one of the most revolutionary rap groups of the '90s the Wu-Tang Clan, music became her first love.
+
+DJ Yaddy is well known from hosting parties in the 206 since her teenage years to spinning nightclubs all over the US and landing a job at Broadway Media in Salt Lake City. She started in Security at what’s considered one of the greatest media companies in the region and worked in their Remote Technology Department before becoming a major player of their On-Air Promotions Team.
+
+DJ Yaddy is proud to contribute to KEXP's mission is to enrich lives by championing music and discovery. Spinning at community events like The SHOUT Experience and The Family Community Learning Academy lead DJ Yaddy to wear a new cape, this one reads “Teacher Yaddy.” When she’s not inspiring musical memories she’s inspiring her students in her Special Education classroom in North Seattle and they’ve finished their math and writing there’s always time for her student’s favorite part of the day “The Jam Out.”
+
+---
+
+## Dr. West
+
+DJ Mr. West has been a radio DJ since 1998. He co-created a punk show in Minneapolis on Radio K called Out of Step and later co-created KEXP's Sonic Reducer punk specialty show with Brian Foss and Nick Turner. He enjoys almost everything on the following record labels: Iron Lung; Sub Pop; Dirtnap; Dirtcult; 12XU. He loves to sell old records and get new ones at Daybreak, Singles Going Steady, Sonic Boom. He is also the drummer in a local punk band, The Botherations, whose self-titled album was called “neo-grunge" by _Maximum Rock’n'Roll_.
+
+Mr West is in the final year of his doctorate in special education, which means soon you can call him DJ Dr. West. He has a wife named Liz, a daughter named Cora, and a dog named Clyde. He is usually on between 10-11pm on Saturday nights, between Brian and Jenn. He will play as much Motorhead, Dillinger Four, Protomartyr and Total Control as he wants.
+
+**Contact:** west@kexp.org
+
+---
+
+## Emily Fox
+
+**Shows:** Sound & Vision
+
+Emily hosts and produces KEXP’s music interview show, Sound & Vision. Music and storytelling is her passion. Prior to working at KEXP Emily was a host, producer and reporter at Michigan Radio, WKAR and Seattle’s KUOW.
+
+Sound&
+
+**Contact:** Vision@kexp.org
+
+---
+
+## Eva Walker
+
+**Shows:** Early
+
+I’m**Eva Walker**. I play in the rock ‘n’ roll band The Black Tones. I was born and raised here in Seattle, Washington, in a southern family of educators and music lovers. My Louisiana-bred mother and grandparents are a big influence on my music, work ethic, and manners. From producing my first concert at 16-years-old raising money for Hurricane Katrina victims, to performing on a 5-week national tour, I'm excited to contribute my experiences and continue to live and grow this musical journey! I believe in discovering, listening, and experiencing music as much as possible. I have a big love for Seattle music — from Jimi Hendrix to Jimmy James — and am a big fan of the classics, rediscoveries, and rare recordings. It excites me to keep learning and growing with the KEXP audience!
+
+---
+
+## Evie Stokes
+
+**Shows:** Drive Time
+
+I am a Seattle native, raised by some pretty hip parents who had me listening to everything from Dead Can Dance to Queen Latifah. I’ve been furiously putting together playlists and mixtapes since I was old enough to open cassettes and record songs off the radio.
+
+ My journey with KEXP started in 2006, as a DJ assistant to Michele Myers on Friday nights, and I continued working off and on with her, and in events, on pledge drives and more for the next seven years. In 2014, I stepped behind the mic for my first show on air as a DJ and fell right in love with live radio and music curation, and the connection with listeners across the world.
+
+ These days I am your Drive Time host, every Tuesday-Friday, from 4-7 PM Pacific time. Expect to hear some of my all-time favorites in the mix, from Daft Punk to Japanese Breakfast, and Dan the Automator’s many projects. And tons of new music, too! Every time I’m on air I make it a point to dig deep for music I’ve never heard or played, to make sure I’m always finding and sharing something new.
+
+ KEXP is such a special part of our global music community – I’m honored to have the opportunity to go on air and curate your soundtrack. I also love getting to know KEXP listeners, so feel free to reach out with requests or hello’s via @djeviestokes on Instagram.
+
+ Have a music submission? Please send it to [](mailto:) or her producer, Lilly Ana Fowler at [](mailto:).
+
+* * *
+
+##### Evie's show made possible with support from:
+
+[](https://www.musicares.org/)
+
+**Contact:** evie@kexp.org
+
+---
+
+## Gabriel Lopez
+
+As a product of Oakland, the SFV, and the Mojave Desert I’m always looking for sounds that take me far but hold me close. As a teenager, I listened to everything ranging from KEXP live sessions, burned Bauhaus CDs from my art teacher, and drum and bass booming out of my tìo’s bedroom. In college, I started my musical journey at UCSC’s magical student station KZSC 88.1FM where I got to really dig into the rich history of Northern California music and tap into the Bay music scene. Once I moved back to Oakland as an adult I got heavily involved in online radio stations such as Lower Grand Radio and Hyde FM where I explore “the threads of sound” on my show Garment and the textural beauty of ambient on my show Fool’s Cavern, respectfully.
+
+When not digging through the “likes” of Mexican ambient labels or Oakland private presses I’m: getting lost in the woods, losing to child prodigies (or maybe they are just really good) onchess.com, and droning on about how cool bugs are at the show.
+
+As part of KEXP’s expansion in the Bay I hope to honor and showcase both the history and prescient newness of NorCal music. Expect to hear Berkeley new age records, Vallejo slaps, Frisco rippers, and everything in between on _Vinelands_!
+
+NorCal artists send me your music at[](mailto:)or hit my IG: @gabrielkexp
+
+**Contact:** gabrielc@kexp.org
+
+---
+
+## Goyri
+
+**Shows:** El Sonido, Vinelands
+
+**Goyri**, originally from Mexico City and now based in San Francisco, has spent over 22 years as a dedicated radio DJ, curating music that highlights diverse voices, especially within the Iberoamerican scene. With a deep passion for underground and independent sounds, Goyri has built a reputation for bringing fresh, boundary-pushing music to the airwaves. Goyri also runs Psyched! Radio SF, a platform dedicated to supporting countercultural music and independent artists.
+
+Alongside the radio work, Goyri organizes Psyched! Fest, an annual event that brings together art, music, and community. As a journalist, writer, and poet, Goyri continues to foster creativity and build connections through various forms of storytelling and expression.
+
+---
+
+## Greg Vandy
+
+##### Greg Vandy is the host of The Roadhouse and a local tastemaker for independent roots music. In addition to co-publishing American Standard Time, a blog dedicated to American music and vintage lifestyle, and curating for the Pickathon music festival, Vandy is the author of _26 Songs In 30 Days: Woody Guthrie’s Columbia River Songs_ and _The Planned Promised Land In The Pacific Northwest_ published by Sasquatch Books in 2016. He’s been a radio DJ since college, programming several shows at KUGS in Bellingham, WA as well as on-air duties at WWOZ-FM in New Orleans.
+
+**Contact:** gregvandy@kexp.org
+
+---
+
+## Greta Rose
+
+**Shows:** Variety Mix, The Afternoon Show
+
+It is important to me as a DJ to always be on the lookout for new artists of various genres and backgrounds. When curating sets of music, I love responding to events in real-time and following my intuition for spontaneous themes or timely occurrences. Building community through music is a super powerful means of connection and I am continuously blown away by the intelligence and breadth of the KEXP network. Please enjoy streaming the archives or catch me live Saturday 3-6 am PT! Follow me on Instagram for other life updates @gr3tarose.
+
+---
+
+## Hans
+
+Hans started out as a DJ assistant for the Morning Show and then had the pleasure to help out Cheryl and Kevin for a bit as well. He began filling in for overnight shows in 2010, eventually getting a regular slot Monday nights. While he misses getting hugs from Riz on a weekly basis, he is totally jazzed to bring the world great music every Wednesday night.
+
+Hans grew up in Minnesota where he was raised on amazing radio stations like KJ 104, REV 105 and Radio K. He got his start in radio in 1994 at a different 90.3 (WBCR) in Beloit, WI, where he served as DJ, Music Director, and Station Manager. He has spent the last fifteen years working in a couple of great record stores and is currently a Manager at Everyday Music in Capitol Hill. He is honored to connect people with great music there and on KEXP as well. He obsessively collects "physical media," loves every music of every kind and you might catch him filling in for the Roadhouse, Swingin' Doors or Preachin' the Blues from time to time.
+
+His top rock 'n' roll moment was being invited to dance on stage with Belle and Sebastian one Halloween while he and the love of his life were dressed as a Catastrophe Waitress and her office boy partner with a sharp suit and kipper tie.
+
+**Contact:** hans@kexp.org
+
+---
+
+## Jenn
+
+After briefly dipping my toes into the college radio arena, I was inducted into the Sonic Reducer family in 2014 after having moved here from San Jose, California. I love the music landscape in Seattle because it offers accessibility to the all-ages crowd. It is my belief you cannot have a healthy music community without diversity, and that includes the involvement of the under-21 crowd. Of course I have a huge love for punk and hardcore music, but I certainly don’t shy away from throwing in a funk or disco song – you gotta mix it up when you mix it out.
+
+**Contact:** jenng@kexp.org
+
+---
+
+## John Gilbreath
+
+**Shows:** Jazz Theatre
+
+John Gilbreath is the host of KEXP’s Jazz Theater, Sunday nights into Monday mornings, from 1am-3am. A jazz fanatic since childhood, John has a reverence for the cultural heritage of the music, with a dedication to advancing its forward progression. He is thoroughly immersed in the local and national jazz and performing arts scene as the executive director of Seattle’s respected Earshot Jazz organization. He oversees Earshot’s publication and services to the community, and has produced nearly 3,000 far-reaching concerts in the region, including Seattle’s annual Earshot Jazz Festival each fall. He actively works with regional arts organizations and national jazz consortia, hosts the weekly Caravan show on KBCS, and, in his rare spare moments, is a life-long student of stone sculpture.
+
+**Contact:** johng@kexp.org
+
+---
+
+## John Richards
+
+**Shows:** The Morning Show
+
+John Richards is the Morning Show Host and (for now) The Associate Program Director.
+
+John has been starting the day for thousands of "morning faithful" most of his adult life at the station, starting as a volunteer when the station was known as KCMU and eventually becoming the full time host and producer of The Morning Show. The show has been responsible for breaking acts like The Lumineers, The National, M83 and many others as well as being the on-air leader in fundraising over the years on KEXP. He also heads up a number of theme shows and causes on the air reminding his listeners "you are not alone".
+
+His responsibilities off air including managing the on-air sound through his DJ management of over 40 DJs. He's hired and developed a lot of the on air talent on KEXP as well as helped created a number of specialty shows. John is also responsible for a lot of the creative themes and ideas at KEXP including the all day breakdowns of albums, Six Degrees days, the Music Heals series and countless other on-the-fly themes and music sets.
+
+Off the air John DJ's and hosts events, works on music supervision for movies, television and businesses and has a number of projects in the works. His most important work is raising two boys and being married to his wife Amy.
+
+**Contact:** john@kexp.org
+
+---
+
+## Jyoti B.Fly
+
+**Shows:** Wo' Pop
+
+#### Culture is energy. Music is how we feel it.
+
+I’m **Jyoti B.Fly** (Jyoti Jani), co-host of Wo’Pop, community builder, and culture creator. I’m also a speaker, facilitator, DJ, and a passionate advocate for systems change by bridging cultures and teaching authentic self-expression, using music, creative play, and art.
+
+ Born in London to Indian immigrants from E Africa, I was immersed in Bollywood soundtracks, classical Indian music, and weekends at an Indian arts school studying Carnatic music and South Indian dance. But it was R&B, hip-hop, and pop — and later, UK house, garage, and jungle — that shaped my sound and gave me a space to explore music on my own terms.
+
+ I moved to Florida in 1999 for engineering school, fell in love with a DJ, and deepened my appreciation for broken beats and Latin-American rhythms. By 2005, Seattle became home, where I tested airplanes by day and DJ’d electronic sets by night — first on vinyl, then on-air, and in nightclubs across the city.
+
+ In 2018, I left my corporate career to focus on retreat facilitation, coaching, and cultural strategy, reimagining how creative play, leadership, and a learning culture can shape the spaces we work in for a more emotionally safe and thriving future for all. That same passion brought me back to DJing, with a new mission — to connect and bridge cultures through the arts and music.
+
+ My inspirations are ever-expanding — electronic, funk, jazz, psych, hip-hop, and global grooves — woven into sets that challenge how we hear, feel, and shape the world. My hope is that when you listen to me DJ, you are transported on a journey through moods, cultures, and rhythms in a state of flow. I also hope that you feel represented by Wo’Pop, regardless of your cultural background.
+
+ 📬 Got a world music gem? Email me at [](mailto:). Follow me on Insta&LinkedIn.
+
+**Contact:** jyoti@kexp.org
+
+---
+
+## Kelley Stoltz
+
+**Kelley Stoltz** has been a San Francisco resident since 1996. A record collector and music head since he was a kid, he is also a home recording devotee who has released 18 albums since 1999. He has been signed to record labels Sub Pop, Jack White’s Third Man Records, and John Dwyer’s Castleface. He has performed concerts around the world with his band and as a member of Echo & the Bunnymen, and as a touring musician with Robyn Hitchcock and Rodriguez. His home recording studio Electric Duck, has been a go-to spot for many Bay Area and beyond artists including The Ohsees, Sonny & the Sunsets, Sopwith Camel, The Mantles, The Fresh & Onlys, and many more. As a record clerk for 19 years at SF’s famed mom-and-pop vinyl-only shop, Grooves, Kelley has gained a lot of knowledge and joy from a wide variety of music which he intends to share on KEXP.  His long-time participation and mentorship in the Bay Area music scene will offer listeners insight into the artists, past and present who he knows, has worked with, has learned from and admires.
+
+---
+
+## Kennady Quille
+
+**Shows:** Audioasis, The Midday Show
+
+Hello! My name is Kennady! I use She/They pronouns. I take a ton of pride in having this platform and I am honored to spotlight the amazing artists in the beautiful PNW on Audioasis. I’m born and raised in the Seattle area and have been involved with local non-profits like Rain City Rock Camp since I was in high school. I got my start at KEXP through the youth DJ program 90.TEEN when I was 17 and I’ve been on air ever since! I’ve been playing guitar, singing, and performing for as long as I can remember.
+
+In my spare time, I play in a punk/Riot Grrrl band called Mold Mom, run the Riot Grrrl zine _Ra-Ra Rebel_, thrift an exorbitant amount of vintage clothes, rummage through record stores, and dance at local shows around Seattle.
+
+Feel free to send me your music, I always want to hear it! You can email me at [](mailto:) or reach me on Instagram @ALivingHumanGrrrl.
+
+**Contact:** Kennady@KEXP.org
+
+---
+
+## Kevin Cole
+
+A diverse mix of new releases, “sneak-peaks” at forthcoming releases, seminal vintage tracks, rarities, b-sides, and in-studio performances. I strive to surprise, delight, educate, and enlighten, juxtaposing seemingly incongruous styles in a way that creates context, meaning, or a good laugh. No genre or style is off limits. If it’s good, I’m gonna work it in to the mix. I aim to bring people together through the power of music, building community, not walls! A vibrant community of music lovers!
+
+**Contact:** kevin@kexp.org
+
+---
+
+## Kevin Sur
+
+My musical journey started like it did for so many, as a child obsessed with their parent’s record collection. That collection represented a wide array of magical sounds ranging from my Native Hawaiian Slack Key to Motown, Jazz, Opera, Ranchera, and Rock n’ Roll. The obsession never ended and at the age of 14, I was taken to my first punk show where I realized that music could be for everyone, not just the virtuosos. 5 years later I found myself living life in a tour van, touring the nation playing aggravated guitar music with a found family, and learning from others that the music scene was a community, not an industry.
+
+After many years of touring and then studying music composition, I made my way to Seattle because I felt it could be a place where I could be a useful part of a music community. Since coming here in 2008, I founded Artist Home, an organization driven by putting artists on a platform that haven’t’ been given one through festivals we created like Timber! Outdoor Music and Doe Bay Fest. Off the stage, we are proud to have had an open door offering free consultation services to artists needing help and have been active advocates for musicians and our music spaces.
+
+Outside of music work, I can typically be found crafting things in my woodshop, growing things in my garden or just hanging with my family (all while listening to KEXP of course).
+
+Amplifying voices of Indigenous people on KEXP is an honor I never imagined would be a reality. As a Kānaka Maoli who has spent my life separated from the place and people that I belong to, it is my hope that I can help Indigenous people feel seen, empowered and connected with others who have a shared history.
+
+[](mailto:)
+
+**Contact:** kevinsur@kexp.org
+
+---
+
+## Kid Hops
+
+Kid Hops champions reggae and electronic music on his weekly KEXP radio shows and at countless club appearances worldwide. He’s known for his kinetic deejay sets and engaging radio programs, and has had releases on Hospital Records, Ninja Tune, C.I.A., Commercial Suicide, Get Physical and others. Hear Kid Hops weekly on KEXP 90.3 FM Seattle, as he presents reggae on Positive Vibrations every Saturday morning 9am until 12 noon, and electronic dance music on Expansions, Sunday nights 9pm until 12 midnight (Pacific time). Learn more and follow Kid Hops here: www.instagram.com/kidhops206 www.twitter.com/kidhops www.facebook.com/kidhopsmusic www.soundcloud.com/kidhops www.mixcloud.com/kidhops
+
+**Contact:** kidhops@kexp.org
+
+---
+
+## Lace Cadence
+
+**Shows:** Street Sounds, The Continent, The Afternoon Show
+
+**Lace Cadence** was raised in the Central District and first immersed in the local Seattle music scene as a child during the height of grunge in the 90’s. As an emcee and vocalist, Lace made waves with his early solo career and as one-third of rap outfit Clockwork. He is one-third of the electronic R&B outfit The Flavr Blue, and has performed across the country and internationally, including Dakar, Tokyo, and Stockholm.
+
+ Known for helping to break the AfroBeats genre into the big club scene and airwaves in Seattle, Lace brings a personal passion to his shows and events.
+
+ From his staple AfroHouse at Q nightclub to the dance showcase Tune 4 Tune at Neumos, Lace represents Africa and his Senegalese heritage proudly throughout the city.
+
+ In one of the only dedicated Afrobeat shows on major public radio, _The Continent_ will showcase all that Africa has to offer musically! Tune in Fridays 7-10 PM!
+
+---
+
+## Larry Mizell, Jr.
+
+**Shows:** The Afternoon Show
+
+I'm a child of music, with a family legacy that's deep. I was born in LA, then sent to Seattle, where I've spent most of my 40sum years. I'm blessed to have gotten to live a life through music, wherever writing about it, performing it, or rolling across the country with it. It's in my blood and bones.
+
+ I'm just trying to bring some fun and flavor the best way I know how. Playing some beautiful music for the people listening. Hopefully bringing somebody a smile, a dance, a discovery.
+
+ Contextualizing, educating, exploring. Bouncing, blistering, mixing it up. Afrobeat, disco, dub, funk, JAZZ, gospel, house, noise, pop, punk, prog, post-, rock, rap, reggae, shoegaze, salsa, soul and techno. Playing and speaking from the heart.
+
+ Hopefully conveying the way that music, history, and life all converse in my head.
+
+ Afternoons, Monday through Friday.
+
+---
+
+## Larry Rose
+
+##### Larry Rose- Variety Mix, Larry’s Lounge, Tuesday Nights from 9PM-1AM
+
+ An eclectic mix of many genres - including lounge! Audio intro - Combustible Edison, “Breakfast at Denny’s” from _I, Swinger._
+
+Time at station:
+
+ Since April 1994
+
+ Credentials:
+
+ Strange and disturbing quest to find beauty in music, unique ability to correctly pronounce song titles in any language.
+
+Seattle native.
+
+ DJ at my high school radio station (Mercer Island).
+
+ Lived in the Bay area for three years.
+
+ Got my start in radio at age 10 at fictitous radio station KAT. With some gentle prodding, my cat provided the top-of-the-hour meow. Unfortunately the signal didn’t reach beyond my tape recorder.
+
+ Started at KCMU doing overnights (without my cat).
+
+ Some interviews I’ve done: Spoon, Papas Fritas, Kelly Willis, Cheri Knight.
+
+ Some introductions I’ve done: Magnetic Fields at Bumbershoot 2000, Low + Cat Power at Bumbershoot 2001, Sleater-Kinney on Pier 62/63.
+
+ Some Polaroids I’ve taken: Bonnie Prince Billy, Johnny Dowd.
+
+ Favorite musical genres: post experimental chamber pop, indie mbaqanga, downtempo yodeling.
+
+ Examples: Magnetic Fields, Serge Gainsbourg, Jim O’Rourke, Lee Hazlewood, Yo La Tengo, Jimmie Rodgers, Sparklehorse, Matthew Shipp, Low, Takako Minekawa, Tindersticks, Nina Nastasia, To Rococo Rot, Joel RL Phelps, Tom Ze, Radio Tarifa, Dark City Sisters.
+
+**Contact:** larryslounge@kexp.org
+
+---
+
+## Lisa LeClair
+
+My love of radio and music began as a child, singing wrong lyrics to Pet Shop Boys, Madonna, and Prince songs. One of my earliest favorite Christmas presents was a giant cassette deck stereo from my parents that I kept tuned to stations in Memphis, and I was four when I recorded my first ever “interview.” (It was with my two-year-old brother, who answered all my questions with a massive wad of bubblegum in his mouth) When a local radio station surprised us one morning at my library job to record a station ID, my boss immediately went looking for me to do it, and for one thrilling morning, it was my voice that told listeners to “Rise and shine, Northwest Mississippi!” on a local morning show. When it came time to graduate and pick a course of study at my local community college, I chose the Broadcasting program because all I knew was that I wanted to work at a radio station in a big city some day. In the summer of 1999, I first laid eyes on the Seattle skyline, and I knew instantly that I had found my true home. I left Mississippi a year later to make a new life here in Washington.
+
+My life here at KEXP started as a volunteer in 2015. I answered phones during a fund drive, landed a spot as the Monday morning reception volunteer at our old Dexter home, tabled at shows and festivals, interned for six months as a Morning Show producer assistant, and started DJ assisting on Thursdays for The Morning Show, which I willingly woke up for at an ungodly hour for years. My first staff position was as the weekend receptionist for our brand new Gathering Space, and I was eventually promoted to Guest Services Manager. In addition to my work here at KEXP, I co-produced a local music video series from 2011-2012, and I first started DJing in various Seattle bars with a “To The Front” night in 2018.
+
+Music is a lifelong love for me, and KEXP listener stories and interactions have ALWAYS been my favorite part of working here, so I’m thrilled and honored to be able to talk to and “see” you all in this new role!
+
+Reach Lisa at [](mailto:)
+
+**Contact:** lisa@kexp.org
+
+---
+
+## Martin Douglas
+
+**Martin Douglas**is a veteran music journalist whose work has appeared in _Pitchfork_,_Bandcamp Daily_,_MTV News_,_Seattle Weekly_, respected hip-hop blog _Passion of the Weiss_, and various other publications.Martin has been writing for KEXP since 2018, taking the site’s Pacific Northwest music column Throwaway Style to new heights, making it destination reading for music fans all over the region and beyond. His vast knowledge of music has made him a natural fit as a correspondent for Sound & Vision and the co-host of _Fresh off the Spaceship_.His written work vacillates wildly between the critical and the personal; his truly singular writing style lending insight, pathos, and wit to essays such as "Requiem for a Fake Punk," "Big in the United States," and "Who Stole the Soul from Rock 'n Roll?".
+
+[](mailto:"mailto:")
+
+**Contact:** martin@kexp.org
+
+---
+
+## Mike Ramos
+
+Mike Ramos is a born-and-raised Seattle local and lifetime music fan that was raised on a steady audial diet of Michael Jackson, Stevie Wonder, ‘90s alternative radio, and a bunch of rap and hip-hop he probably shouldn’t have been listening to at such a young age.
+
+After landing a gig as _The Stranger_’s music intern in 2011, Ramos started freelancing regularly for the local alt-weekly, and made his KEXP debut in April 2012 as a backup DJ for Sunday’s Street Sounds specialty show. He immersed himself in both pursuits/dream jobs in the following years, expanding his DJing to local clubs and KEXP’s overnight variety shows, and his writing to outlets like _The Seattle Times_, _City Arts Magazine_, Complex Media, Pigeons & Planes, and Noisey.com.
+
+Catch him on the KEXP overnight every Tuesdays 1-5 AM PT, exploring the archives and the latest and greatest in rock, rap, electronic, and everything in between.
+
+**Contact:** mramos@kexp.org
+
+---
+
+## Morgan
+
+Morgan has lived in Seattle since Y2K. She is thankful the Y2K bug wasn’t a thing because she really likes Seattle. She is originally from Rockford, Illinois - yes, home of Cheap Trick! Thank you for knowing that. She does, in fact, play Cheap Trick on her show from time to time which is on Saturdays 12-3pm PT.
+
+ Morgan has been working in radio since attending the University of Washington, as a DJ and General Manager of Rainy Dawg Radio. After graduating in 2008, she started volunteering at KEXP and was hired as a DJ in 2012. She’s been working with John in the Morning during the KEXP Fundraising Drives laughing their asses off together for many many years. She started working full time at KEXP in 2016 as DJ Manager, then Associate Programming Director, and most recently became Programming Group Director in 2022. She is so psyched to have been supporting the KEXP Programming department for the last 15 years.
+
+ Morgan has been an active member of the music community over the years, working at various Seattle institutions like The Vera Project, Easy Street Records, Light In The Attic Records, and sitting on the Board of Directors of Rain City Rock Camp. In her spare time she has one million hobbies including baking, gardening, crafting, bowling, Twin Peaks fandom, and of course listening to music. Feel free to follow along with her hobbies on Instagram @djmorganseattle.
+
+ * * *
+
+##### Made possible in part by:
+
+[](https://www.stoneburnerseattle.com/)
+
+**Contact:** morgan@kexp.org
+
+---
+
+## Noel Brass Jr.
+
+**Noel Brass Jr.** is a composer/keyboardist/educator originally from the Chicago land area, finding and sharing inspiration & appreciation of music and beyond has been a life's calling.
+
+Growing up in a musical household in the Midwest, the discovery of Jazz, Blues, R&B, and Soul was an early fundamental opening for further discovery, working in record stores and collecting records has always been a defining staple for continuing to keep an open ear and an open soul. I strongly believe in the variety of music to enrich one's own well-being and keep you connected to the community in the process. Immersed in everything from Ambient, Punk, Hip-Hop, Soul, Jazz to Cumbia, there is always room for discovery. Founding member of local Psych Jazz Trio Afrocop & member of Synth Pop project Select Level. Seattle Resident for the last 17 years, Skateboarding, the Love of Produce and Music has kept me thriving in this soulful existence.
+
+---
+
+## Prometheus Brown
+
+**Shows:** Variety Mix, Drive Time
+
+##### **Prometheus Brown** (Geo Quibuyen) is a Cali-born, Hawaii-raised, Pacific Northwest-rooted musician and writer best known for his work as the vocalist half of the Seattle duo Blue Scholars. From his time as a youth & student organizer at the University of Washington to the present, Geo has launched creative projects in various mediums and spaces: Rappers W/ Cameras (photography), Food & Sh*t (pop-up restaurant), and Hood Famous Bakeshop. He is currently releasing solo music (as Prometheus Brown) with West Coast-based collective Beatrock Music and writing his first book, Brownouts, featuring photos and essays reflecting on his journey so far.
+
+---
+
+## Reeves
+
+**Shows:** Variety Mix
+
+Hi, I'm Reeves. I’m originally from the cattle metropolis of Greeley, CO. I came to the northwest by attending college at the University of Puget Sound in Tacoma, where after humming “California Über Alles” by the Dead Kennedys in the dormitory bathroom while brushing my teeth, someone popped their head out of the dorm showers to say I should try out to be a DJ at Puget Sound’s college station KUPS, 90.1 FM. After a couple of try outs, I landed a DJ shift my sophomore year, and I’ve had the radio bug in me every since.
+
+After graduating in 2011 with a degree in history, I started out as a phone volunteer for KEXP’s 2011 Fall Drive. I then became a DJ assistant for Cheryl Waters on the Friday Midday Show in the Spring of 2012, and soon started DJ assisting for KEXP’s Metal Program Seek & Destroy with Hannah Levin and Tanner Ellison in the Summer of 2012. I was approached to audition and hired on to be a DJ in June of 2014, where I started out as a fill-in for overnights, which lead to me landing a weekly overnight shift on Monday nights into Tuesday mornings from 1 to 6 AM. Because of these wonderful people and programs, my taste ranges from the quiet strumming of Jose Gonzalez to the beautiful cacophony that is Neurosis. I'm more than happy to contribute to KEXP's airwaves with all of the music KEXP listeners enjoy.
+
+**Contact:** reeves@kexp.org
+
+---
+
+## Reverend Dollars
+
+**Reverend Dollars** aka Renee Jarreau (she/they) is a Seattle-based DJ, musician, and producer who is the founder of the Darqness Seattle Queer and Trans People of Color Arts Collective. Her work focuses on bringing together marginalized Black, Trans, and Queer communities through the mediums of music and dance, with energetic DJ sets known for house, club, and hiphop beats played at a frenetic pace.
+
+[](mailto:)
+
+**Contact:** reverenddollars@kexp.org
+
+---
+
+## Sean
+
+**Shows:** Variety Mix, Expansions
+
+"He was like a candle in the wind... unreliable."
+
+I've been with KEXP since 2012, whereupon I began an internship with the Development Department and did my best not to spill coffee on various important documents. I quickly became intoxicated by all the musical goings-on and like-minded people in and around the station and began my stint as a DJ assistant soon afterward, first on the Wednesday overnight show and then with John Richards and Cheryl Waters. Somehow I got a key to the building and never left, so it was decided (speculation on my part) it would be easier to hire me then retrieve said key. I think things worked out because I still have a key, which is cool.
+
+Prior to joining the team I lived in Canada and started to become obsessed with music volunteering at CiTR 101.9 in Vancouver at the University of British Columbia. I later fell in love with KEXP when I discovered the station studying abroad and began listening non-stop, taking in all the musical knowledge I could and generally bothering the DJs with inane requests. Then some other life stuff happened for a bit... I seem to remember a haircut or two? In any event, I'm absolutely thrilled and honoured to be part of the KEXP team and look forward to sharing lots of great music with everybody in the community! Please check me out here, send music and let's be pals.
+
+**Contact:** sean@kexp.org
+
+---
+
+## Sharlese
+
+**Shows:** Mechanical Breakdown
+
+Sharlese Metcalf began her radio career at Green River Community College in 2001 hosting their Northwest music-focused show Local Motion on KGRG. She got her Broadcasting Certificate from Green River, and has worked at Jones Radio Networks. She is a former host of Audioasis on KEXP, which she holds true PNW love, close to her heart.
+
+Sharlese got her start as a resident DJ of Seattle's goth industrial wave crew, Second Sight in 2012. Hosting shows at the iconic Electronic Tea Garden, Sharlese drew inspiration from her time there. When Second Sight disbanded, Sharlese started a party called Audiodrome at Pony, a synth / wave-focused night. Sharlese is a connoisseur of music, DJs frequently around town with secondnature, False Prophet and Audiodrome. At KEXP she is the host of Mechanical Breakdown, a rotating host on Expansions and works as the Producer of The Afternoon Show and Programming Education Manager of 90.TEEN.
+
+**Contact:** sharlese@kexp.org
+
+---
+
+## Stas THEE Boss
+
+Born on Hilltop in Tacoma, but raised in the Southend of Seattle, Stasia represents her home through and through. After learning all the lyrics to Snoop Dogg's "Gin and Juice" at the age of 8, she realized that a career in Hip-Hop was her destiny. She is formerly one half of the Psychedelic-Space-Rap-Jazz duo THEESatisfaction, with whom she produced, wrote and performed. She signed with Sub Pop Records in 2011, and released two albums. She was able to spread her love of music to many countries like France, UK, Australia, China, Portugal and Iceland. She is a member of the Black Constellation, along with Shabazz Palaces, Maikoiyo Alley-Barnes, Nicholas Galanin, Nep Sidhu and Erik Blood.
+
+She currently resides in Seattle and continues performing music as a solo artist, DJing at Havana Social Club and local parties.
+
+**Contact:** stas@kexp.org
+
+---
+
+## Tanner Ellison
+
+Tanner Ellison : Seek & Destroy, Sat. Midnight-2AM
+
+Tanner Ellison is a digital artist and musician living and working in Seattle. He has been in love with metal since he was a little grub. Tanner has played guitar and done vocals in many terrible punk and metal bands over the years and was a guest DJ for Sonic Reducer.
+
+His tastes range widely from the most awesome crescendos of epic viking power metal to the dregs of the most guttural, brutal, grind your face off death metal. When not sharpening battle axes and hanging out in spooky caves, he shreds on his beat up guitar and draws pictures of dragons and space wizards.
+
+**Contact:** tanner@kexp.org
+
+---
+
+## Tory J
+
+**Shows:** Sounds of Survivance
+
+Tory Johnston is an interdisciplinary music scholar and PhD Candidate in Native American Studies at the University of California, Davis. He is Quinault from Taholah on the Mouth of the Quinault River and has recently moved back to the Salish Sea from Ohlone territory in San Francisco. A self-taught guitarist and composer, his passion for music stems from a deep curiosity about how relationships between people, traditions, temporalities, and the more-than-human world are sounded. He loves the 5/4-time signature, pedalboard building, and most genres with a guitar in it. He also strives to bring the sounds of modern progressive metal to the Indigenous music scene. You can find him floating around open mics, seeing live local jazz, in the front row at a metal show, signing up for karaoke, buying ridiculously expensive food for his cat-companion Rikke, and/or endlessly searching for the next great cup of coffee. During the school year, he will be lecturing part-time in UW's American Indian Studies Department, and hopefully writing some riffs that are worth sharing.
+
+I am so honored to amplify Indigenous sound through the Global Indigenous Radio Show! Listen with me from 3 AM to 5 AM on Mondays to hear the density of cross-continental Indigenous music from a variety of genres. From love songs to resistance anthems to free jazz, our ancestors always hear us.
+
+---
+
+## Troy Nelson
+
+**Shows:** Live on KEXP, The Morning Show
+
+Hello everybody.
+
+I grew up in South Dakota in a small town (as they all are) called Mitchell.
+
+I moved to Orlando, FL to attend Full Sail where I received a degree in audio engineering.
+
+In 1999 I worked in NYC at the Hit Factory recording studio while interning at Matador Records.
+
+Deciding I wanted to be in a smaller city, I moved to Seattle and got an internship at Sub Pop Records.
+
+When Sub Pop decided to move locations, I got a job at Tower Records on Mercer.
+
+After a couple of years and some odd jobs later, I got a job at the Queen Anne Easy Street Records.
+
+I met overnight DJ (and Wimps member) Rachel Ratner, and she invited me to assist on her overnight shift once a week from 1 to 6am.
+
+She had seen a comedy DVD I produced with my friend Cody Hurd under the name Black Daisy, and she asked if I would record some little goofy snippets for her radio show.
+
+She started to play them and eventually she received an email from John Richards asking her if I could record some bizarre snippets for The Morning Show.
+
+I must have recorded 20 to 30 of the strangest 10 to 15 second audio clips I could think of.
+
+He started playing them over and over for weeks, which eventually led to me sitting in his office for a meeting and him inviting me to try out for my own radio show.
+
+My very first show was on Nov. 3rd 2005 from 1am to 6am.
+
+I play in a band called The Young Evils.
+
+I also play in a new band called Leathür Feathürs.
+
+Co-owner of Killroom Records.
+
+Professional chin-hair braider for Voltage Periscope.
+
+Some of my favorite albums of 2017 come from artists such as ShitKid, Cherry Glazrrr, Drab Majesty, Slowdive, Big Boi, Grandaddy, Kendrick Lamar, Timber Timbre, Roses, Sneaks, and I’m sure more to come.
+
+* * *
+
+##### Made possible in part by:
+
+[](https://www.thebehemoth.com/)
+
+**Contact:** troy@kexp.org
+
+---
+
+## Vitamin D
+
+Vitamin D has been integral in shaping the music community in the Northwest and beyond. In a 2005 article in The Stranger, Larry Mizell, Jr. wrote, “If one man was to represent Seattle in a worldwide hip hop Olympics, I can think of no better personage than producer/MC/DJ Derrick "Vitamin D" Brown.” He’s been called “the architect”, “the godfather”, and “the foundation”. He has influenced generations of musicians with his tireless commitment to his craft and his own work continues to innovate and subtly guide new disciples into brave sonic territory. Vita’s career in hip hop spans decades and he remains an active, respected participant in the music industry. He’s composed, produced, engineered and/or mixed countless classics, rocked innumerable mics, and when asked his thoughts on finessing an untold number of turntables, he once said, “I’ve given a lot of people the best night of their lives.”
+
+But Vitamin’s expertise extends far beyond hip hop, stages, and dancefloors. His passion for music was stoked much earlier by a rich upbringing entrenched in soul, funk and r&b music. During his early years, Vitamin’s father, Herman “Pops” Brown was a member of the Motown family. He is an acclaimed guitarist who performed with artists like Teena Marie, Debarge, The Sylvers, Billy Preston and Sammy Davis Jr., to name a few. Herman was also an original member of the band Ozone. His influence on his son has been profound and can be heard distinctly throughout Vita’s catalog.
+
+Vitamin’s music roots are deep and he is an expansive knowledge resource of vintage rare grooves, funk & soul classics and all things hip hop. He continues to dedicate himself to building community and to creating and sharing inspired art while encouraging others to do the same.
+
+---
