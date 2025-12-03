@@ -13,6 +13,7 @@ import time
 import logging
 from typing import Optional
 import anyio
+import asyncio
 
 from .services.search_service import FAISSSearchService
 from .services.db_service import DatabaseService
@@ -22,6 +23,10 @@ from .models import (
     EnrichmentRequest, EnrichmentResponse, BatchPlaysResponse,
     EnrichmentData, GetEnrichmentsResponse, PlayCountResponse,
     HybridSearchRequest, HybridSearchResponse, HybridPlayResult
+)
+from .models.insights import (
+    CreateInsightsRequest, InsightsResponse, GetInsightsResponse,
+    Insight, extract_referenced_mbids, generate_summary
 )
 from .config import settings
 from .routes import embeddings
@@ -40,13 +45,30 @@ logger = logging.getLogger(__name__)
 search_service: Optional[FAISSSearchService] = None
 hybrid_search_service: Optional[HybridSearchService] = None
 db_service: Optional[DatabaseService] = None
+db_service: Optional[DatabaseService] = None
 startup_time: float = 0
+persistence_task: Optional[asyncio.Task] = None
+
+async def background_persistence_loop():
+    """Background task to persist index periodically."""
+    logger.info("Starting background persistence loop")
+    while True:
+        try:
+            await asyncio.sleep(60)  # Check every minute
+            if search_service:
+                search_service.persist_if_needed()
+        except asyncio.CancelledError:
+            logger.info("Persistence loop cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Persistence loop error: {e}")
+            await asyncio.sleep(60)  # Wait before retrying
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown."""
-    global search_service, hybrid_search_service, db_service, startup_time
+    global search_service, hybrid_search_service, db_service, startup_time, persistence_task
 
     # Startup
     logger.info("Starting FAISS Search API...")
@@ -87,6 +109,9 @@ async def lifespan(app: FastAPI):
 
         logger.info("Services initialized successfully")
 
+        # Start persistence loop
+        persistence_task = asyncio.create_task(background_persistence_loop())
+
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}", exc_info=True)
         raise
@@ -94,7 +119,22 @@ async def lifespan(app: FastAPI):
     yield  # Server runs
 
     # Shutdown
+    # Shutdown
     logger.info("Shutting down...")
+    
+    # Cancel persistence loop
+    if persistence_task:
+        persistence_task.cancel()
+        try:
+            await persistence_task
+        except asyncio.CancelledError:
+            pass
+            
+    # Final persist
+    if search_service:
+        logger.info("Running final index persistence...")
+        search_service.persist_if_needed()
+
     if db_service:
         db_service.close()
 
@@ -964,6 +1004,237 @@ async def get_enrichments(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to fetch enrichments: {str(e)}"
+        )
+
+
+# =============================================================================
+# Insights API - Typed insight storage
+# =============================================================================
+
+@app.post(
+    "/api/insights",
+    response_model=InsightsResponse,
+    tags=["insights"],
+    summary="Bulk store typed insights",
+    description="""
+    Store typed insights from the Crate Research Agent.
+
+    Unlike the generic `/api/enrichments` endpoint, this validates insight
+    structure using discriminated union types (Concert, Cover, Sample, etc.)
+    and extracts referenced MBIDs for efficient entity queries.
+
+    **Insight Types:**
+    - `Concert`: Live performance mention
+    - `Cover`: Cover song reference
+    - `Sample`: Sampling relationship
+    - `PlayHistory`: Play history statistics
+    - `Connection`: Artist/label connection
+    - `Link`: External link content
+    """,
+    responses={
+        200: {"description": "Insights stored successfully"},
+        400: {"description": "Invalid insight structure"},
+        401: {"description": "Invalid API key"},
+        500: {"description": "Failed to store insights"}
+    }
+)
+async def create_insights(
+    request: CreateInsightsRequest,
+    x_api_key: str = Header(None)
+):
+    """
+    Store typed insights from agent.
+
+    Validates insight structure and extracts MBIDs for indexing.
+    """
+    global db_service
+
+    # API key check (if configured)
+    api_key = os.getenv("FAISS_API_KEY")
+    if api_key and x_api_key != api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        # Transform Pydantic models to dicts for database
+        insight_dicts = []
+        for insight in request.insights:
+            # Get the insight tag (type discriminator)
+            tag = insight.tag if hasattr(insight, 'tag') else insight.model_dump().get("_tag")
+
+            # Extract referenced MBIDs for indexing
+            ref_mbids = extract_referenced_mbids(insight)
+
+            # Generate summary
+            summary = generate_summary(insight)
+
+            # Prepare dict for database
+            insight_dict = {
+                'insight_type': tag,
+                'play_id': insight.playId,
+                'confidence': insight.confidence,
+                'source_type': insight.sourceType,
+                'source_recording_mbid': insight.sourceRecordingMbid,
+                'source_release_mbid': insight.sourceReleaseMbid,
+                'source_artist_mbids': insight.sourceArtistMbids,
+                'referenced_artist_mbid': ref_mbids.get('referenced_artist_mbid'),
+                'referenced_recording_mbid': ref_mbids.get('referenced_recording_mbid'),
+                'referenced_release_mbid': ref_mbids.get('referenced_release_mbid'),
+                'referenced_label_mbid': ref_mbids.get('referenced_label_mbid'),
+                'data': insight.model_dump(),
+                'summary': summary,
+            }
+            insight_dicts.append(insight_dict)
+
+        # Bulk insert
+        insight_ids = db_service.bulk_insert_insights(insight_dicts)
+
+        logger.info(f"Stored {len(insight_ids)} typed insights")
+        return InsightsResponse(
+            status="success",
+            count=len(insight_ids),
+            insight_ids=insight_ids
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to store insights: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to store insights: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/insights",
+    response_model=GetInsightsResponse,
+    tags=["insights"],
+    summary="Query insights",
+    description="""
+    Query typed insights with filters.
+
+    **Filters:**
+    - `play_id`: Get insights for a specific play
+    - `insight_type`: Filter by type (Concert, Cover, etc.)
+    - `artist_mbid`: Find insights referencing an artist
+    - `confidence`: Filter by confidence level
+    """,
+    responses={
+        200: {"description": "Insights retrieved successfully"},
+        500: {"description": "Failed to query insights"}
+    }
+)
+async def get_insights(
+    play_id: Optional[int] = None,
+    insight_type: Optional[str] = None,
+    artist_mbid: Optional[str] = None,
+    confidence: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    Query insights with optional filters.
+    """
+    global db_service
+
+    try:
+        result = db_service.get_insights(
+            insight_type=insight_type,
+            play_id=play_id,
+            artist_mbid=artist_mbid,
+            confidence=confidence,
+            limit=limit,
+            offset=offset
+        )
+
+        logger.info(f"Retrieved {len(result['insights'])} insights (total: {result['total']})")
+        return GetInsightsResponse(
+            insights=result['insights'],
+            total=result['total']
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to query insights: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to query insights: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/insights/plays/{play_id}",
+    tags=["insights"],
+    summary="Get insights for a play",
+    description="Get all insights for a specific play, optionally grouped by type.",
+    responses={
+        200: {"description": "Insights retrieved successfully"},
+        500: {"description": "Failed to fetch insights"}
+    }
+)
+async def get_insights_for_play(play_id: int):
+    """
+    Get all insights for a specific play.
+    """
+    global db_service
+
+    try:
+        insights = db_service.get_insights_for_play(play_id)
+
+        logger.info(f"Retrieved {len(insights)} insights for play {play_id}")
+        return {
+            "play_id": play_id,
+            "insights": insights,
+            "total": len(insights)
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get insights for play {play_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get insights: {str(e)}"
+        )
+
+
+@app.delete(
+    "/api/insights/{insight_id}",
+    tags=["insights"],
+    summary="Soft delete an insight",
+    description="Soft delete an insight (sets deleted_at timestamp).",
+    responses={
+        200: {"description": "Insight deleted successfully"},
+        404: {"description": "Insight not found"},
+        401: {"description": "Invalid API key"},
+        500: {"description": "Failed to delete insight"}
+    }
+)
+async def delete_insight(
+    insight_id: int,
+    x_api_key: str = Header(None)
+):
+    """
+    Soft delete an insight.
+    """
+    global db_service
+
+    # API key check (if configured)
+    api_key = os.getenv("FAISS_API_KEY")
+    if api_key and x_api_key != api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        deleted = db_service.soft_delete_insight(insight_id)
+
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Insight not found")
+
+        logger.info(f"Soft deleted insight {insight_id}")
+        return {"status": "deleted", "insight_id": insight_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete insight {insight_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete insight: {str(e)}"
         )
 
 

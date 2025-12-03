@@ -7,6 +7,12 @@ from typing import Optional, Dict, List, Any, Tuple
 from datetime import datetime
 import logging
 
+try:
+    import orjson
+    HAS_ORJSON = True
+except ImportError:
+    HAS_ORJSON = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,35 +100,42 @@ class DatabaseService:
         data = dict(row)
 
         # Parse labels as JSON array (stored as ["Label1", "Label2"] format)
-        if 'labels' in data and data['labels']:
+        if data.get('labels'):
             try:
-                data['labels'] = json.loads(data['labels'])
-            except json.JSONDecodeError:
+                if HAS_ORJSON:
+                    data['labels'] = orjson.loads(data['labels'])
+                else:
+                    data['labels'] = json.loads(data['labels'])
+            except (json.JSONDecodeError, ValueError):
                 data['labels'] = []
         else:
             data['labels'] = []
 
         # Parse artist_ids as JSON array and map to artist_mbid for PlayResult compatibility
-        if 'artist_ids' in data and data['artist_ids']:
+        if data.get('artist_ids'):
             try:
-                data['artist_mbid'] = json.loads(data['artist_ids'])
-            except json.JSONDecodeError:
+                if HAS_ORJSON:
+                    data['artist_mbid'] = orjson.loads(data['artist_ids'])
+                else:
+                    data['artist_mbid'] = json.loads(data['artist_ids'])
+            except (json.JSONDecodeError, ValueError):
                 data['artist_mbid'] = []
         else:
             data['artist_mbid'] = []
 
         # Map MusicBrainz ID fields to PlayResult expected names
+        # Use direct assignment for speed
         if 'recording_id' in data:
-            data['recording_mbid'] = data.get('recording_id')
+            data['recording_mbid'] = data['recording_id']
         if 'release_id' in data:
-            data['release_mbid'] = data.get('release_id')
+            data['release_mbid'] = data['release_id']
         if 'release_group_id' in data:
-            data['release_group_mbid'] = data.get('release_group_id')
+            data['release_group_mbid'] = data['release_group_id']
 
-        # Convert integer booleans
-        for bool_field in ['is_local', 'is_live', 'is_request']:
-            if bool_field in data:
-                data[bool_field] = bool(data[bool_field])
+        # Convert integer booleans - optimized
+        data['is_local'] = bool(data.get('is_local', 0))
+        data['is_request'] = bool(data.get('is_request', 0))
+        data['is_live'] = bool(data.get('is_live', 0))
 
         return data
 
@@ -821,6 +834,255 @@ class DatabaseService:
             cursor.execute("SELECT COUNT(*) FROM fact_plays")
 
         return cursor.fetchone()[0]
+
+    # =========================================================================
+    # Insights Methods (typed insight storage)
+    # =========================================================================
+
+    def bulk_insert_insights(
+        self,
+        insights: List[Dict[str, Any]]
+    ) -> List[int]:
+        """
+        Bulk insert typed insights into the insights table.
+
+        Args:
+            insights: List of insight dicts with structure:
+                - insight_type: "Concert", "Cover", etc.
+                - play_id: Source play ID
+                - confidence: "high", "medium", "low"
+                - source_type: "extraction", "database", "external"
+                - source_recording_mbid: Optional MBID
+                - source_release_mbid: Optional MBID
+                - source_artist_mbids: List of artist MBIDs
+                - referenced_*_mbid: Optional referenced MBIDs
+                - data: Full insight JSON
+                - summary: Optional generated summary
+
+        Returns:
+            List of inserted insight IDs
+        """
+        cursor = self.conn.cursor()
+        inserted_ids = []
+
+        for insight in insights:
+            # Insert into insights table
+            cursor.execute("""
+                INSERT INTO insights (
+                    insight_type,
+                    play_id,
+                    confidence,
+                    source_type,
+                    source_recording_mbid,
+                    source_release_mbid,
+                    referenced_artist_mbid,
+                    referenced_recording_mbid,
+                    referenced_release_mbid,
+                    referenced_label_mbid,
+                    data,
+                    summary,
+                    schema_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v1')
+            """, (
+                insight['insight_type'],
+                insight['play_id'],
+                insight['confidence'],
+                insight['source_type'],
+                insight.get('source_recording_mbid'),
+                insight.get('source_release_mbid'),
+                insight.get('referenced_artist_mbid'),
+                insight.get('referenced_recording_mbid'),
+                insight.get('referenced_release_mbid'),
+                insight.get('referenced_label_mbid'),
+                json.dumps(insight['data']) if isinstance(insight['data'], dict) else insight['data'],
+                insight.get('summary'),
+            ))
+            insight_id = cursor.lastrowid
+            inserted_ids.append(insight_id)
+
+            # Insert source artists into junction table
+            source_artist_mbids = insight.get('source_artist_mbids', [])
+            for artist_mbid in source_artist_mbids:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO insight_source_artists (insight_id, artist_mbid)
+                    VALUES (?, ?)
+                """, (insight_id, artist_mbid))
+
+        self.conn.commit()
+        logger.info(f"Bulk inserted {len(inserted_ids):,} insights")
+        return inserted_ids
+
+    def get_insights_for_play(
+        self,
+        play_id: int,
+        include_deleted: bool = False
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all insights for a specific play.
+
+        Args:
+            play_id: The play ID to fetch insights for
+            include_deleted: Whether to include soft-deleted insights
+
+        Returns:
+            List of insight dictionaries
+        """
+        cursor = self.conn.cursor()
+
+        query = """
+            SELECT
+                id, insight_type, play_id, confidence, source_type,
+                source_recording_mbid, source_release_mbid,
+                referenced_artist_mbid, referenced_recording_mbid,
+                referenced_release_mbid, referenced_label_mbid,
+                data, summary, created_at, updated_at
+            FROM insights
+            WHERE play_id = ?
+        """
+        if not include_deleted:
+            query += " AND deleted_at IS NULL"
+        query += " ORDER BY created_at DESC"
+
+        cursor.execute(query, (play_id,))
+        rows = cursor.fetchall()
+
+        insights = []
+        for row in rows:
+            data = json.loads(row[11]) if isinstance(row[11], str) else row[11]
+            insights.append({
+                'id': row[0],
+                'insight_type': row[1],
+                'play_id': row[2],
+                'confidence': row[3],
+                'source_type': row[4],
+                'source_recording_mbid': row[5],
+                'source_release_mbid': row[6],
+                'referenced_artist_mbid': row[7],
+                'referenced_recording_mbid': row[8],
+                'referenced_release_mbid': row[9],
+                'referenced_label_mbid': row[10],
+                'data': data,
+                'summary': row[12],
+                'created_at': row[13],
+                'updated_at': row[14],
+            })
+
+        return insights
+
+    def get_insights(
+        self,
+        insight_type: Optional[str] = None,
+        play_id: Optional[int] = None,
+        artist_mbid: Optional[str] = None,
+        confidence: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+        include_deleted: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Query insights with filters.
+
+        Args:
+            insight_type: Filter by insight type
+            play_id: Filter by source play
+            artist_mbid: Filter by referenced artist MBID
+            confidence: Filter by confidence level
+            limit: Max results to return
+            offset: Pagination offset
+            include_deleted: Whether to include soft-deleted
+
+        Returns:
+            Dict with 'insights' list and 'total' count
+        """
+        cursor = self.conn.cursor()
+
+        # Build WHERE clause
+        conditions = []
+        params = []
+
+        if not include_deleted:
+            conditions.append("deleted_at IS NULL")
+
+        if insight_type:
+            conditions.append("insight_type = ?")
+            params.append(insight_type)
+
+        if play_id:
+            conditions.append("play_id = ?")
+            params.append(play_id)
+
+        if artist_mbid:
+            conditions.append("referenced_artist_mbid = ?")
+            params.append(artist_mbid)
+
+        if confidence:
+            conditions.append("confidence = ?")
+            params.append(confidence)
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        # Get total count
+        count_query = f"SELECT COUNT(*) FROM insights WHERE {where_clause}"
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()[0]
+
+        # Get paginated results
+        query = f"""
+            SELECT
+                id, insight_type, play_id, confidence, source_type,
+                source_recording_mbid, source_release_mbid,
+                referenced_artist_mbid, referenced_recording_mbid,
+                referenced_release_mbid, referenced_label_mbid,
+                data, summary, created_at, updated_at
+            FROM insights
+            WHERE {where_clause}
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        """
+        cursor.execute(query, params + [limit, offset])
+        rows = cursor.fetchall()
+
+        insights = []
+        for row in rows:
+            data = json.loads(row[11]) if isinstance(row[11], str) else row[11]
+            insights.append({
+                'id': row[0],
+                'insight_type': row[1],
+                'play_id': row[2],
+                'confidence': row[3],
+                'source_type': row[4],
+                'source_recording_mbid': row[5],
+                'source_release_mbid': row[6],
+                'referenced_artist_mbid': row[7],
+                'referenced_recording_mbid': row[8],
+                'referenced_release_mbid': row[9],
+                'referenced_label_mbid': row[10],
+                'data': data,
+                'summary': row[12],
+                'created_at': row[13],
+                'updated_at': row[14],
+            })
+
+        return {'insights': insights, 'total': total}
+
+    def soft_delete_insight(self, insight_id: int) -> bool:
+        """
+        Soft delete an insight by setting deleted_at.
+
+        Args:
+            insight_id: ID of the insight to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE insights
+            SET deleted_at = datetime('now'), updated_at = datetime('now')
+            WHERE id = ? AND deleted_at IS NULL
+        """, (insight_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
 
     def close(self):
         """Close database connection."""

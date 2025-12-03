@@ -19,10 +19,15 @@ export class HelloWorldEnrichment extends Schema.Class<HelloWorldEnrichment>("He
 
 /**
  * Enrichment item (one play's enrichment)
+ * 
+ * The data field accepts any JSON object to support different enrichment types:
+ * - hello_world: HelloWorldEnrichment
+ * - insights: Insight objects (ConcertInsight, CoverInsight, etc.)
+ * - Future enrichment types can use any JSON structure
  */
 export class EnrichmentItem extends Schema.Class<EnrichmentItem>("EnrichmentItem")({
   play_id: Schema.Number,
-  data: HelloWorldEnrichment
+  data: Schema.Unknown // Accepts any JSON object to support multiple enrichment types
 }) {}
 
 /**
@@ -46,4 +51,61 @@ export class EnrichmentResponse extends Schema.Class<EnrichmentResponse>("Enrich
  */
 export class BatchPlaysResponse extends Schema.Class<BatchPlaysResponse>("BatchPlaysResponse")({
   plays: Schema.Array(Schema.Unknown) // Will be PlayResult, but avoid circular dep
+}) {}
+
+// =============================================================================
+// Typed Insights API Schemas
+// =============================================================================
+// These match the Python Pydantic models in faiss-search-api/app/models/insights.py
+// The actual Insight schema lives in @crate/agent/prompts/insights.ts to avoid
+// circular dependencies (agent depends on domain).
+
+/**
+ * Request to POST typed insights to /api/insights
+ *
+ * Uses Schema.Unknown for insights array because the canonical Insight schema
+ * lives in @crate/agent to avoid circular dependencies. The Python API validates
+ * the insight structure using Pydantic discriminated unions.
+ */
+export class CreateInsightsRequest extends Schema.Class<CreateInsightsRequest>("CreateInsightsRequest")({
+  insights: Schema.Array(Schema.Unknown) // Insight objects validated by Python API
+}) {}
+
+/**
+ * Response from /api/insights POST
+ */
+export class InsightsResponse extends Schema.Class<InsightsResponse>("InsightsResponse")({
+  status: Schema.String,
+  count: Schema.Number,
+  insight_ids: Schema.Array(Schema.Number)
+}) {}
+
+/**
+ * Single insight record from database (GET response)
+ */
+export class InsightRecord extends Schema.Class<InsightRecord>("InsightRecord")({
+  id: Schema.Number,
+  insight_type: Schema.String,
+  play_id: Schema.Number,
+  confidence: Schema.String,
+  source_type: Schema.String,
+  data: Schema.Unknown, // Full insight JSON
+  summary: Schema.NullOr(Schema.String),
+  created_at: Schema.String,
+  updated_at: Schema.NullOr(Schema.String),
+  // MBID fields for entity queries
+  source_recording_mbid: Schema.NullOr(Schema.String),
+  source_release_mbid: Schema.NullOr(Schema.String),
+  referenced_artist_mbid: Schema.NullOr(Schema.String),
+  referenced_recording_mbid: Schema.NullOr(Schema.String),
+  referenced_release_mbid: Schema.NullOr(Schema.String),
+  referenced_label_mbid: Schema.NullOr(Schema.String)
+}) {}
+
+/**
+ * Response from /api/insights GET
+ */
+export class GetInsightsResponse extends Schema.Class<GetInsightsResponse>("GetInsightsResponse")({
+  insights: Schema.Array(InsightRecord),
+  total: Schema.Number
 }) {}
