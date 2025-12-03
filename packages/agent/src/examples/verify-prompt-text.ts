@@ -1,5 +1,4 @@
-
-import { CratePrompt } from "../prompts/system-prompt"
+import { CratePrompt } from "../prompts/system-prompt.js";
 
 const mockContext = {
   currentTime: new Date("2023-10-27T10:00:00-07:00"),
@@ -12,7 +11,7 @@ const mockContext = {
     id: 1,
     programId: 1,
     hostIds: [1],
-    imageUri: "http://example.com/image.jpg"
+    imageUri: "http://example.com/image.jpg",
   },
   recentInsights: [],
   playData: {
@@ -26,11 +25,12 @@ const mockContext = {
     isLocal: true,
     isRequest: false,
     isLive: false,
-    comment: "Seattle's own! They are playing at the Paramount next Friday. Don't miss it."
-  }
-}
+    comment:
+      "Seattle's own! They are playing at the Paramount next Friday. Don't miss it.",
+  },
+};
 
-console.log("=== SYSTEM PROMPT ===")
-console.log(CratePrompt.buildSystemPrompt(mockContext))
-console.log("\n=== USER MESSAGE ===")
-console.log(CratePrompt.buildPlayMessage(mockContext.playData))
+console.log("=== SYSTEM PROMPT ===");
+console.log(CratePrompt.buildSystemPrompt(mockContext));
+console.log("\n=== USER MESSAGE ===");
+console.log(CratePrompt.buildPlayMessage(mockContext.playData));
