@@ -20,9 +20,9 @@ import type {
   FetchLinkParams,
   FetchLinkResponse,
   GetRecentInsightsParams,
-  GetRecentInsightsResponse,
-  PlayResult
+  GetRecentInsightsResponse
 } from "./schemas.js"
+import { transformPlayResult } from "../services/http-utils.js"
 
 import {
   SearchPlaysService,
@@ -104,31 +104,8 @@ const makeSearchPlaysHandler = (
     )
 
     // Transform timeline response to match SearchPlaysResponse schema
-    // Domain uses Date objects, tool schemas use ISO strings
-    const results: PlayResult[] = response.results.map((play) => ({
-      id: play.id,
-      artist: play.artist,
-      song: play.song,
-      similarity: play.similarity ?? 1.0, // Timeline doesn't have similarity scores
-      album: play.album,
-      // Convert Date to ISO string
-      airdate: play.airdate instanceof Date ? play.airdate.toISOString() : String(play.airdate),
-      // Convert Date | null to string | null
-      release_date: play.release_date instanceof Date ? play.release_date.toISOString() : play.release_date,
-      labels: [...play.labels],
-      rotation_status: play.rotation_status,
-      is_local: play.is_local,
-      is_live: play.is_live,
-      is_request: play.is_request,
-      comment: play.comment,
-      show: play.show,
-      image_uri: play.image_uri,
-      thumbnail_uri: play.thumbnail_uri,
-      artist_mbid: [...play.artist_mbid],
-      recording_mbid: play.recording_mbid,
-      release_mbid: play.release_mbid,
-      release_group_mbid: play.release_group_mbid
-    }))
+    // Uses shared transformPlayResult for Date -> ISO string conversion
+    const results = response.results.map((play) => transformPlayResult(play, 1.0))
 
     return {
       results,
@@ -166,29 +143,8 @@ const makeSemanticSearchHandler = (
       )
     )
 
-    // Transform to match tool schema - convert Date to string
-    const results: PlayResult[] = response.results.map((play) => ({
-      id: play.id,
-      artist: play.artist,
-      song: play.song,
-      similarity: play.similarity,
-      album: play.album,
-      airdate: play.airdate instanceof Date ? play.airdate.toISOString() : String(play.airdate),
-      release_date: play.release_date instanceof Date ? play.release_date.toISOString() : play.release_date,
-      labels: [...play.labels],
-      rotation_status: play.rotation_status,
-      is_local: play.is_local,
-      is_live: play.is_live,
-      is_request: play.is_request,
-      comment: play.comment,
-      show: play.show,
-      image_uri: play.image_uri,
-      thumbnail_uri: play.thumbnail_uri,
-      artist_mbid: [...play.artist_mbid],
-      recording_mbid: play.recording_mbid,
-      release_mbid: play.release_mbid,
-      release_group_mbid: play.release_group_mbid
-    }))
+    // Transform to match tool schema - uses shared transformPlayResult
+    const results = response.results.map((play) => transformPlayResult(play))
 
     return {
       results,
@@ -267,17 +223,8 @@ const makeGetRecentInsightsHandler = (
   params: GetRecentInsightsParams
 ): Effect.Effect<GetRecentInsightsResponse> =>
   Effect.gen(function* () {
-    const response = yield* service.getRecentInsights(params).pipe(
-      // Map service error to success with empty insights for tool robustness
-      Effect.catchAll((error) =>
-        Effect.succeed({
-          insights: [],
-          total: 0,
-          sessionId: "error",
-          _error: error.message
-        })
-      )
-    )
+    // Ref operations never fail, so no error handling needed
+    const response = yield* service.getRecentInsights(params)
 
     // Transform sessionId to session_id for schema compliance
     return {

@@ -7,20 +7,13 @@
  * @module
  */
 
-import { Context, Effect, Layer } from "effect";
-import {
-  HttpClient,
-  HttpClientRequest,
-  HttpClientResponse,
-} from "@effect/platform";
-import { NodeHttpClient } from "@effect/platform-node";
-import {
-  TimelineResponse,
-  PlayCountResponse,
-} from "@crate/domain/faiss/schemas";
-import { FaissConfig } from "../config.js";
-import { SearchPlaysError } from "./errors.js";
-import type { MbEntityType } from "../tools/schemas.js";
+import { Context, Effect, Layer } from "effect"
+import { HttpClient, HttpClientResponse, FetchHttpClient } from "@effect/platform"
+import { TimelineResponse, PlayCountResponse } from "@crate/domain/faiss/schemas"
+import { FaissConfig } from "../config.js"
+import { SearchPlaysError } from "./errors.js"
+import { makeJsonClient, buildUrlParams } from "./http-utils.js"
+import type { MbEntityType } from "../tools/schemas.js"
 
 // =============================================================================
 // Service Interface
@@ -89,49 +82,29 @@ export class SearchPlaysService extends Context.Tag("SearchPlaysService")<
 // =============================================================================
 
 /**
- * Build URL params from SearchTimelineParams, converting to snake_case
+ * Map camelCase param names to snake_case URL param names
  */
-const buildTimelineUrlParams = (
-  params: SearchTimelineParams
-): Record<string, string | number> => {
-  const urlParams: Record<string, string | number> = {};
-
-  if (params.limit !== undefined) urlParams.limit = params.limit;
-  if (params.cursor !== undefined) urlParams.cursor = params.cursor;
-  if (params.since !== undefined) urlParams.since = params.since;
-  if (params.until !== undefined) urlParams.until = params.until;
-  if (params.percentage !== undefined) urlParams.percentage = params.percentage;
-  if (params.anchorId !== undefined) urlParams.anchor_id = params.anchorId;
-  if (params.artistMbid !== undefined)
-    urlParams.artist_mbid = params.artistMbid;
-  if (params.recordingMbid !== undefined)
-    urlParams.recording_mbid = params.recordingMbid;
-  if (params.releaseMbid !== undefined)
-    urlParams.release_mbid = params.releaseMbid;
-  if (params.releaseGroupMbid !== undefined)
-    urlParams.release_group_mbid = params.releaseGroupMbid;
-
-  return urlParams;
-};
+const timelineParamKeyMap: Partial<Record<keyof SearchTimelineParams, string>> = {
+  anchorId: "anchor_id",
+  artistMbid: "artist_mbid",
+  recordingMbid: "recording_mbid",
+  releaseMbid: "release_mbid",
+  releaseGroupMbid: "release_group_mbid"
+}
 
 /**
  * Create the SearchPlaysService implementation
  */
 const makeSearchPlaysService = Effect.gen(function* () {
-  const config = yield* FaissConfig;
-
-  // Configure HTTP client with base URL
-  const client = (yield* HttpClient.HttpClient).pipe(
-    HttpClient.mapRequest(HttpClientRequest.prependUrl(config.baseUrl)),
-    HttpClient.mapRequest(HttpClientRequest.acceptJson)
-  );
+  const config = yield* FaissConfig
+  const client = yield* makeJsonClient(config.baseUrl)
 
   const timeline = (
     params: SearchTimelineParams = {}
   ): Effect.Effect<typeof TimelineResponse.Type, SearchPlaysError> =>
     client
       .get("/api/plays/timeline", {
-        urlParams: buildTimelineUrlParams(params),
+        urlParams: buildUrlParams(params, timelineParamKeyMap),
       })
       .pipe(
         Effect.flatMap(HttpClientResponse.schemaBodyJson(TimelineResponse)),
@@ -200,10 +173,11 @@ export const SearchPlaysServiceLive: Layer.Layer<
 
 /**
  * Fully composed layer with all dependencies
+ * Uses FetchHttpClient for cross-platform compatibility (Node, Bun, Browser)
  */
 export const SearchPlaysServiceFull = SearchPlaysServiceLive.pipe(
   Layer.provide(FaissConfig.Default),
-  Layer.provide(NodeHttpClient.layerUndici)
+  Layer.provide(FetchHttpClient.layer)
 );
 
 /**

@@ -8,11 +8,11 @@
  */
 
 import { Context, Effect, Layer } from "effect"
-import { HttpBody, HttpClient, HttpClientRequest, HttpClientResponse } from "@effect/platform"
-import { NodeHttpClient } from "@effect/platform-node"
+import { HttpBody, HttpClient, HttpClientResponse, FetchHttpClient } from "@effect/platform"
 import { SearchResponse } from "@crate/domain/faiss/schemas"
 import { FaissConfig } from "../config.js"
 import { SemanticSearchError } from "./errors.js"
+import { makeJsonClient } from "./http-utils.js"
 
 // =============================================================================
 // Service Interface
@@ -66,12 +66,7 @@ export class SemanticSearchService extends Context.Tag("SemanticSearchService")<
  */
 const makeSemanticSearchService = Effect.gen(function* () {
   const config = yield* FaissConfig
-
-  // Configure HTTP client with base URL
-  const client = (yield* HttpClient.HttpClient).pipe(
-    HttpClient.mapRequest(HttpClientRequest.prependUrl(config.baseUrl)),
-    HttpClient.mapRequest(HttpClientRequest.acceptJson)
-  )
+  const client = yield* makeJsonClient(config.baseUrl)
 
   const search = (
     params: SemanticSearchParams
@@ -118,12 +113,14 @@ export const SemanticSearchServiceLive: Layer.Layer<
 
 /**
  * Fully composed layer with all dependencies
+ * Uses FetchHttpClient for cross-platform compatibility (Node, Bun, Browser)
+ *
+ * Note: May fail with ConfigError if FAISS_API_URL env var is missing
  */
-export const SemanticSearchServiceFull: Layer.Layer<SemanticSearchService> =
-  SemanticSearchServiceLive.pipe(
-    Layer.provide(FaissConfig.Default),
-    Layer.provide(NodeHttpClient.layerUndici)
-  )
+export const SemanticSearchServiceFull = SemanticSearchServiceLive.pipe(
+  Layer.provide(FaissConfig.Default),
+  Layer.provide(FetchHttpClient.layer)
+)
 
 /**
  * Test layer with mock implementation

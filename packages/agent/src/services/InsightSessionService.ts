@@ -9,7 +9,6 @@
  */
 
 import { Context, Effect, Layer, Ref } from "effect"
-import { SessionError } from "./errors.js"
 import type { InsightSummary, GetRecentInsightsParams } from "../tools/schemas.js"
 
 // =============================================================================
@@ -31,24 +30,26 @@ export interface GetRecentInsightsResponse {
 
 /**
  * InsightSessionService interface
+ *
+ * Note: Ref operations never fail, so error types are removed for type safety
  */
 export interface InsightSessionServiceInterface {
   /**
    * Add an insight to the session
    */
-  readonly addInsight: (insight: InsightSummary) => Effect.Effect<void, SessionError>
+  readonly addInsight: (insight: InsightSummary) => Effect.Effect<void>
 
   /**
    * Get recent insights with optional filtering
    */
   readonly getRecentInsights: (
     params?: GetRecentInsightsParams
-  ) => Effect.Effect<GetRecentInsightsResponse, SessionError>
+  ) => Effect.Effect<GetRecentInsightsResponse>
 
   /**
    * Clear all insights from the session
    */
-  readonly clear: () => Effect.Effect<void, SessionError>
+  readonly clear: () => Effect.Effect<void>
 
   /**
    * Get the current session ID
@@ -98,81 +99,64 @@ const initialState = (): SessionState => ({
 })
 
 /**
+ * Filter insights based on optional params
+ */
+const filterInsights = (
+  insights: readonly InsightSummary[],
+  params: Partial<GetRecentInsightsParams>
+): readonly InsightSummary[] => {
+  let filtered = insights
+
+  if (params.artist_mbid) {
+    filtered = filtered.filter((insight) =>
+      insight.entity_mbids.includes(params.artist_mbid!)
+    )
+  }
+
+  if (params.entity_type) {
+    filtered = filtered.filter(
+      (insight) => insight.insight_type === params.entity_type
+    )
+  }
+
+  return filtered
+}
+
+/**
  * Create the InsightSessionService implementation
+ *
+ * Note: Ref operations never fail, so no error handling is needed
  */
 const makeInsightSessionService = Effect.gen(function* () {
-  // Create Ref for session state
   const stateRef = yield* Ref.make<SessionState>(initialState())
 
-  const addInsight = (
-    insight: InsightSummary
-  ): Effect.Effect<void, SessionError> =>
+  const addInsight = (insight: InsightSummary): Effect.Effect<void> =>
     Ref.update(stateRef, (state) => ({
       ...state,
       insights: [...state.insights, insight]
-    })).pipe(
-      Effect.mapError((error) =>
-        new SessionError({
-          message: "Failed to add insight",
-          cause: error
-        })
-      )
-    )
+    }))
 
   const getRecentInsights = (
     params: Partial<GetRecentInsightsParams> = {}
-  ): Effect.Effect<GetRecentInsightsResponse, SessionError> =>
+  ): Effect.Effect<GetRecentInsightsResponse> =>
     Ref.get(stateRef).pipe(
       Effect.map((state) => {
-        let filtered = state.insights
-
-        // Filter by artist MBID if provided
-        if (params.artist_mbid) {
-          filtered = filtered.filter((insight) =>
-            insight.entity_mbids.includes(params.artist_mbid!)
-          )
-        }
-
-        // Filter by entity type if provided
-        if (params.entity_type) {
-          filtered = filtered.filter(
-            (insight) => insight.insight_type === params.entity_type
-          )
-        }
-
-        // Get total before limiting
-        const total = filtered.length
-
-        // Apply limit (default 10)
+        const filtered = filterInsights(state.insights, params)
         const limit = params.limit ?? 10
-        const limited = filtered.slice(-limit) // Get most recent
 
         return {
-          insights: limited,
-          total,
+          insights: filtered.slice(-limit),
+          total: filtered.length,
           sessionId: state.sessionId
         }
-      }),
-      Effect.mapError((error) =>
-        new SessionError({
-          message: "Failed to get recent insights",
-          cause: error
-        })
-      )
+      })
     )
 
-  const clear = (): Effect.Effect<void, SessionError> =>
+  const clear = (): Effect.Effect<void> =>
     Ref.update(stateRef, (state) => ({
-      sessionId: state.sessionId, // Keep same session ID
+      sessionId: state.sessionId,
       insights: []
-    })).pipe(
-      Effect.mapError((error) =>
-        new SessionError({
-          message: "Failed to clear session",
-          cause: error
-        })
-      )
-    )
+    }))
 
   const getSessionId = (): Effect.Effect<string> =>
     Ref.get(stateRef).pipe(Effect.map((state) => state.sessionId))

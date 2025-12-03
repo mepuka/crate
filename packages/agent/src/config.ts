@@ -17,7 +17,7 @@
  * @module
  */
 
-import { Config, Duration, Effect, Layer, Redacted } from "effect"
+import { Config, Duration, Effect, Layer, Option, Redacted } from "effect"
 
 // =============================================================================
 // FAISS API Configuration
@@ -33,27 +33,14 @@ export interface FaissConfigShape {
 
 /**
  * FAISS API configuration service
- *
- * @example
- * ```ts
- * const program = Effect.gen(function* () {
- *   const config = yield* FaissConfig
- *   console.log(config.baseUrl) // http://localhost:8000
- * })
- * ```
  */
 export class FaissConfig extends Effect.Service<FaissConfig>()("FaissConfig", {
   effect: Effect.gen(function* () {
-    const baseUrl = yield* Config.string("FAISS_API_URL").pipe(
-      Config.withDefault("http://localhost:8000")
-    )
-    const timeoutMs = yield* Config.number("FAISS_TIMEOUT_MS").pipe(
-      Config.withDefault(30000)
-    )
-    return {
-      baseUrl,
-      timeout: Duration.millis(timeoutMs)
-    } satisfies FaissConfigShape
+    const { baseUrl, timeoutMs } = yield* Config.all({
+      baseUrl: Config.string("FAISS_API_URL").pipe(Config.withDefault("http://localhost:8000")),
+      timeoutMs: Config.number("FAISS_TIMEOUT_MS").pipe(Config.withDefault(30000))
+    })
+    return { baseUrl, timeout: Duration.millis(timeoutMs) } satisfies FaissConfigShape
   })
 }) {}
 
@@ -72,26 +59,14 @@ export interface MusicBrainzConfigShape {
 
 /**
  * MusicBrainz API configuration service
- *
- * @example
- * ```ts
- * const program = Effect.gen(function* () {
- *   const config = yield* MusicBrainzConfig
- *   console.log(config.userAgent) // "Crate/1.0 (contact@example.com)"
- * })
- * ```
  */
 export class MusicBrainzConfig extends Effect.Service<MusicBrainzConfig>()("MusicBrainzConfig", {
   effect: Effect.gen(function* () {
-    const baseUrl = yield* Config.string("MUSICBRAINZ_API_URL").pipe(
-      Config.withDefault("https://musicbrainz.org/ws/2")
-    )
-    const userAgent = yield* Config.string("MUSICBRAINZ_USER_AGENT").pipe(
-      Config.withDefault("Crate/1.0 (https://github.com/crate-music)")
-    )
-    const rateLimitMs = yield* Config.number("MUSICBRAINZ_RATE_LIMIT_MS").pipe(
-      Config.withDefault(1000)
-    )
+    const { baseUrl, userAgent, rateLimitMs } = yield* Config.all({
+      baseUrl: Config.string("MUSICBRAINZ_API_URL").pipe(Config.withDefault("https://musicbrainz.org/ws/2")),
+      userAgent: Config.string("MUSICBRAINZ_USER_AGENT").pipe(Config.withDefault("Crate/1.0 (https://github.com/crate-music)")),
+      rateLimitMs: Config.number("MUSICBRAINZ_RATE_LIMIT_MS").pipe(Config.withDefault(1000))
+    })
     return {
       baseUrl,
       userAgent,
@@ -115,31 +90,40 @@ export interface JinaConfigShape {
 
 /**
  * Jina Reader API configuration service
- *
- * @example
- * ```ts
- * const program = Effect.gen(function* () {
- *   const config = yield* JinaConfig
- *   // API key is redacted for security
- *   const key = config.apiKey ? Redacted.value(config.apiKey) : null
- * })
- * ```
  */
 export class JinaConfig extends Effect.Service<JinaConfig>()("JinaConfig", {
   effect: Effect.gen(function* () {
-    const baseUrl = yield* Config.string("JINA_READER_URL").pipe(
-      Config.withDefault("https://r.jina.ai")
-    )
-    // API key is optional - Jina has free tier
-    const apiKeyOpt = yield* Config.option(Config.redacted("JINA_API_KEY"))
-    const timeoutMs = yield* Config.number("JINA_TIMEOUT_MS").pipe(
-      Config.withDefault(60000)
-    )
+    const { baseUrl, apiKey, timeoutMs } = yield* Config.all({
+      baseUrl: Config.string("JINA_READER_URL").pipe(Config.withDefault("https://r.jina.ai")),
+      apiKey: Config.option(Config.redacted("JINA_API_KEY")),
+      timeoutMs: Config.number("JINA_TIMEOUT_MS").pipe(Config.withDefault(60000))
+    })
     return {
       baseUrl,
-      apiKey: apiKeyOpt._tag === "Some" ? apiKeyOpt.value : null,
+      apiKey: Option.getOrNull(apiKey),
       timeout: Duration.millis(timeoutMs)
     } satisfies JinaConfigShape
+  })
+}) {}
+
+// =============================================================================
+// Anthropic API Configuration
+// =============================================================================
+
+/**
+ * Configuration for Anthropic API
+ */
+export interface AnthropicConfigShape {
+  readonly apiKey: Redacted.Redacted<string>
+}
+
+/**
+ * Anthropic API configuration service
+ */
+export class AnthropicConfig extends Effect.Service<AnthropicConfig>()("AnthropicConfig", {
+  effect: Effect.gen(function* () {
+    const apiKey = yield* Config.redacted("ANTHROPIC_API_KEY")
+    return { apiKey } satisfies AnthropicConfigShape
   })
 }) {}
 
@@ -158,11 +142,13 @@ export class JinaConfig extends Effect.Service<JinaConfig>()("JinaConfig", {
  *   const faiss = yield* FaissConfig
  *   const mb = yield* MusicBrainzConfig
  *   const jina = yield* JinaConfig
+ *   const anthropic = yield* AnthropicConfig
  * }).pipe(Effect.provide(AgentConfigLive))
  * ```
  */
 export const AgentConfigLive = Layer.mergeAll(
   FaissConfig.Default,
   MusicBrainzConfig.Default,
-  JinaConfig.Default
+  JinaConfig.Default,
+  AnthropicConfig.Default
 )

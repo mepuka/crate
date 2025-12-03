@@ -117,18 +117,25 @@ export type ToolError =
   | SessionError
 
 /**
- * Type guard for ToolError
+ * Set of valid ToolError tags for O(1) lookup
  */
-export const isToolError = (error: unknown): error is ToolError => {
-  if (error === null || typeof error !== "object") return false
-  const tag = (error as { _tag?: string })._tag
-  return (
-    tag === "ApiError" ||
-    tag === "SearchPlaysError" ||
-    tag === "SemanticSearchError" ||
-    tag === "MbidResolveError" ||
-    tag === "LinkFetchError" ||
-    tag === "ValidationError" ||
-    tag === "SessionError"
-  )
-}
+const toolErrorTags = new Set([
+  "ApiError",
+  "SearchPlaysError",
+  "SemanticSearchError",
+  "MbidResolveError",
+  "LinkFetchError",
+  "ValidationError",
+  "SessionError"
+] as const)
+
+/**
+ * Type guard for ToolError
+ * Uses Set.has() for O(1) tag lookup instead of chained || comparisons
+ */
+export const isToolError = (error: unknown): error is ToolError =>
+  error !== null &&
+  typeof error === "object" &&
+  "_tag" in error &&
+  typeof (error as { _tag: unknown })._tag === "string" &&
+  toolErrorTags.has((error as { _tag: string })._tag as typeof toolErrorTags extends Set<infer T> ? T : never)
