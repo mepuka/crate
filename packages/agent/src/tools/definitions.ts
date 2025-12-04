@@ -7,7 +7,7 @@
  * @module
  */
 
-import { Tool, Toolkit } from "@effect/ai"
+import { Tool, Toolkit } from "@effect/ai";
 import {
   SearchPlaysParams,
   SearchPlaysResponse,
@@ -18,8 +18,12 @@ import {
   FetchLinkParams,
   FetchLinkResponse,
   GetRecentInsightsParams,
-  GetRecentInsightsResponse
-} from "./schemas.js"
+  GetRecentInsightsResponse,
+  GraphConnectionsParams,
+  GraphConnectionsResponse,
+  ExploreGraphParams,
+  ExploreGraphResponse,
+} from "./schemas.js";
 
 // =============================================================================
 // Tool Definitions
@@ -49,8 +53,8 @@ export const SearchPlaysTool = Tool.make("search_plays", {
 
 Returns plays with metadata including airdate, labels, and MusicBrainz IDs.`,
   parameters: SearchPlaysParams.fields,
-  success: SearchPlaysResponse
-})
+  success: SearchPlaysResponse,
+});
 
 /**
  * Semantic search for music
@@ -70,8 +74,8 @@ This is the PRIMARY tool for finding music by text. Use this when you want to:
 Returns plays ranked by semantic similarity with full metadata including MBIDs.
 Use the returned MBIDs with search_plays to get complete play history.`,
   parameters: SemanticSearchParams.fields,
-  success: SemanticSearchResponse
-})
+  success: SemanticSearchResponse,
+});
 
 /**
  * Resolve MusicBrainz IDs
@@ -92,8 +96,8 @@ Use artist_hint to disambiguate recordings/releases (e.g., "Squeeze" by "SASAMI"
 
 Returns multiple matches ranked by relevance with disambiguation info.`,
   parameters: ResolveMbidParams.fields,
-  success: ResolveMbidResponse
-})
+  success: ResolveMbidResponse,
+});
 
 /**
  * Fetch web content
@@ -113,8 +117,8 @@ Good sources: Wikipedia, Bandcamp, Discogs, Pitchfork, music publications.
 Set extract_links=true to also get links from the page for further research.
 Returns cleaned markdown text content suitable for analysis.`,
   parameters: FetchLinkParams.fields,
-  success: FetchLinkResponse
-})
+  success: FetchLinkResponse,
+});
 
 /**
  * Get recent insights from session
@@ -134,8 +138,36 @@ Use this to:
 
 Optional filters: artist_mbid, entity_type, limit`,
   parameters: GetRecentInsightsParams.fields,
-  success: GetRecentInsightsResponse
-})
+  success: GetRecentInsightsResponse,
+});
+
+/**
+ * Graph connections (remote)
+ */
+export const GraphConnectionsTool = Tool.make("graph_connections", {
+  description: `Query the music knowledge graph for connections (remote, batched).
+
+Use for:
+- Band lineup: "band_members" / "member_of"
+- Label relations: "labelmates" / "label_hierarchy"
+- Collaborations / covers / origin / recorded_at
+
+Provide MBIDs (1-50); returns typed connections with provenance.`,
+  parameters: GraphConnectionsParams.fields,
+  success: GraphConnectionsResponse,
+});
+
+/**
+ * Explore graph (local cache backed by effect/Graph)
+ */
+export const ExploreGraphTool = Tool.make("explore_graph", {
+  description: `Expand and reuse the agent's in-memory graph cache.
+
+Use after an initial graph_connections call to walk further hops without re-fetching.
+Returns a summary of new nodes/edges plus neighbors for the seeds.`,
+  parameters: ExploreGraphParams.fields,
+  success: ExploreGraphResponse,
+});
 
 // =============================================================================
 // Toolkit
@@ -151,19 +183,23 @@ export const CrateToolkit = Toolkit.make(
   SemanticSearchTool,
   ResolveMbidTool,
   FetchLinkTool,
-  GetRecentInsightsTool
-)
+  GetRecentInsightsTool,
+  GraphConnectionsTool,
+  ExploreGraphTool
+);
 
 /**
  * Type alias for the toolkit
  */
-export type CrateToolkit = typeof CrateToolkit
+export type CrateToolkit = typeof CrateToolkit;
 
 /**
  * Export individual tool types for handler implementations
  */
-export type SearchPlaysToolType = typeof SearchPlaysTool
-export type SemanticSearchToolType = typeof SemanticSearchTool
-export type ResolveMbidToolType = typeof ResolveMbidTool
-export type FetchLinkToolType = typeof FetchLinkTool
-export type GetRecentInsightsToolType = typeof GetRecentInsightsTool
+export type SearchPlaysToolType = typeof SearchPlaysTool;
+export type SemanticSearchToolType = typeof SemanticSearchTool;
+export type ResolveMbidToolType = typeof ResolveMbidTool;
+export type FetchLinkToolType = typeof FetchLinkTool;
+export type GetRecentInsightsToolType = typeof GetRecentInsightsTool;
+export type GraphConnectionsToolType = typeof GraphConnectionsTool;
+export type ExploreGraphToolType = typeof ExploreGraphTool;

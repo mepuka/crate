@@ -104,3 +104,26 @@ export {
   makeLinkFetcherServiceTestWithData,
   type LinkFetcherServiceInterface,
 } from "./LinkFetcherService.js"
+
+// Graph connections service
+export {
+  GraphConnectionsClient,
+  type GraphConnectionsClientInterface
+} from "./GraphConnectionsClient.js"
+
+export {
+  GraphConnectionsService,
+  GraphConnectionsServiceLive,
+  GraphConnectionsServiceFull,
+  type GraphConnectionsServiceInterface
+} from "./GraphConnectionsService.js"
+
+// Music graph cache
+export {
+  MusicGraphService,
+  MusicGraphServiceLive,
+  MusicGraphServiceFull,
+  type MusicGraphServiceInterface,
+  type GraphNode as MusicGraphNode,
+  type GraphEdgeData as MusicGraphEdgeData
+} from "./MusicGraphService.js"

@@ -292,3 +292,96 @@ export const GetRecentInsightsResponse = Schema.Struct({
   session_id: Schema.String
 })
 export type GetRecentInsightsResponse = typeof GetRecentInsightsResponse.Type
+
+// =============================================================================
+// Graph Connections Tool Schemas
+// =============================================================================
+
+/**
+ * Supported graph query types
+ */
+export const GraphQueryType = Schema.Literal(
+  "band_members",
+  "member_of",
+  "labelmates",
+  "label_hierarchy",
+  "covers",
+  "artist_origin",
+  "recorded_at",
+  "collaborators"
+)
+export type GraphQueryType = typeof GraphQueryType.Type
+
+/**
+ * Parameters for graph connections lookup
+ *
+ * NOTE: keep primitive optionals for JSON Schema compatibility.
+ */
+export const GraphConnectionsParams = Schema.Struct({
+  query_type: GraphQueryType.annotations({
+    description: "Type of graph query to run (e.g., band_members, labelmates)"
+  }),
+  mbids: Schema.Array(Schema.String).annotations({
+    description: "List of MusicBrainz IDs to query (1-50)"
+  }),
+  limit: Schema.optional(Schema.Number).annotations({
+    description: "Maximum connections to return (default 20, max 100)"
+  }),
+  include_attributes: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether to include edge attributes (default true)"
+  })
+})
+export type GraphConnectionsParams = typeof GraphConnectionsParams.Type
+
+/**
+ * A single connection in the graph response
+ */
+export const ConnectionNode = Schema.Struct({
+  mbid: Schema.String,
+  name: Schema.String,
+  node_type: Schema.Literal("artist", "band", "label", "recording", "work", "area", "place"),
+  relationship_type: Schema.String,
+  attributes: Schema.optional(Schema.Array(Schema.String)),
+  begin_date: Schema.optional(Schema.String),
+  end_date: Schema.optional(Schema.String),
+  via_mbid: Schema.optional(Schema.String),
+  via_name: Schema.optional(Schema.String)
+})
+export type ConnectionNode = typeof ConnectionNode.Type
+
+/**
+ * Response from graph connections API
+ */
+export const GraphConnectionsResponse = Schema.Struct({
+  query_type: GraphQueryType,
+  source_mbids: Schema.Array(Schema.String),
+  connections: Schema.Array(ConnectionNode),
+  total: Schema.Number,
+  query_time_ms: Schema.Number
+})
+export type GraphConnectionsResponse = typeof GraphConnectionsResponse.Type
+
+// =============================================================================
+// Explore Graph (local cache) Tool Schemas
+// =============================================================================
+
+export const ExploreGraphParams = Schema.Struct({
+  mbids: Schema.Array(Schema.String).annotations({
+    description: "Seed MBIDs to expand in the local graph cache"
+  }),
+  query_type: Schema.optional(GraphQueryType).annotations({
+    description: "Optional query type to use when expanding"
+  }),
+  limit: Schema.optional(Schema.Number).annotations({
+    description: "Optional limit for the remote expansion"
+  })
+})
+export type ExploreGraphParams = typeof ExploreGraphParams.Type
+
+export const ExploreGraphResponse = Schema.Struct({
+  summary: Schema.String,
+  new_nodes_count: Schema.Number,
+  new_edges_count: Schema.Number,
+  neighbors: Schema.optional(Schema.Array(ConnectionNode))
+})
+export type ExploreGraphResponse = typeof ExploreGraphResponse.Type

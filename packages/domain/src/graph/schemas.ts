@@ -287,3 +287,63 @@ export class GraphStats extends Schema.Class<GraphStats>("GraphStats")({
   artist_release_edges: Schema.Number, // via artist_credit
   release_label_edges: Schema.Number   // via label_info
 }) {}
+
+// =============================================================================
+// Graph Connections API Contract (shared with agent/tools)
+// =============================================================================
+
+/**
+ * Supported query types for graph connections
+ */
+export const GraphQueryType = Schema.Literal(
+  "band_members",
+  "member_of",
+  "labelmates",
+  "label_hierarchy",
+  "covers",
+  "artist_origin",
+  "recorded_at",
+  "collaborators"
+)
+export type GraphQueryType = typeof GraphQueryType.Type
+
+/**
+ * Request to fetch connections for one or more MBIDs
+ *
+ * Note: keep fields primitive/optional for JSON Schema compatibility in tools.
+ */
+export const GraphConnectionsRequest = Schema.Struct({
+  query_type: GraphQueryType,
+  mbids: Schema.Array(Schema.String),
+  limit: Schema.optional(Schema.Number),
+  include_attributes: Schema.optional(Schema.Boolean)
+})
+export type GraphConnectionsRequest = typeof GraphConnectionsRequest.Type
+
+/**
+ * A single connection node in the graph response
+ */
+export const ConnectionNode = Schema.Struct({
+  mbid: Schema.String,
+  name: Schema.String,
+  node_type: Schema.Literal("artist", "band", "label", "recording", "work", "area", "place"),
+  relationship_type: Schema.String,
+  attributes: Schema.optional(Schema.Array(Schema.String)),
+  begin_date: Schema.optional(Schema.String),
+  end_date: Schema.optional(Schema.String),
+  via_mbid: Schema.optional(Schema.String),
+  via_name: Schema.optional(Schema.String)
+})
+export type ConnectionNode = typeof ConnectionNode.Type
+
+/**
+ * Response payload for graph connections
+ */
+export const GraphConnectionsResponse = Schema.Struct({
+  query_type: GraphQueryType,
+  source_mbids: Schema.Array(Schema.String),
+  connections: Schema.Array(ConnectionNode),
+  total: Schema.Number,
+  query_time_ms: Schema.Number
+})
+export type GraphConnectionsResponse = typeof GraphConnectionsResponse.Type

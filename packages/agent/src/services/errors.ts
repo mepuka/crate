@@ -100,6 +100,15 @@ export class SessionError extends Data.TaggedError("SessionError")<{
   readonly cause?: unknown
 }> {}
 
+/**
+ * Error from graph connections API or graph cache operations
+ */
+export class GraphApiError extends Data.TaggedError("GraphApiError")<{
+  readonly message: string
+  readonly query?: string
+  readonly cause?: unknown
+}> {}
+
 // =============================================================================
 // Utility Types
 // =============================================================================
@@ -115,6 +124,7 @@ export type ToolError =
   | LinkFetchError
   | ValidationError
   | SessionError
+  | GraphApiError
 
 /**
  * Set of valid ToolError tags for O(1) lookup
@@ -126,7 +136,8 @@ const toolErrorTags = new Set([
   "MbidResolveError",
   "LinkFetchError",
   "ValidationError",
-  "SessionError"
+  "SessionError",
+  "GraphApiError"
 ] as const)
 
 /**

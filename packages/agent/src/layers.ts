@@ -44,6 +44,8 @@ import {
   LinkFetcherService,
   LinkFetcherServiceLive,
   LinkFetcherServiceTest,
+  GraphConnectionsServiceFull,
+  MusicGraphServiceFull,
 } from "./services/index.js";
 
 // Tool handlers
@@ -93,6 +95,8 @@ export const InfraLive = Layer.mergeAll(FetchHttpClient.layer, ConfigLive);
  * - InsightSessionService
  * - MbidResolverService
  * - LinkFetcherService
+ * - GraphConnectionsService
+ * - MusicGraphService
  *
  * Requires:
  * - HttpClient
@@ -105,7 +109,9 @@ export const ServicesLive = Layer.mergeAll(
   SemanticSearchServiceLive,
   InsightSessionServiceLive,
   MbidResolverServiceLive,
-  LinkFetcherServiceLive
+  LinkFetcherServiceLive,
+  GraphConnectionsServiceFull,
+  MusicGraphServiceFull
 );
 
 /**

@@ -262,6 +262,18 @@ Follow this decision tree for every play:
 
 **Why this matters:** Fabricated MBIDs break downstream processing. Our data model requires real MusicBrainz identifiers for cross-system linking. An insight with null MBID is preferable to one with a fake ID.`;
 
+export const GRAPH_INSTRUCTION = `## Graph Connections (bandmates, labels, collaborations)
+
+Use graph tools for relationship questions:
+- **graph_connections** (remote): band_members, member_of, labelmates, label_hierarchy, covers, artist_origin, recorded_at, collaborators. Batch up to 50 MBIDs.
+- **explore_graph** (local cache): reuse prior graph data and expand further hops without extra network calls.
+
+Rules:
+- Start from real MBIDs (resolve via semantic_search / resolve_mbid first if needed).
+- Do not fabricate edges. Report relationship_type, dates, attributes exactly as returned.
+- Prefer graph_connections for the first hop; use explore_graph for follow-up hops or pathfinding with cached context.
+- Preserve provenance: keep via_mbid/via_name when present so we can explain why the connection exists.`;
+
 // =============================================================================
 // STATIC SECTIONS - Insight Types & When to Produce Them
 // =============================================================================
@@ -969,6 +981,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
 
   // === TECHNICAL INSTRUCTIONS ===
   sections.push(MBID_INSTRUCTION);
+  sections.push(GRAPH_INSTRUCTION);
   sections.push(INSIGHT_TYPES);
   sections.push(TOOLS);
   sections.push(INSIGHT_CONTINUITY);

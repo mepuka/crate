@@ -21,6 +21,10 @@ import type {
   FetchLinkResponse,
   GetRecentInsightsParams,
   GetRecentInsightsResponse,
+  GraphConnectionsParams,
+  GraphConnectionsResponse,
+  ExploreGraphParams,
+  ExploreGraphResponse,
 } from "./schemas.js";
 import { transformPlayResult } from "../services/http-utils.js";
 
@@ -30,11 +34,15 @@ import {
   InsightSessionService,
   MbidResolverService,
   LinkFetcherService,
+  GraphConnectionsService,
+  MusicGraphService,
   type SearchPlaysServiceInterface,
   type SemanticSearchServiceInterface,
   type InsightSessionServiceInterface,
   type MbidResolverServiceInterface,
   type LinkFetcherServiceInterface,
+  type GraphConnectionsServiceInterface,
+  type MusicGraphServiceInterface,
 } from "../services/index.js";
 
 // =============================================================================
@@ -49,7 +57,9 @@ export type CrateToolServices =
   | SemanticSearchService
   | MbidResolverService
   | LinkFetcherService
-  | InsightSessionService;
+  | InsightSessionService
+  | GraphConnectionsService
+  | MusicGraphService;
 
 /**
  * Handler type extracted from CrateToolkit
@@ -330,6 +340,98 @@ const makeGetRecentInsightsHandler =
       Effect.withSpan("Tool.get_recent_insights")
     );
 
+/**
+ * Create handler for graph_connections tool (remote API)
+ */
+const makeGraphConnectionsHandler =
+  (service: GraphConnectionsServiceInterface) =>
+  (params: GraphConnectionsParams): Effect.Effect<GraphConnectionsResponse> =>
+    pipe(
+      Effect.gen(function* () {
+        yield* Effect.logDebug("Executing graph_connections tool");
+        yield* Effect.annotateCurrentSpan({
+          tool: "graph_connections",
+          query_type: params.query_type,
+          mbids: params.mbids.join(","),
+        });
+        const response = yield* service.connections(params).pipe(
+          // Map service error to success with empty results for tool robustness
+          Effect.catchAll((error) =>
+            Effect.succeed({
+              query_type: params.query_type,
+              connections: [],
+              total: 0,
+              query_time_ms: 0,
+              source_mbids: params.mbids,
+              _error: error.message,
+            })
+          )
+        );
+        yield* Effect.logDebug(
+          `graph_connections returned ${response.connections.length} connections`
+        );
+        return response;
+      }),
+      Effect.withSpan("Tool.graph_connections")
+    );
+
+/**
+ * Create handler for explore_graph tool (local cache)
+ */
+const makeExploreGraphHandler =
+  (service: MusicGraphServiceInterface) =>
+  (params: ExploreGraphParams): Effect.Effect<ExploreGraphResponse> =>
+    pipe(
+      Effect.gen(function* () {
+        yield* Effect.logDebug("Executing explore_graph tool");
+        yield* Effect.annotateCurrentSpan({
+          tool: "explore_graph",
+          query_type: params.query_type ?? "band_members",
+          mbids: params.mbids.join(","),
+        });
+
+        const result = yield* service
+          .expand({
+            query_type: params.query_type ?? "band_members",
+            mbids: params.mbids,
+            limit: params.limit,
+            include_attributes: true,
+          })
+          .pipe(
+            // Map service error to success with empty results for tool robustness
+            Effect.catchAll((error) =>
+              Effect.succeed({
+                newNodes: 0,
+                newEdges: 0,
+              })
+            )
+          );
+
+        const neighborLists = yield* Effect.forEach(
+          params.mbids,
+          (mbid) =>
+            service
+              .neighbors(mbid)
+              .pipe(Effect.catchAll(() => Effect.succeed([]))),
+          { concurrency: "unbounded" }
+        );
+        const neighbors = neighborLists.flat().map((node) => ({
+          mbid: node.mbid,
+          name: node.name,
+          node_type: node.nodeType,
+          relationship_type: "neighbor",
+        }));
+
+        return {
+          summary: `Expanded ${params.mbids.length} seed(s): +${result.newNodes} nodes, +${result.newEdges} edges`,
+          new_nodes_count: result.newNodes,
+          new_edges_count: result.newEdges,
+          neighbors,
+        } satisfies ExploreGraphResponse;
+      }),
+      Effect.withSpan("Tool.explore_graph")
+    );
+
 // =============================================================================
 // Toolkit Handler Builder
 // =============================================================================
@@ -351,6 +453,8 @@ export const makeCrateToolHandlers: Effect.Effect<
   const mbidResolverService = yield* MbidResolverService;
   const linkFetcherService = yield* LinkFetcherService;
   const insightSessionService = yield* InsightSessionService;
+  const graphConnectionsService = yield* GraphConnectionsService;
+  const musicGraphService = yield* MusicGraphService;
 
   // Build handlers that close over the services
   return CrateToolkit.of({
@@ -359,6 +463,8 @@ export const makeCrateToolHandlers: Effect.Effect<
     resolve_mbid: makeResolveMbidHandler(mbidResolverService),
     fetch_link: makeFetchLinkHandler(linkFetcherService),
     get_recent_insights: makeGetRecentInsightsHandler(insightSessionService),
+    graph_connections: makeGraphConnectionsHandler(graphConnectionsService),
+    explore_graph: makeExploreGraphHandler(musicGraphService),
   });
 });
 
@@ -404,4 +510,6 @@ export {
   makeResolveMbidHandler,
   makeFetchLinkHandler,
   makeGetRecentInsightsHandler,
+  makeGraphConnectionsHandler,
+  makeExploreGraphHandler,
 };

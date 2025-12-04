@@ -46,7 +46,20 @@ export {
   InsightSummary,
   type GetRecentInsightsParams as GetRecentInsightsParamsType,
   type GetRecentInsightsResponse as GetRecentInsightsResponseType,
-  type InsightSummary as InsightSummaryType
+  type InsightSummary as InsightSummaryType,
+  // Graph
+  GraphQueryType,
+  GraphConnectionsParams,
+  GraphConnectionsResponse,
+  ConnectionNode,
+  ExploreGraphParams,
+  ExploreGraphResponse,
+  type GraphQueryType as GraphQueryTypeValue,
+  type GraphConnectionsParams as GraphConnectionsParamsType,
+  type GraphConnectionsResponse as GraphConnectionsResponseType,
+  type ConnectionNode as ConnectionNodeType,
+  type ExploreGraphParams as ExploreGraphParamsType,
+  type ExploreGraphResponse as ExploreGraphResponseType
 } from "./schemas.js"
 
 // Tool definitions
@@ -56,13 +69,17 @@ export {
   ResolveMbidTool,
   FetchLinkTool,
   GetRecentInsightsTool,
+  GraphConnectionsTool,
+  ExploreGraphTool,
   CrateToolkit,
   type CrateToolkit as CrateToolkitType,
   type SearchPlaysToolType,
   type SemanticSearchToolType,
   type ResolveMbidToolType,
   type FetchLinkToolType,
-  type GetRecentInsightsToolType
+  type GetRecentInsightsToolType,
+  type GraphConnectionsToolType,
+  type ExploreGraphToolType
 } from "./definitions.js"
 
 // Tool handlers

@@ -134,7 +134,7 @@ const insightToSummary = (insight: Insight): InsightSummary => {
       });
       break;
     case "PlayHistory":
-      entityMbids.push(insight.entityMbid);
+      if (insight.entityMbid) entityMbids.push(insight.entityMbid);
       break;
     case "Connection":
       if (insight.fromArtist.mbid) entityMbids.push(insight.fromArtist.mbid);

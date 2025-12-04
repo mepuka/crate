@@ -10,5 +10,8 @@ export * as Events from "./events/index.js"
 // NLP
 export * as Nlp from "./nlp/index.js"
 
+// Graph schemas (relations, edges, queries)
+export * as Graph from "./graph/schemas.js"
+
 // CSV utilities (not exported by default to prevent bundling into workers)
 // Import directly from "@crate/domain/csv/parseLines" if needed
