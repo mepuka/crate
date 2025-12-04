@@ -307,6 +307,7 @@ export const GraphQueryType = Schema.Literal(
   "label_hierarchy",
   "covers",
   "artist_origin",
+  "artists_from_area",
   "recorded_at",
   "collaborators"
 )
