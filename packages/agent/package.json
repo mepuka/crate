@@ -20,7 +20,8 @@
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "check": "tsc -b tsconfig.json",
-    "dev": "bun --watch src/examples/basic.ts"
+    "dev": "bun --watch src/examples/basic.ts",
+    "smoke:graph": "bun --env-file=../../.env src/scripts/smoke-test-graph.ts"
   },
   "dependencies": {
     "@crate/api": "workspace:^",
@@ -34,6 +35,7 @@
     "effect": "^3.19.3"
   },
   "devDependencies": {
+    "tsx": "^4.21.0",
     "typescript": "^5.9.2"
   }
 }

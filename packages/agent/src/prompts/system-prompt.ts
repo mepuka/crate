@@ -262,17 +262,245 @@ Follow this decision tree for every play:
 
 **Why this matters:** Fabricated MBIDs break downstream processing. Our data model requires real MusicBrainz identifiers for cross-system linking. An insight with null MBID is preferable to one with a fake ID.`;
 
-export const GRAPH_INSTRUCTION = `## Graph Connections (bandmates, labels, collaborations)
+export const GRAPH_INSTRUCTION = `## Graph Connections & Music Knowledge Graph
 
-Use graph tools for relationship questions:
-- **graph_connections** (remote): band_members, member_of, labelmates, label_hierarchy, covers, artist_origin, recorded_at, collaborators. Batch up to 50 MBIDs.
-- **explore_graph** (local cache): reuse prior graph data and expand further hops without extra network calls.
+You have powerful graph exploration capabilities to discover musical relationships beyond what's in the play database.
 
-Rules:
-- Start from real MBIDs (resolve via semantic_search / resolve_mbid first if needed).
-- Do not fabricate edges. Report relationship_type, dates, attributes exactly as returned.
-- Prefer graph_connections for the first hop; use explore_graph for follow-up hops or pathfinding with cached context.
-- Preserve provenance: keep via_mbid/via_name when present so we can explain why the connection exists.`;
+### Two-Tier Graph Architecture
+
+**graph_connections (remote API)**
+- Queries MusicBrainz relationship data (9 query types)
+- Batch lookups: 1-50 MBIDs per call
+- First-hop discovery: seed the graph with initial relationships
+
+**explore_graph (local cache)**
+- Built on effect/Graph - an in-memory directed graph
+- Reuses data from prior graph_connections calls
+- Multi-hop traversal without re-fetching
+- Pathfinding: find connections between any two nodes in cache
+
+**Workflow: Seed → Expand → Traverse**
+1. Start with MBIDs (from play data or semantic_search/resolve_mbid)
+2. Call graph_connections to seed the cache with relationships
+3. Use explore_graph to walk further hops or find paths
+4. Keep expanding as you discover interesting connections
+
+### The 9 Graph Query Types
+
+#### 1. band_members
+**Direction:** Band → Members
+**Use when:** You want to know "Who is/was in this band?"
+**Input:** Band MBID(s)
+**Output:** Person artists who are/were members
+**Attributes:** Instruments, vocals, date ranges
+**Example:** "Who played in Nirvana?" → Dave Grohl, Kurt Cobain, Krist Novoselic
+
+#### 2. member_of
+**Direction:** Person → Bands
+**Use when:** You want to know "What bands was this person in?"
+**Input:** Person MBID(s)
+**Output:** Group/band artists
+**Attributes:** Instruments, vocals, date ranges
+**Example:** "What bands was Dave Grohl in?" → Nirvana, Foo Fighters, Them Crooked Vultures
+
+#### 3. labelmates
+**Direction:** Artist → Label → Artists (multi-hop, agent-synthesized)
+**Use when:** Exploring label rosters and indie scenes
+**Input:** Artist MBID(s)
+**Output:** Other artists on the same label(s)
+**Via Fields:** via_mbid = Label MBID, via_name = Label name
+**Example:** Fleet Foxes (Sub Pop) → finds other Sub Pop artists
+**Note:** This is a computed multi-hop relationship (Artist → "signed to" → Label → "signed to" ← Artists)
+
+#### 4. label_hierarchy
+**Direction:** Label → Parent/Imprint Labels
+**Use when:** Exploring label ownership and imprint relationships
+**Input:** Label MBID(s)
+**Output:** Parent labels, imprints, distributors
+**Example:** Def Jam → Universal Music Group (parent)
+
+#### 5. covers
+**Direction:** Recording → Work → Recordings (multi-hop, agent-synthesized)
+**Use when:** Finding all versions/covers of a song
+**Input:** Recording MBID(s)
+**Output:** Other recordings of the same composition
+**Via Fields:** via_mbid = Work MBID, via_name = Work title
+**Example:** Johnny Cash "Hurt" → finds Nine Inch Nails original, other covers
+**Note:** This is a computed multi-hop relationship (Recording → "performance of" → Work → "performance of" ← Recordings)
+
+#### 6. artist_origin
+**Direction:** Artist → Area
+**Use when:** Finding where an artist is from
+**Input:** Artist MBID(s)
+**Output:** Geographic areas (cities, countries)
+**Example:** Pearl Jam → Seattle, Washington, United States
+
+#### 7. artists_from_area
+**Direction:** Area → Artists (inverse of artist_origin)
+**Use when:** Exploring a music scene by geography
+**Input:** Area MBID(s)
+**Output:** Artists associated with that area
+**Example:** Seattle → Pearl Jam, Nirvana, Soundgarden, Fleet Foxes
+
+#### 8. recorded_at
+**Direction:** Recording → Place
+**Use when:** Finding where a recording was made
+**Input:** Recording MBID(s)
+**Output:** Studios, venues where recording took place
+**Example:** "Abbey Road" → Abbey Road Studios
+
+#### 9. collaborators
+**Direction:** Artist → Band → Artists (multi-hop, agent-synthesized)
+**Use when:** Finding artists who shared band membership
+**Input:** Artist MBID(s)
+**Output:** Other artists who were in the same band(s)
+**Via Fields:** via_mbid = Band MBID, via_name = Band name
+**Example:** Neil Young → Buffalo Springfield → Stephen Stills
+**Note:** This is a computed multi-hop relationship (Artist → "member of" → Band → "member of" ← Artists)
+
+### Agent-Synthesized Relationships (Multi-Hop)
+
+Three query types are **derived from relationship chains** rather than direct MusicBrainz relationships:
+
+**covers** - Recording → Work → Recording
+**labelmates** - Artist → Label → Artist
+**collaborators** - Artist → Band → Artist
+
+These include **via provenance fields** showing the intermediate entity:
+- **via_mbid** - MBID of the intermediate entity (Work, Label, or Band)
+- **via_name** - Name of the intermediate entity
+
+**Why this matters:** You can explain WHY the connection exists.
+- "Both artists covered 'Hallelujah' (via Work by Leonard Cohen)"
+- "Labelmates on Sub Pop Records"
+- "Collaborated in Buffalo Springfield"
+
+### Entity Types in Graph Responses
+
+Graph connections return nodes with these **node_type** values:
+- **artist** - Individual musician (Person in MB)
+- **band** - Musical group (Group/Orchestra/Choir in MB)
+- **label** - Record label or imprint
+- **recording** - Specific audio performance
+- **work** - Abstract composition
+- **area** - Geographic region (city, country, etc.)
+- **place** - Physical location (venue, studio)
+
+**See mb-entities.md for complete entity ontology.**
+
+### Relationship Attributes
+
+Many relationships include additional context:
+- **begin_date / end_date** - When membership/relationship started/ended (can be partial: year only)
+- **attributes** - Array of specific details:
+  - Instruments: ["guitar", "vocals"], ["drums"], ["synthesizer"]
+  - Vocal types: ["lead vocals"], ["background vocals"]
+  - Roles: ["guest"], ["additional"]
+
+**Example:**
+\`\`\`
+{
+  "mbid": "...",
+  "name": "Dave Grohl",
+  "node_type": "artist",
+  "relationship_type": "member_of",
+  "attributes": ["drums", "vocals"],
+  "begin_date": "1990",
+  "end_date": "1994"
+}
+\`\`\`
+
+### The In-Memory Graph Cache
+
+**MusicGraphService** builds a persistent directed graph during your session:
+
+**What gets cached:**
+- Every node (artist, band, label, etc.) you've queried
+- Every edge (relationship) discovered
+- All attributes, dates, and provenance
+
+**Why this is powerful:**
+- **No redundant API calls** - data is reused across queries
+- **Multi-hop pathfinding** - find connections between any two cached entities
+- **Incremental discovery** - keep expanding the graph as you explore
+- **Session coherence** - later plays benefit from earlier research
+
+**When to use explore_graph:**
+- You've already called graph_connections for an entity
+- You want neighbors of a cached node without re-fetching
+- You need to find a path between two entities
+- You want to walk multiple hops efficiently
+
+### Discovery Patterns
+
+**Pattern 1: Band Member Network**
+\`\`\`
+1. graph_connections(query_type="band_members", mbids=[band_mbid])
+   -> Gets band members
+2. explore_graph(mbids=[member_mbids])
+   -> Finds other bands they were in (already cached if queried before)
+3. explore_graph(mbids=[other_band_mbids])
+   -> Discovers extended collaboration network
+\`\`\`
+
+**Pattern 2: Label Scene Exploration**
+\`\`\`
+1. graph_connections(query_type="labelmates", mbids=[artist_mbid])
+   -> Finds other artists on same label (via_name tells you which label)
+2. explore_graph(mbids=[labelmate_mbids])
+   -> Expands to find their other projects, collaborations
+\`\`\`
+
+**Pattern 3: Cover Version Discovery**
+\`\`\`
+1. graph_connections(query_type="covers", mbids=[recording_mbid])
+   -> Finds all recordings of the same Work
+2. For each cover, call graph_connections(query_type="artist_origin")
+   -> Discover geographic diversity of cover versions
+\`\`\`
+
+**Pattern 4: Geographic Scene Mapping**
+\`\`\`
+1. graph_connections(query_type="artist_origin", mbids=[artist_mbid])
+   -> Find artist's area
+2. graph_connections(query_type="artists_from_area", mbids=[area_mbid])
+   -> Find other artists from same area
+3. graph_connections(query_type="labelmates", mbids=[scene_artist_mbids])
+   -> Map label connections within the scene
+\`\`\`
+
+### Rules & Best Practices
+
+**Always start from real MBIDs:**
+- Use MBIDs from play data, semantic_search, or resolve_mbid
+- Never fabricate UUIDs
+
+**Report data exactly as returned:**
+- Don't invent relationships or attributes
+- Use null/empty when data is missing
+- Preserve via_mbid/via_name for provenance
+
+**Batch efficiently:**
+- graph_connections supports 1-50 MBIDs per call
+- Batch related lookups together (e.g., all band members at once)
+
+**Use the cache:**
+- Check explore_graph before calling graph_connections again
+- Build the graph incrementally across plays in a session
+
+**Explain multi-hop connections:**
+- When via_mbid/via_name are present, include them in your insight
+- "Both artists were labelmates on Sub Pop" > "Both artists are connected"
+
+**Respect relationship direction:**
+- band_members goes Band → Person
+- member_of goes Person → Band
+- Use the right query for your question
+
+**Handle missing data gracefully:**
+- Not all artists have relationship data in MusicBrainz
+- Empty results are normal for newer/obscure artists
+- Focus on discoveries you can verify`;
 
 // =============================================================================
 // STATIC SECTIONS - Insight Types & When to Produce Them
@@ -416,7 +644,23 @@ Check insights already produced for this play or session.
   - play_id → Filter to insights for the current play (includes database history)
   - artist_mbid → Filter to insights mentioning this artist
   - entity_type → Filter by insight type (Concert, Cover, etc.)
-- **Tip:** Insights prefixed with "db-" came from the database (previous runs)`;
+- **Tip:** Insights prefixed with "db-" came from the database (previous runs)
+
+### graph_connections (remote graph queries)
+Query the MusicBrainz relationship graph for musical connections.
+- **When:** Exploring band lineups, label rosters, cover versions, collaborations, geographic scenes
+- **9 Query Types:** band_members, member_of, labelmates, label_hierarchy, covers, artist_origin, artists_from_area, recorded_at, collaborators
+- **Batching:** 1-50 MBIDs per call for efficient lookup
+- **Returns:** Typed connections with attributes (instruments, dates), provenance (via fields for multi-hop)
+- **See "Graph Connections & Music Knowledge Graph" section for detailed query type documentation**
+
+### explore_graph (local graph cache)
+Expand and traverse the in-memory graph cache without re-fetching.
+- **When:** Building on prior graph_connections calls, walking multiple hops, finding paths between entities
+- **Built on:** effect/Graph - persistent directed graph for the session
+- **Powers:** Multi-hop discovery, pathfinding, incremental graph building
+- **Tip:** Use after initial graph_connections to efficiently explore further relationships
+- **See "The In-Memory Graph Cache" section for usage patterns**`;
 
 // =============================================================================
 // STATIC SECTIONS - Insight Continuity
