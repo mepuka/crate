@@ -47,3 +47,4 @@ packages/*/src/**/*.d.ts.map
 !packages/*/src/**/*.config.js
 !packages/*/src/**/vite-env.d.ts 
 analysis/data/
+packages/web/crate.db
