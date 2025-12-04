@@ -323,6 +323,8 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                                 "semantic_search",
                                 "resolve_mbid",
                                 "fetch_link",
+                                "explore_graph",
+                                "graph_connections",
                               ],
                             }
                           : "auto",
@@ -441,6 +443,34 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             play_ids: playIds.join(","),
           });
 
+          // Seed session with recent temporal insights (what we've been producing recently)
+          // This gives the agent context about recent work across all plays
+          const recentInsights = yield* faissClient
+            .getRecentInsights(15)
+            .pipe(
+              Effect.map((response) =>
+                response.insights.map((record) =>
+                  insightRecordToSummary(record, {
+                    artist: "Unknown", // We don't have play context for these
+                    song: "Unknown",
+                  })
+                )
+              ),
+              Effect.catchAll((error) => {
+                return Effect.logWarning(
+                  `Failed to fetch recent insights: ${error.message}`
+                ).pipe(Effect.map(() => [] as InsightSummary[]));
+              }),
+              Effect.withSpan("MusicAgent.fetchRecentInsights")
+            );
+
+          if (recentInsights.length > 0) {
+            yield* insightSession.seedWithExistingInsights(recentInsights);
+            yield* Effect.logDebug(
+              `Pre-seeded session with ${recentInsights.length} recent insights for temporal context`
+            );
+          }
+
           // Fetch plays from FAISS API
           const batchResponse = yield* faissClient.getPlaysBatch(playIds).pipe(
             Effect.mapError(
@@ -471,11 +501,11 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   song: play.song ?? "Unknown",
                 });
 
-                // Clear session for this play to prevent cross-contamination
-                // Each play gets its own clean session with only its existing insights
-                yield* insightSession.clear();
+                // NOTE: We don't clear the session between plays - insights accumulate
+                // across the session so the agent can see what it produced for previous plays.
+                // This enables coherence and prevents repetition across plays.
 
-                // Pre-seed session with existing insights from database
+                // Pre-seed session with existing insights for THIS play from database
                 // This allows the agent to see its previous work and decide if new insights add value
                 const existingInsights = yield* faissClient
                   .getInsightsForPlay(play.id)

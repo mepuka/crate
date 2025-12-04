@@ -18,6 +18,13 @@ import { FaissClient, FaissClientLive } from "../FaissClient.js";
 // Get play IDs from command line or use recent plays
 const playIdsArg = process.argv[2];
 
+// Jump to percentage of timeline (0.0 = most recent, 1.0 = oldest)
+// Use JUMP=0.5 to start halfway through the timeline
+const jumpArg = process.env.JUMP ? parseFloat(process.env.JUMP) : undefined;
+
+// Limit for timeline
+const limitArg = parseInt(process.env.LIMIT || "3", 10);
+
 // Enable debug logging with DEBUG=1 env var
 const isDebug = process.env.DEBUG === "1";
 
@@ -37,12 +44,18 @@ const program = Effect.gen(function* () {
     playIds = playIdsArg.split(",").map((id) => parseInt(id.trim(), 10));
     yield* Console.log(`Using provided play IDs: ${playIds.join(", ")}`);
   } else {
-    // Fetch recent plays from timeline
-    yield* Console.log("Fetching recent plays from timeline...");
-    const timeline = yield* faissClient.timeline({ limit: 3 });
+    // Fetch plays from timeline
+    const jumpInfo = jumpArg !== undefined ? ` @ ${(jumpArg * 100).toFixed(0)}%` : "";
+    yield* Console.log(
+      `Fetching ${limitArg} plays from timeline${jumpInfo}...`
+    );
+    const timeline = yield* faissClient.timeline({
+      limit: limitArg,
+      ...(jumpArg !== undefined ? { percentage: jumpArg } : {}),
+    });
     playIds = timeline.results.map((play) => play.id);
     yield* Console.log(
-      `Got ${playIds.length} recent plays: ${playIds.join(", ")}`
+      `Got ${playIds.length} plays: ${playIds.join(", ")}`
     );
 
     // Show what we're about to enrich

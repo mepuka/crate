@@ -17,6 +17,7 @@ import {
   BatchPlaysResponse,
   EnrichmentRequest,
   EnrichmentResponse,
+  GetInsightsResponse,
   InsightsResponse,
   PlayInsightsResponse,
   PlayResult as PlayResultSchema,
@@ -225,6 +226,27 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
             (error) =>
               new FaissApiError({
                 message: `Get insights for play ${playId} failed`,
+                cause: error,
+              })
+          )
+        ),
+
+      /**
+       * GET recent insights across all plays (temporal context)
+       *
+       * Fetches the most recent N insights from the database.
+       * Used to seed session with temporal context so the agent can
+       * see what it has been producing recently.
+       */
+      getRecentInsights: (limit: number = 20) =>
+        client.get(`/api/insights?limit=${limit}`).pipe(
+          Effect.flatMap(
+            HttpClientResponse.schemaBodyJson(GetInsightsResponse)
+          ),
+          Effect.mapError(
+            (error) =>
+              new FaissApiError({
+                message: `Get recent insights failed`,
                 cause: error,
               })
           )

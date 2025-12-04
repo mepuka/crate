@@ -109,7 +109,9 @@ export type SearchPlaysParams = typeof SearchPlaysParams.Type
 export const SearchPlaysResponse = Schema.Struct({
   results: Schema.Array(PlayResultSchema),
   total: Schema.Number,
-  query_time_ms: Schema.Number
+  query_time_ms: Schema.Number,
+  /** Error message if the API call failed (empty results returned on error) */
+  _error: Schema.optional(Schema.String)
 })
 export type SearchPlaysResponse = typeof SearchPlaysResponse.Type
 
@@ -130,6 +132,10 @@ export const SemanticSearchParams = Schema.Struct({
   /** Maximum number of results to return (1-100, default 20) */
   limit: Schema.optional(Schema.Number).annotations({
     description: "Maximum number of results to return (1-100, default 20)"
+  }),
+  /** Pagination offset (default 0) */
+  offset: Schema.optional(Schema.Number).annotations({
+    description: "Pagination offset - skip this many results (default 0)"
   })
 })
 export type SemanticSearchParams = typeof SemanticSearchParams.Type
@@ -141,7 +147,9 @@ export const SemanticSearchResponse = Schema.Struct({
   results: Schema.Array(PlayResultSchema),
   total: Schema.Number,
   query_time_ms: Schema.Number,
-  query: Schema.String
+  query: Schema.String,
+  /** Error message if the API call failed (empty results returned on error) */
+  _error: Schema.optional(Schema.String)
 })
 export type SemanticSearchResponse = typeof SemanticSearchResponse.Type
 
@@ -342,11 +350,13 @@ export const ConnectionNode = Schema.Struct({
   name: Schema.String,
   node_type: Schema.Literal("artist", "band", "label", "recording", "work", "area", "place"),
   relationship_type: Schema.String,
-  attributes: Schema.optional(Schema.Array(Schema.String)),
-  begin_date: Schema.optional(Schema.String),
-  end_date: Schema.optional(Schema.String),
-  via_mbid: Schema.optional(Schema.String),
-  via_name: Schema.optional(Schema.String)
+  // These fields are nullable in the Python / FastAPI models, so we accept nulls
+  // here to keep the tool schema aligned with the shared domain contract.
+  attributes: Schema.NullOr(Schema.Array(Schema.String)),
+  begin_date: Schema.NullOr(Schema.String),
+  end_date: Schema.NullOr(Schema.String),
+  via_mbid: Schema.NullOr(Schema.String),
+  via_name: Schema.NullOr(Schema.String)
 })
 export type ConnectionNode = typeof ConnectionNode.Type
 
@@ -358,7 +368,9 @@ export const GraphConnectionsResponse = Schema.Struct({
   source_mbids: Schema.Array(Schema.String),
   connections: Schema.Array(ConnectionNode),
   total: Schema.Number,
-  query_time_ms: Schema.Number
+  query_time_ms: Schema.Number,
+  /** Error message if the API call failed (empty connections returned on error) */
+  _error: Schema.optional(Schema.String)
 })
 export type GraphConnectionsResponse = typeof GraphConnectionsResponse.Type
 
@@ -370,8 +382,8 @@ export const ExploreGraphParams = Schema.Struct({
   mbids: Schema.Array(Schema.String).annotations({
     description: "Seed MBIDs to expand in the local graph cache"
   }),
-  query_type: Schema.optional(GraphQueryType).annotations({
-    description: "Optional query type to use when expanding"
+  query_type: GraphQueryType.annotations({
+    description: "Type of graph query to use when expanding (e.g., band_members, labelmates)"
   }),
   limit: Schema.optional(Schema.Number).annotations({
     description: "Optional limit for the remote expansion"
@@ -383,6 +395,67 @@ export const ExploreGraphResponse = Schema.Struct({
   summary: Schema.String,
   new_nodes_count: Schema.Number,
   new_edges_count: Schema.Number,
-  neighbors: Schema.optional(Schema.Array(ConnectionNode))
+  neighbors: Schema.optional(Schema.Array(ConnectionNode)),
+  /** Error message if the API call failed (zero counts returned on error) */
+  _error: Schema.optional(Schema.String)
 })
 export type ExploreGraphResponse = typeof ExploreGraphResponse.Type
+
+// =============================================================================
+// Graph Path Tool Schemas
+// =============================================================================
+
+export const FindGraphPathParams = Schema.Struct({
+  from_mbid: Schema.String.annotations({
+    description: "Starting MBID for the path search"
+  }),
+  to_mbid: Schema.String.annotations({
+    description: "Target MBID to find a path to"
+  })
+})
+export type FindGraphPathParams = typeof FindGraphPathParams.Type
+
+export const FindGraphPathResponse = Schema.Struct({
+  path_found: Schema.Boolean,
+  path_length: Schema.Number,
+  path: Schema.Array(Schema.Struct({
+    mbid: Schema.String,
+    name: Schema.String,
+    node_type: Schema.String
+  }))
+})
+export type FindGraphPathResponse = typeof FindGraphPathResponse.Type
+
+// =============================================================================
+// Query Cached Neighbors Tool Schemas
+// =============================================================================
+
+export const QueryCachedNeighborsParams = Schema.Struct({
+  mbid: Schema.String.annotations({
+    description: "MBID to get cached neighbors for"
+  }),
+  include_edges: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether to include full edge data with relationship context (default true)"
+  })
+})
+export type QueryCachedNeighborsParams = typeof QueryCachedNeighborsParams.Type
+
+export const CachedNeighborNode = Schema.Struct({
+  mbid: Schema.String,
+  name: Schema.String,
+  node_type: Schema.String,
+  relationship_type: Schema.optional(Schema.String),
+  attributes: Schema.optional(Schema.Array(Schema.String)),
+  begin_date: Schema.optional(Schema.String),
+  end_date: Schema.optional(Schema.String),
+  via_mbid: Schema.optional(Schema.String),
+  via_name: Schema.optional(Schema.String)
+})
+export type CachedNeighborNode = typeof CachedNeighborNode.Type
+
+export const QueryCachedNeighborsResponse = Schema.Struct({
+  mbid: Schema.String,
+  neighbors: Schema.Array(CachedNeighborNode),
+  neighbor_count: Schema.Number
+})
+export type QueryCachedNeighborsResponse = typeof QueryCachedNeighborsResponse.Type

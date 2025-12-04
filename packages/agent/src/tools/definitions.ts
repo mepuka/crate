@@ -23,6 +23,10 @@ import {
   GraphConnectionsResponse,
   ExploreGraphParams,
   ExploreGraphResponse,
+  FindGraphPathParams,
+  FindGraphPathResponse,
+  QueryCachedNeighborsParams,
+  QueryCachedNeighborsResponse,
 } from "./schemas.js";
 
 // =============================================================================
@@ -51,7 +55,8 @@ export const SearchPlaysTool = Tool.make("search_plays", {
 1. semantic_search("Fleet Foxes") → Returns plays with MBIDs
 2. search_plays(artist_mbid="...") → Gets full play history for that artist
 
-Returns plays with metadata including airdate, labels, and MusicBrainz IDs.`,
+Returns plays with metadata including airdate, labels, and MusicBrainz IDs.
+On API error, returns empty results with _error field describing the failure.`,
   parameters: SearchPlaysParams.fields,
   success: SearchPlaysResponse,
 });
@@ -72,7 +77,9 @@ This is the PRIMARY tool for finding music by text. Use this when you want to:
 - Search by description: "Seattle indie bands from 2020"
 
 Returns plays ranked by semantic similarity with full metadata including MBIDs.
-Use the returned MBIDs with search_plays to get complete play history.`,
+Use the returned MBIDs with search_plays to get complete play history.
+Supports pagination with offset parameter for browsing large result sets.
+On API error, returns empty results with _error field describing the failure.`,
   parameters: SemanticSearchParams.fields,
   success: SemanticSearchResponse,
 });
@@ -129,10 +136,8 @@ Returns cleaned markdown text content suitable for analysis.`,
 export const GetRecentInsightsTool = Tool.make("get_recent_insights", {
   description: `Get insights you've already produced this session.
 
-⚠️ CALL THIS FIRST before producing any insights to avoid duplicates.
-
 Use this to:
-- Check if you've already covered this artist/track
+- Check if you've already covered this artist/track (avoid duplicates)
 - Build on previous findings (e.g., "earlier we noted X, now we see Y")
 - Maintain coherence across plays in the same session
 
@@ -145,28 +150,75 @@ Optional filters: artist_mbid, entity_type, limit`,
  * Graph connections (remote)
  */
 export const GraphConnectionsTool = Tool.make("graph_connections", {
-  description: `Query the music knowledge graph for connections (remote, batched).
+  description: `Query the music knowledge graph for connections (remote API call).
 
 Use for:
 - Band lineup: "band_members" / "member_of"
 - Label relations: "labelmates" / "label_hierarchy"
 - Collaborations / covers / origin / recorded_at
 
-Provide MBIDs (1-50); returns typed connections with provenance.`,
+Provide MBIDs (1-50); returns typed connections with provenance.
+
+On API error, returns empty connections array with _error field describing the failure.`,
   parameters: GraphConnectionsParams.fields,
   success: GraphConnectionsResponse,
 });
 
 /**
- * Explore graph (local cache backed by effect/Graph)
+ * Explore graph (remote-expanding, cache-accumulating)
  */
 export const ExploreGraphTool = Tool.make("explore_graph", {
-  description: `Expand and reuse the agent's in-memory graph cache.
+  description: `Expand the agent's in-memory graph cache by fetching new connections from the API.
 
-Use after an initial graph_connections call to walk further hops without re-fetching.
-Returns a summary of new nodes/edges plus neighbors for the seeds.`,
+⚠️ NOTE: This tool ALWAYS makes a remote API call, then merges results into the local cache.
+It is NOT a pure cache lookup - use query_cached_neighbors for that.
+
+Use this to incrementally build the graph:
+1. Start with graph_connections for initial seed
+2. Call explore_graph to expand from discovered MBIDs
+3. Use query_cached_neighbors to traverse without further API calls
+
+query_type is REQUIRED - specify which relationship to explore.
+
+Returns a summary of new nodes/edges added plus the fetched connections with FULL
+relationship context (relationship_type, attributes, dates, via provenance).
+
+On API error, returns empty results - check new_nodes_count=0 as potential failure signal.`,
   parameters: ExploreGraphParams.fields,
   success: ExploreGraphResponse,
+});
+
+/**
+ * Find path between two entities in the cached graph
+ */
+export const FindGraphPathTool = Tool.make("find_graph_path", {
+  description: `Find the shortest path between two entities in the cached graph.
+
+Use this AFTER explore_graph/graph_connections to discover connections:
+- "How is Thom Yorke connected to Flea?"
+- "What's the path from Radiohead to Atoms for Peace?"
+
+Returns empty path if no connection exists in the cache.
+Expand with explore_graph first if entities aren't in cache yet.`,
+  parameters: FindGraphPathParams.fields,
+  success: FindGraphPathResponse,
+});
+
+/**
+ * Query cached neighbors without remote fetch
+ */
+export const QueryCachedNeighborsTool = Tool.make("query_cached_neighbors", {
+  description: `Get neighbors for an entity from the local graph cache (no API call).
+
+Use this for fast traversal AFTER the graph has been expanded:
+- List all band members already discovered
+- Show known collaborators without re-fetching
+- Navigate the graph efficiently
+
+Returns full relationship context by default (include_edges=true).
+Returns empty array if MBID not in cache - use explore_graph first.`,
+  parameters: QueryCachedNeighborsParams.fields,
+  success: QueryCachedNeighborsResponse,
 });
 
 // =============================================================================
@@ -185,7 +237,9 @@ export const CrateToolkit = Toolkit.make(
   FetchLinkTool,
   GetRecentInsightsTool,
   GraphConnectionsTool,
-  ExploreGraphTool
+  ExploreGraphTool,
+  FindGraphPathTool,
+  QueryCachedNeighborsTool
 );
 
 /**
@@ -203,3 +257,5 @@ export type FetchLinkToolType = typeof FetchLinkTool;
 export type GetRecentInsightsToolType = typeof GetRecentInsightsTool;
 export type GraphConnectionsToolType = typeof GraphConnectionsTool;
 export type ExploreGraphToolType = typeof ExploreGraphTool;
+export type FindGraphPathToolType = typeof FindGraphPathTool;
+export type QueryCachedNeighborsToolType = typeof QueryCachedNeighborsTool;

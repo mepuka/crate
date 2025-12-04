@@ -268,22 +268,32 @@ You have powerful graph exploration capabilities to discover musical relationshi
 
 ### Two-Tier Graph Architecture
 
-**graph_connections (remote API)**
+**graph_connections (remote API, returns data)**
 - Queries MusicBrainz relationship data (9 query types)
 - Batch lookups: 1-50 MBIDs per call
-- First-hop discovery: seed the graph with initial relationships
+- Returns relationship data directly; results NOT auto-cached
 
-**explore_graph (local cache)**
-- Built on effect/Graph - an in-memory directed graph
-- Reuses data from prior graph_connections calls
-- Multi-hop traversal without re-fetching
-- Pathfinding: find connections between any two nodes in cache
+**explore_graph (remote API + cache merge)**
+- ALWAYS makes a remote API call, then merges results into the local cache
+- Use for expanding your knowledge graph outward from known entities
+- Each call grows the cache with new nodes and edges
 
-**Workflow: Seed → Expand → Traverse**
+**query_cached_neighbors (pure cache read)**
+- NO API call - reads only from local cache
+- Use for fast traversal after graph has been expanded
+- Returns empty if entity not in cache
+
+**find_graph_path (pure cache traversal)**
+- NO API call - Dijkstra's on the in-memory graph
+- Use for "How is X connected to Y?" questions
+- Requires both endpoints already in cache
+
+**Workflow: Expand → Traverse → Expand**
 1. Start with MBIDs (from play data or semantic_search/resolve_mbid)
-2. Call graph_connections to seed the cache with relationships
-3. Use explore_graph to walk further hops or find paths
-4. Keep expanding as you discover interesting connections
+2. Call explore_graph to fetch relationships AND build the cache
+3. Use query_cached_neighbors for fast lookups within the cache
+4. Use find_graph_path to discover connection chains
+5. Keep expanding as you discover interesting connections
 
 ### The 9 Graph Query Types
 
@@ -412,51 +422,84 @@ Many relationships include additional context:
 
 ### The In-Memory Graph Cache
 
-**MusicGraphService** builds a persistent directed graph during your session:
+**IMPORTANT: The graph starts fresh each invocation.** Unlike insights (which are pre-seeded
+from the database), the graph cache is empty when you begin. However:
+
+1. **Remote API is cached server-side** - graph_connections calls are cheap and fast
+2. **You should proactively pre-build the graph** from context MBIDs early in each invocation
+3. **Your local cache** then enables multi-hop traversal without repeated API calls
+
+**MusicGraphService** (built on effect/Graph) provides 4 graph operations:
+
+| Tool | Purpose | API Call? |
+|------|---------|-----------|
+| graph_connections | Seed cache from remote MB data | Yes |
+| explore_graph | Expand cache, get neighbors with edge data | Yes |
+| query_cached_neighbors | Fast local neighbor lookup | No |
+| find_graph_path | Dijkstra pathfinding in cache | No |
 
 **What gets cached:**
 - Every node (artist, band, label, etc.) you've queried
 - Every edge (relationship) discovered
-- All attributes, dates, and provenance
+- All attributes, dates, and provenance (via_mbid, via_name)
 
 **Why this is powerful:**
-- **No redundant API calls** - data is reused across queries
-- **Multi-hop pathfinding** - find connections between any two cached entities
-- **Incremental discovery** - keep expanding the graph as you explore
-- **Session coherence** - later plays benefit from earlier research
+- **Multi-hop pathfinding** - find_graph_path discovers connections between cached entities
+- **Incremental discovery** - keep expanding with explore_graph as you explore
+- **No redundant lookups** - query_cached_neighbors is instant for known entities
+- **Rich edge data** - explore_graph returns full relationship context (not just node names)
 
-**When to use explore_graph:**
-- You've already called graph_connections for an entity
-- You want neighbors of a cached node without re-fetching
-- You need to find a path between two entities
-- You want to walk multiple hops efficiently
+**Pre-building strategy:**
+When you receive a play, the context includes entity MBIDs (artist_mbid, recording_mbid, etc.).
+**Immediately seed the graph** by calling graph_connections for these entities:
+\`\`\`
+1. graph_connections(query_type="band_members", mbids=[artist_mbid])
+2. graph_connections(query_type="member_of", mbids=[artist_mbid])
+3. graph_connections(query_type="labelmates", mbids=[artist_mbid])
+\`\`\`
+This pre-populates the cache so later tools work instantly.
+
+**When to use each graph tool:**
+
+| I want to... | Use this |
+|--------------|----------|
+| Seed the graph initially | graph_connections |
+| Walk further hops, get edge data | explore_graph |
+| Check what neighbors are cached | query_cached_neighbors |
+| Find path between two entities | find_graph_path |
 
 ### Discovery Patterns
 
 **Pattern 1: Band Member Network**
 \`\`\`
 1. graph_connections(query_type="band_members", mbids=[band_mbid])
-   -> Gets band members
-2. explore_graph(mbids=[member_mbids])
-   -> Finds other bands they were in (already cached if queried before)
-3. explore_graph(mbids=[other_band_mbids])
-   -> Discovers extended collaboration network
+   -> Gets band members, caches nodes and edges
+2. explore_graph(query_type="member_of", mbids=[member_mbids])
+   -> Finds other bands they were in (returns edge data: instruments, dates)
+3. query_cached_neighbors(mbid=member_mbid)
+   -> Fast lookup of a specific member's connections
+4. find_graph_path(from_mbid=member1, to_mbid=member2)
+   -> Discover how two musicians are connected
 \`\`\`
 
 **Pattern 2: Label Scene Exploration**
 \`\`\`
 1. graph_connections(query_type="labelmates", mbids=[artist_mbid])
    -> Finds other artists on same label (via_name tells you which label)
-2. explore_graph(mbids=[labelmate_mbids])
+2. explore_graph(query_type="collaborators", mbids=[labelmate_mbids])
    -> Expands to find their other projects, collaborations
+3. find_graph_path(from_mbid=artist1, to_mbid=artist2)
+   -> Trace the connection through the label
 \`\`\`
 
 **Pattern 3: Cover Version Discovery**
 \`\`\`
 1. graph_connections(query_type="covers", mbids=[recording_mbid])
-   -> Finds all recordings of the same Work
+   -> Finds all recordings of the same Work (via_mbid = Work MBID)
 2. For each cover, call graph_connections(query_type="artist_origin")
    -> Discover geographic diversity of cover versions
+3. query_cached_neighbors(mbid=cover_artist)
+   -> Check what else is cached for that artist
 \`\`\`
 
 **Pattern 4: Geographic Scene Mapping**
@@ -465,8 +508,23 @@ Many relationships include additional context:
    -> Find artist's area
 2. graph_connections(query_type="artists_from_area", mbids=[area_mbid])
    -> Find other artists from same area
-3. graph_connections(query_type="labelmates", mbids=[scene_artist_mbids])
+3. explore_graph(query_type="labelmates", mbids=[scene_artist_mbids])
    -> Map label connections within the scene
+4. find_graph_path(from=local_artist1, to=local_artist2)
+   -> Trace scene connections
+\`\`\`
+
+**Pattern 5: "How Are They Connected?" Query**
+\`\`\`
+1. Pre-seed both artists:
+   graph_connections(query_type="band_members", mbids=[artist1, artist2])
+   graph_connections(query_type="labelmates", mbids=[artist1, artist2])
+   graph_connections(query_type="collaborators", mbids=[artist1, artist2])
+2. find_graph_path(from_mbid=artist1, to_mbid=artist2)
+   -> Returns path if connected in cache
+3. If no path, expand further:
+   explore_graph(query_type="member_of", mbids=[artist1, artist2])
+4. Try find_graph_path again
 \`\`\`
 
 ### Rules & Best Practices
@@ -486,7 +544,8 @@ Many relationships include additional context:
 
 **Use the cache:**
 - Check explore_graph before calling graph_connections again
-- Build the graph incrementally across plays in a session
+- Pre-build the graph early in each invocation from context MBIDs
+- Remote API is cached, so repeated queries across invocations are fast
 
 **Explain multi-hop connections:**
 - When via_mbid/via_name are present, include them in your insight
@@ -605,15 +664,17 @@ Every insight must set \`sourceType\` based on where the primary evidence came f
 
 export const TOOLS = `## Tools
 
-You have access to these tools. Use them to research before producing insights.
+You have 9 tools for research. Use them to gather evidence before producing insights.
 
-### semantic_search (PRIMARY for text queries)
+---
+
+### 1. semantic_search (PRIMARY for text queries)
 Search KEXP plays using natural language text.
 - **When:** Finding plays by artist name, track title, mood, or description
 - **Returns:** Plays ranked by semantic similarity with MBIDs
 - **Tip:** Use this first to get MBIDs, then use search_plays for detailed history
 
-### search_plays (for MBID-based filtering)
+### 2. search_plays (for MBID-based filtering)
 Browse KEXP play timeline filtered by MusicBrainz IDs.
 - **When:** You have an MBID and want full play history or date filtering
 - **Filters available:**
@@ -625,19 +686,19 @@ Browse KEXP play timeline filtered by MusicBrainz IDs.
 - **⚠️ No text search!** Use semantic_search for text queries first
 - **⚠️ No label filtering!** Label MBIDs can be resolved but not used to filter searches
 
-### resolve_mbid
+### 3. resolve_mbid
 Get canonical MusicBrainz ID for an entity mentioned in DJ comments.
 - **When:** You see an artist, recording, release, or label name that needs identification
 - **entity_type must be:** artist, recording, release, release_group, or label
 - **Tip:** Use artist_hint to disambiguate recordings (e.g., "Squeeze" by "SASAMI")
 - **Note:** Label MBIDs can be resolved for reference but search_plays cannot filter by label
 
-### fetch_link
+### 4. fetch_link
 Fetch and summarize web content.
 - **When:** DJ comment contains a URL you want to analyze
 - **Tip:** Good for Bandcamp, Wikipedia, reviews, interviews
 
-### get_recent_insights
+### 5. get_recent_insights
 Check insights already produced for this play or session.
 - **When:** Before producing ANY insight - to review existing work
 - **Filters available:**
@@ -646,21 +707,70 @@ Check insights already produced for this play or session.
   - entity_type → Filter by insight type (Concert, Cover, etc.)
 - **Tip:** Insights prefixed with "db-" came from the database (previous runs)
 
-### graph_connections (remote graph queries)
+---
+
+### 6. graph_connections (remote graph queries)
 Query the MusicBrainz relationship graph for musical connections.
-- **When:** Exploring band lineups, label rosters, cover versions, collaborations, geographic scenes
+- **When:** Seeding the graph with initial relationships from remote API
 - **9 Query Types:** band_members, member_of, labelmates, label_hierarchy, covers, artist_origin, artists_from_area, recorded_at, collaborators
 - **Batching:** 1-50 MBIDs per call for efficient lookup
 - **Returns:** Typed connections with attributes (instruments, dates), provenance (via fields for multi-hop)
+- **Implementation:** Calls remote FAISS API, caches results server-side
 - **See "Graph Connections & Music Knowledge Graph" section for detailed query type documentation**
 
-### explore_graph (local graph cache)
-Expand and traverse the in-memory graph cache without re-fetching.
-- **When:** Building on prior graph_connections calls, walking multiple hops, finding paths between entities
-- **Built on:** effect/Graph - persistent directed graph for the session
-- **Powers:** Multi-hop discovery, pathfinding, incremental graph building
-- **Tip:** Use after initial graph_connections to efficiently explore further relationships
-- **See "The In-Memory Graph Cache" section for usage patterns**`;
+### 7. explore_graph (remote API + cache merge)
+Fetch new relationships from the API and merge them into the local graph cache.
+- **When:** Expanding the graph outward from known entities
+- **⚠️ ALWAYS makes a remote API call** - not a pure cache read
+- **query_type REQUIRED:** Must specify which relationship to explore (band_members, labelmates, etc.)
+- **Returns:** Summary of new nodes/edges + neighbors with FULL relationship context:
+  - relationship_type, attributes, begin_date, end_date, via_mbid, via_name
+- **Built on:** effect/Graph - directed graph with MBID-indexed lookup
+- **Use query_cached_neighbors for pure cache reads (no API call)**
+
+### 8. find_graph_path
+Find the shortest path between two entities in the cached graph.
+- **When:** Answering "How is X connected to Y?" questions
+- **Requires:** Both entities must already be in the cache (call explore_graph first)
+- **Returns:** path_found (boolean), path_length, path (array of nodes with mbid, name, node_type)
+- **Uses:** Dijkstra's algorithm on the in-memory graph
+- **Example:** "How is Thom Yorke connected to Flea?" → Path through shared collaborators
+
+### 9. query_cached_neighbors
+Get neighbors for an entity from the local cache (no API call).
+- **When:** Fast traversal after graph has been expanded, listing known connections
+- **Returns:** Neighbors with full relationship context (by default):
+  - relationship_type, attributes, dates, via provenance
+- **include_edges:** Set to false for basic node info only (faster but loses relationship context)
+- **Note:** Returns empty array if MBID not in cache - use explore_graph first
+
+---
+
+### Tool Selection Guide
+
+| I want to... | Use this tool |
+|--------------|---------------|
+| Find plays by text | semantic_search |
+| Get full play history by MBID | search_plays |
+| Look up an entity mentioned by DJ | resolve_mbid |
+| Read a URL from DJ comment | fetch_link |
+| Check what insights exist | get_recent_insights |
+| Seed the graph with relationships | graph_connections |
+| Walk further hops, get neighbors | explore_graph |
+| Find path between two entities | find_graph_path |
+| Query cache without API call | query_cached_neighbors |
+
+### Graph Tools Workflow
+
+\`\`\`
+1. Start with MBIDs (from play data or semantic_search)
+2. graph_connections(query_type, mbids) → Seeds cache with first-hop relationships
+3. explore_graph(query_type, mbids) → Walks further, returns neighbors with edge data
+4. query_cached_neighbors(mbid) → Fast cache lookup for known entities
+5. find_graph_path(from, to) → Discovers connection paths
+\`\`\`
+
+The graph starts fresh each invocation. Pre-build it early from context MBIDs.`;
 
 // =============================================================================
 // STATIC SECTIONS - Insight Continuity
@@ -785,8 +895,15 @@ Start by calling tools to collect evidence:
 2. \`search_plays()\` — Get MBIDs and play history for the artist/recording
 3. Parse the DJ comment for triggers (concerts, covers, samples, URLs)
 4. Call additional tools as the DJ comment suggests (\`fetch_link\`, \`resolve_mbid\`, \`semantic_search\`)
+5. **Seed the graph** — Once you have MBIDs, call \`explore_graph\` to discover relationships:
+   - For bands: use \`query_type: "band_members"\` to find who's in the group
+   - For solo artists: use \`query_type: "member_of"\` to find their other projects
+   - For collaborations (feat.): use \`query_type: "collaborators"\` on both artists
+   - For label context: use \`query_type: "labelmates"\` to find scene connections
 
-Why this order? Recent insights prevent duplicates. Search provides MBIDs. Only after gathering evidence should you decide what insights to produce.
+**Graph exploration is not optional.** The most interesting insights often come from connections — shared producers, label scenes, side projects, geographic clusters. If you skip graph exploration, you miss these stories.
+
+Why this order? Recent insights prevent duplicates. Search provides MBIDs. Graph exploration surfaces the connections that tell compelling stories. Only after gathering evidence should you decide what insights to produce.
 
 ### Phase 2: REFLECT
 
@@ -794,10 +911,17 @@ Before producing any insight, ask yourself:
 - What's genuinely interesting about this play?
 - Is this a discovery moment (debut, rare play) or routine rotation?
 - Would this insight create an "aha!" moment for the listener?
+- Are there connections worth highlighting — shared producers, label affiliations, geographic scenes, or artists who've collaborated?
 - Have I already covered this in recent insights?
 - Does the evidence support the insight, or am I speculating?
 
 ### Phase 3: PRODUCE
+
+**⚠️ IMPORTANT: There is NO tool for generating insights.**
+
+When your research is complete, simply STOP calling tools. The system will automatically ask you to produce structured output. Do NOT try to call a tool named "generate_insights" or similar - it doesn't exist.
+
+To signal you're done researching: make no more tool calls. The system handles the rest.
 
 Generate insights only when:
 - You have concrete evidence from tools or the DJ comment
@@ -830,8 +954,9 @@ For every play, start by gathering evidence:
 - Check recent insights to maintain session coherence
 - Search play history to get MBIDs and context
 - Use additional tools as the DJ comment suggests
+- **Seed the graph** with \`explore_graph\` once you have MBIDs — this is required, not optional
 
-Why this order? Recent insights prevent duplicates. Search provides the MBIDs you need. Only after gathering evidence should you decide what insights (if any) to produce.
+Why this order? Recent insights prevent duplicates. Search provides the MBIDs you need. Graph exploration reveals connections that tell the most compelling stories. Only after gathering evidence should you decide what insights (if any) to produce.
 
 **2. Tools are ground truth**
 

@@ -25,6 +25,10 @@ import type {
   GraphConnectionsResponse,
   ExploreGraphParams,
   ExploreGraphResponse,
+  FindGraphPathParams,
+  FindGraphPathResponse,
+  QueryCachedNeighborsParams,
+  QueryCachedNeighborsResponse,
 } from "./schemas.js";
 import { transformPlayResult } from "../services/http-utils.js";
 
@@ -120,14 +124,18 @@ const makeSearchPlaysHandler =
         const response = yield* service.timeline(timelineParams).pipe(
           // Map service error to success with empty results for tool robustness
           Effect.catchAll((error) =>
-            Effect.succeed({
-              results: [],
-              next_cursor: null,
-              has_more: false,
-              query_time_ms: 0,
-              total_count: 0,
-              anchor_position: null,
-              _error: error.message,
+            Effect.gen(function* () {
+              yield* Effect.logWarning(`search_plays tool error: ${error.message}`);
+              yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
+              return {
+                results: [],
+                next_cursor: null,
+                has_more: false,
+                query_time_ms: 0,
+                total_count: 0,
+                anchor_position: null,
+                _error: error.message,
+              };
             })
           )
         );
@@ -146,10 +154,12 @@ const makeSearchPlaysHandler =
           `search_plays returned ${results.length} results`
         );
 
+        // Propagate _error if present from error handling
         return {
           results,
           total: response.total_count ?? response.results.length,
           query_time_ms: response.query_time_ms,
+          ...("_error" in response && response._error ? { _error: response._error } : {}),
         } satisfies SearchPlaysResponse;
       }),
       Effect.withSpan("Tool.search_plays")
@@ -177,16 +187,21 @@ const makeSemanticSearchHandler =
           .search({
             query: params.query,
             ...(params.limit !== undefined ? { limit: params.limit } : {}),
+            ...(params.offset !== undefined ? { offset: params.offset } : {}),
           })
           .pipe(
             // Map service error to success with empty results for tool robustness
             Effect.catchAll((error) =>
-              Effect.succeed({
-                results: [],
-                total: 0,
-                query_time_ms: 0,
-                query: params.query,
-                _error: error.message,
+              Effect.gen(function* () {
+                yield* Effect.logWarning(`semantic_search tool error: ${error.message}`);
+                yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
+                return {
+                  results: [],
+                  total: 0,
+                  query_time_ms: 0,
+                  query: params.query,
+                  _error: error.message,
+                };
               })
             )
           );
@@ -204,11 +219,13 @@ const makeSemanticSearchHandler =
           `semantic_search returned ${results.length} results`
         );
 
+        // Propagate _error if present from error handling
         return {
           results,
           total: response.total,
           query_time_ms: response.query_time_ms,
           query: response.query,
+          ...("_error" in response && response._error ? { _error: response._error } : {}),
         } satisfies SemanticSearchResponse;
       }),
       Effect.withSpan("Tool.semantic_search")
@@ -234,11 +251,15 @@ const makeResolveMbidHandler =
         const response = yield* service.resolve(params).pipe(
           // Map service error to success with empty results for tool robustness
           Effect.catchAll((error) =>
-            Effect.succeed({
-              results: [],
-              query: params.query,
-              entity_type: params.entity_type,
-              _error: error.message,
+            Effect.gen(function* () {
+              yield* Effect.logWarning(`resolve_mbid tool error: ${error.message}`);
+              yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
+              return {
+                results: [],
+                query: params.query,
+                entity_type: params.entity_type,
+                _error: error.message,
+              };
             })
           )
         );
@@ -279,12 +300,16 @@ const makeFetchLinkHandler =
         const response = yield* service.fetch(params).pipe(
           // Map service error to success with error content for tool robustness
           Effect.catchAll((error) =>
-            Effect.succeed({
-              url: params.url,
-              title: "Error fetching content",
-              content: `Failed to fetch content: ${error.message}`,
-              word_count: 0,
-              links: [],
+            Effect.gen(function* () {
+              yield* Effect.logWarning(`fetch_link tool error: ${error.message}`);
+              yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
+              return {
+                url: params.url,
+                title: "Error fetching content",
+                content: `Failed to fetch content: ${error.message}`,
+                word_count: 0,
+                links: [],
+              };
             })
           )
         );
@@ -357,13 +382,17 @@ const makeGraphConnectionsHandler =
         const response = yield* service.connections(params).pipe(
           // Map service error to success with empty results for tool robustness
           Effect.catchAll((error) =>
-            Effect.succeed({
-              query_type: params.query_type,
-              connections: [],
-              total: 0,
-              query_time_ms: 0,
-              source_mbids: params.mbids,
-              _error: error.message,
+            Effect.gen(function* () {
+              yield* Effect.logWarning(`graph_connections tool error: ${error.message}`);
+              yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
+              return {
+                query_type: params.query_type,
+                connections: [],
+                total: 0,
+                query_time_ms: 0,
+                source_mbids: params.mbids,
+                _error: error.message,
+              };
             })
           )
         );
@@ -377,6 +406,9 @@ const makeGraphConnectionsHandler =
 
 /**
  * Create handler for explore_graph tool (local cache)
+ *
+ * Uses expand result connections directly to preserve full edge data
+ * (relationship_type, attributes, begin_date, end_date, via_mbid, via_name).
  */
 const makeExploreGraphHandler =
   (service: MusicGraphServiceInterface) =>
@@ -386,50 +418,183 @@ const makeExploreGraphHandler =
         yield* Effect.logDebug("Executing explore_graph tool");
         yield* Effect.annotateCurrentSpan({
           tool: "explore_graph",
-          query_type: params.query_type ?? "band_members",
+          query_type: params.query_type,
           mbids: params.mbids.join(","),
         });
 
+        // Expand returns full connection data from remote API
         const result = yield* service
           .expand({
-            query_type: params.query_type ?? "band_members",
+            query_type: params.query_type,
             mbids: params.mbids,
             limit: params.limit,
             include_attributes: true,
           })
           .pipe(
+            Effect.map((r) => ({
+              ...r,
+              // Preserve connections for neighbor extraction
+              hasConnections: true as const,
+              _error: undefined as string | undefined,
+            })),
             // Map service error to success with empty results for tool robustness
             Effect.catchAll((error) =>
-              Effect.succeed({
-                newNodes: 0,
-                newEdges: 0,
+              Effect.gen(function* () {
+                yield* Effect.logWarning(`explore_graph tool error: ${error.message}`);
+                yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
+                return {
+                  newNodes: 0,
+                  newEdges: 0,
+                  hasConnections: false as const,
+                  _error: error.message,
+                };
               })
             )
           );
 
-        const neighborLists = yield* Effect.forEach(
-          params.mbids,
-          (mbid) =>
-            service
-              .neighbors(mbid)
-              .pipe(Effect.catchAll(() => Effect.succeed([]))),
-          { concurrency: "unbounded" }
-        );
-        const neighbors = neighborLists.flat().map((node) => ({
-          mbid: node.mbid,
-          name: node.name,
-          node_type: node.nodeType,
-          relationship_type: "neighbor",
-        }));
+        // Use connections directly from expand result - preserves all edge data!
+        // No need to call neighbors() which loses relationship context.
+        const neighbors =
+          result.hasConnections && "connections" in result
+            ? result.connections.connections.map((conn) => ({
+                mbid: conn.mbid,
+                name: conn.name,
+                node_type: conn.node_type,
+                relationship_type: conn.relationship_type,
+                attributes: conn.attributes,
+                begin_date: conn.begin_date,
+                end_date: conn.end_date,
+                via_mbid: conn.via_mbid,
+                via_name: conn.via_name,
+              }))
+            : [];
 
+        yield* Effect.annotateCurrentSpan({
+          new_nodes: result.newNodes,
+          new_edges: result.newEdges,
+          neighbor_count: neighbors.length,
+        });
+
+        // Build response with optional _error
         return {
           summary: `Expanded ${params.mbids.length} seed(s): +${result.newNodes} nodes, +${result.newEdges} edges`,
           new_nodes_count: result.newNodes,
           new_edges_count: result.newEdges,
           neighbors,
+          ...(result._error ? { _error: result._error } : {}),
         } satisfies ExploreGraphResponse;
       }),
       Effect.withSpan("Tool.explore_graph")
+    );
+
+/**
+ * Create handler for find_graph_path tool
+ *
+ * Uses MusicGraphService.path() to find shortest path between two entities.
+ */
+const makeFindGraphPathHandler =
+  (service: MusicGraphServiceInterface) =>
+  (params: FindGraphPathParams): Effect.Effect<FindGraphPathResponse> =>
+    pipe(
+      Effect.gen(function* () {
+        yield* Effect.logDebug("Executing find_graph_path tool");
+        yield* Effect.annotateCurrentSpan({
+          tool: "find_graph_path",
+          from_mbid: params.from_mbid,
+          to_mbid: params.to_mbid,
+        });
+
+        const pathResult = yield* service.path(params.from_mbid, params.to_mbid);
+
+        if (pathResult._tag === "None") {
+          yield* Effect.annotateCurrentSpan("path_found", false);
+          return {
+            path_found: false,
+            path_length: 0,
+            path: [],
+          } satisfies FindGraphPathResponse;
+        }
+
+        const pathNodes = pathResult.value.map((node) => ({
+          mbid: node.mbid,
+          name: node.name,
+          node_type: node.nodeType,
+        }));
+
+        yield* Effect.annotateCurrentSpan({
+          path_found: true,
+          path_length: pathNodes.length,
+        });
+
+        return {
+          path_found: true,
+          path_length: pathNodes.length,
+          path: pathNodes,
+        } satisfies FindGraphPathResponse;
+      }),
+      Effect.withSpan("Tool.find_graph_path")
+    );
+
+/**
+ * Create handler for query_cached_neighbors tool
+ *
+ * Uses MusicGraphService.outgoingEdges() or neighbors() based on include_edges flag.
+ */
+const makeQueryCachedNeighborsHandler =
+  (service: MusicGraphServiceInterface) =>
+  (params: QueryCachedNeighborsParams): Effect.Effect<QueryCachedNeighborsResponse> =>
+    pipe(
+      Effect.gen(function* () {
+        yield* Effect.logDebug("Executing query_cached_neighbors tool");
+        const includeEdges = params.include_edges ?? true;
+
+        yield* Effect.annotateCurrentSpan({
+          tool: "query_cached_neighbors",
+          mbid: params.mbid,
+          include_edges: includeEdges,
+        });
+
+        if (includeEdges) {
+          // Use outgoingEdges for full relationship context
+          const edges = yield* service.outgoingEdges(params.mbid);
+          const neighbors = edges.map((e) => ({
+            mbid: e.node.mbid,
+            name: e.node.name,
+            node_type: e.node.nodeType,
+            relationship_type: e.edge.relationshipType,
+            attributes: e.edge.attributes ? [...e.edge.attributes] : undefined,
+            begin_date: e.edge.beginDate,
+            end_date: e.edge.endDate,
+            via_mbid: e.edge.viaMbid,
+            via_name: e.edge.viaName,
+          }));
+
+          yield* Effect.annotateCurrentSpan("neighbor_count", neighbors.length);
+
+          return {
+            mbid: params.mbid,
+            neighbors,
+            neighbor_count: neighbors.length,
+          } satisfies QueryCachedNeighborsResponse;
+        } else {
+          // Use neighbors for basic node info only
+          const nodes = yield* service.neighbors(params.mbid);
+          const neighbors = nodes.map((n) => ({
+            mbid: n.mbid,
+            name: n.name,
+            node_type: n.nodeType,
+          }));
+
+          yield* Effect.annotateCurrentSpan("neighbor_count", neighbors.length);
+
+          return {
+            mbid: params.mbid,
+            neighbors,
+            neighbor_count: neighbors.length,
+          } satisfies QueryCachedNeighborsResponse;
+        }
+      }),
+      Effect.withSpan("Tool.query_cached_neighbors")
     );
 
 // =============================================================================
@@ -465,6 +630,8 @@ export const makeCrateToolHandlers: Effect.Effect<
     get_recent_insights: makeGetRecentInsightsHandler(insightSessionService),
     graph_connections: makeGraphConnectionsHandler(graphConnectionsService),
     explore_graph: makeExploreGraphHandler(musicGraphService),
+    find_graph_path: makeFindGraphPathHandler(musicGraphService),
+    query_cached_neighbors: makeQueryCachedNeighborsHandler(musicGraphService),
   });
 });
 
@@ -512,4 +679,6 @@ export {
   makeGetRecentInsightsHandler,
   makeGraphConnectionsHandler,
   makeExploreGraphHandler,
+  makeFindGraphPathHandler,
+  makeQueryCachedNeighborsHandler,
 };
