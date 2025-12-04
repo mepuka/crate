@@ -23,8 +23,8 @@
  * ```
  */
 
-import { Effect, Data, pipe, Option, Layer, Context } from "effect"
-import { Prompt } from "@effect/ai"
+import { Effect, Data, pipe, Option, Layer, Context } from "effect";
+import { Prompt } from "@effect/ai";
 import {
   buildPlayMessage,
   type PlayContext,
@@ -32,20 +32,25 @@ import {
   type SimpleShowContext,
   type InsightSummary,
   type PromptContext,
-} from "../prompts/system-prompt.js"
-import * as CratePrompt from "../prompts/CratePrompt.js"
-import * as Kexp from "@crate/domain/kexp/schemas"
-import { Assets, AssetsLive, type DjBio, type ShowDescription } from "./Assets.js"
+} from "../prompts/system-prompt.js";
+import * as CratePrompt from "../prompts/CratePrompt.js";
+import * as Kexp from "@crate/domain/kexp/schemas";
+import {
+  Assets,
+  AssetsLive,
+  type DjBio,
+  type ShowDescription,
+} from "./Assets.js";
 
 // =============================================================================
 // Branded Types for IDs
 // =============================================================================
 
 /** Branded type for Play IDs */
-export type PlayId = number & { readonly _brand: unique symbol }
+export type PlayId = number & { readonly _brand: unique symbol };
 
 /** Branded type for MusicBrainz IDs */
-export type MbId = string & { readonly _brand: unique symbol }
+export type MbId = string & { readonly _brand: unique symbol };
 
 // =============================================================================
 // Schemas for BuiltPrompt
@@ -55,22 +60,22 @@ export type MbId = string & { readonly _brand: unique symbol }
  * Built prompt metadata
  */
 export interface BuiltPromptMetadata {
-  readonly showName?: string
-  readonly hostNames?: readonly string[]
-  readonly playId: number
-  readonly artist: string
-  readonly track: string
-  readonly hasComment: boolean
-  readonly hasDjBio: boolean
+  readonly showName?: string;
+  readonly hostNames?: readonly string[];
+  readonly playId: number;
+  readonly artist: string;
+  readonly track: string;
+  readonly hasComment: boolean;
+  readonly hasDjBio: boolean;
 }
 
 /**
  * Complete prompt ready for the LLM
  */
 export interface BuiltPrompt {
-  readonly systemPrompt: string
-  readonly userMessage: string
-  readonly metadata: BuiltPromptMetadata
+  readonly systemPrompt: string;
+  readonly userMessage: string;
+  readonly metadata: BuiltPromptMetadata;
 }
 
 // =============================================================================
@@ -78,8 +83,8 @@ export interface BuiltPrompt {
 // =============================================================================
 
 export class PromptBuildError extends Data.TaggedError("PromptBuildError")<{
-  readonly message: string
-  readonly cause?: unknown
+  readonly message: string;
+  readonly cause?: unknown;
 }> {}
 
 // =============================================================================
@@ -93,18 +98,22 @@ export const builtPromptToAiPrompt = (prompt: BuiltPrompt): Prompt.Prompt =>
   Prompt.make([
     { role: "system", content: prompt.systemPrompt },
     { role: "user", content: prompt.userMessage },
-  ])
+  ]);
 
 /**
  * Extract the system prompt text from a Prompt object
  */
 const extractSystemText = (prompt: Prompt.Prompt): string => {
-  const systemMsg = prompt.content.find((m) => m.role === "system")
-  if (systemMsg && "content" in systemMsg && typeof systemMsg.content === "string") {
-    return systemMsg.content
+  const systemMsg = prompt.content.find((m) => m.role === "system");
+  if (
+    systemMsg &&
+    "content" in systemMsg &&
+    typeof systemMsg.content === "string"
+  ) {
+    return systemMsg.content;
   }
-  return ""
-}
+  return "";
+};
 
 /**
  * Convert KEXP API play to our PlayContext format
@@ -128,7 +137,7 @@ const kexpPlayToPlayContext = (play: Kexp.KexpTrackPlay): PlayContext => ({
   isLive: play.is_live,
   comment: play.comment,
   imageUri: play.image_uri,
-})
+});
 
 /**
  * Convert KEXP API show to our ShowContext format
@@ -149,7 +158,7 @@ const kexpShowToShowContext = (show: Kexp.KexpShow): ShowContext => ({
   programTags: show.program_tags,
   imageUri: show.image_uri,
   startTime: show.start_time,
-})
+});
 
 /**
  * Enrich show context with DJ bio if available
@@ -160,26 +169,27 @@ const enrichShowContext = (
 ): ShowContext | SimpleShowContext => {
   // For SimpleShowContext, try to add DJ bio info
   if ("name" in show && !("programName" in show)) {
-    const simple = show as SimpleShowContext
+    const simple = show as SimpleShowContext;
     if (simple.host) {
-      const djBioOpt = findDjBio(simple.host)
+      const djBioOpt = findDjBio(simple.host);
       if (Option.isSome(djBioOpt)) {
-        const djBio = djBioOpt.value
-        const bioSnippet = djBio.bio.slice(0, 500) + (djBio.bio.length > 500 ? "..." : "")
+        const djBio = djBioOpt.value;
+        const bioSnippet =
+          djBio.bio.slice(0, 500) + (djBio.bio.length > 500 ? "..." : "");
         return {
           ...simple,
           description: simple.description
             ? `${simple.description}\n\n**About the host:** ${bioSnippet}`
             : `**About the host:** ${bioSnippet}`,
-        }
+        };
       }
     }
-    return simple
+    return simple;
   }
 
   // For full ShowContext, no enrichment needed (DJ info handled separately)
-  return show
-}
+  return show;
+};
 
 // =============================================================================
 // Service Interface
@@ -195,10 +205,10 @@ export interface PromptBuilderServiceInterface {
   readonly buildForPlay: (
     play: PlayContext,
     options?: {
-      showContext?: ShowContext | SimpleShowContext
-      recentInsights?: InsightSummary[]
+      showContext?: ShowContext | SimpleShowContext;
+      recentInsights?: InsightSummary[];
     }
-  ) => Effect.Effect<BuiltPrompt, PromptBuildError>
+  ) => Effect.Effect<BuiltPrompt, PromptBuildError>;
 
   /**
    * Build a prompt for a KEXP API play
@@ -206,10 +216,10 @@ export interface PromptBuilderServiceInterface {
   readonly buildForKexpPlay: (
     play: Kexp.KexpTrackPlay,
     options?: {
-      show?: Kexp.KexpShow
-      recentInsights?: InsightSummary[]
+      show?: Kexp.KexpShow;
+      recentInsights?: InsightSummary[];
     }
-  ) => Effect.Effect<BuiltPrompt, PromptBuildError>
+  ) => Effect.Effect<BuiltPrompt, PromptBuildError>;
 
   /**
    * Build an @effect/ai Prompt directly for a KEXP play
@@ -217,30 +227,34 @@ export interface PromptBuilderServiceInterface {
   readonly buildPromptForKexpPlay: (
     play: Kexp.KexpTrackPlay,
     options?: {
-      show?: Kexp.KexpShow
-      recentInsights?: InsightSummary[]
+      show?: Kexp.KexpShow;
+      recentInsights?: InsightSummary[];
     }
-  ) => Effect.Effect<Prompt.Prompt, PromptBuildError>
+  ) => Effect.Effect<Prompt.Prompt, PromptBuildError>;
 
   /**
    * Get DJ bio by name (fuzzy match)
    */
-  readonly getDjBio: (name: string) => Effect.Effect<DjBio | undefined>
+  readonly getDjBio: (name: string) => Effect.Effect<DjBio | undefined>;
 
   /**
    * Get show description by name
    */
-  readonly getShowDescription: (name: string) => Effect.Effect<ShowDescription | undefined>
+  readonly getShowDescription: (
+    name: string
+  ) => Effect.Effect<ShowDescription | undefined>;
 
   /**
    * Get all loaded DJ bios
    */
-  readonly getAllDjBios: () => Effect.Effect<readonly DjBio[]>
+  readonly getAllDjBios: () => Effect.Effect<readonly DjBio[]>;
 
   /**
    * Get all show descriptions
    */
-  readonly getAllShowDescriptions: () => Effect.Effect<readonly ShowDescription[]>
+  readonly getAllShowDescriptions: () => Effect.Effect<
+    readonly ShowDescription[]
+  >;
 }
 
 // =============================================================================
@@ -259,20 +273,20 @@ export class PromptBuilderService extends Context.Tag("PromptBuilderService")<
  * Create the prompt builder service implementation
  */
 const makePromptBuilderService = Effect.gen(function* () {
-  const assets = yield* Assets
+  const assets = yield* Assets;
 
   const buildForPlay = (
     play: PlayContext,
     options: {
-      showContext?: ShowContext | SimpleShowContext
-      recentInsights?: InsightSummary[]
+      showContext?: ShowContext | SimpleShowContext;
+      recentInsights?: InsightSummary[];
     } = {}
   ): Effect.Effect<BuiltPrompt, PromptBuildError> =>
     Effect.try({
       try: () => {
         const enrichedShowContext = options.showContext
           ? enrichShowContext(options.showContext, assets.findDjBio)
-          : undefined
+          : undefined;
 
         // Build prompt context - use play's airdate for temporal reasoning
         // so "tonight" in DJ comments resolves relative to when the music aired
@@ -280,33 +294,38 @@ const makePromptBuilderService = Effect.gen(function* () {
           currentTime: new Date(play.airdate),
           playData: play,
           ...(enrichedShowContext ? { showContext: enrichedShowContext } : {}),
-          ...(options.recentInsights ? { recentInsights: options.recentInsights } : {}),
-        }
+          ...(options.recentInsights
+            ? { recentInsights: options.recentInsights }
+            : {}),
+        };
 
         // Use CratePrompt to build the system prompt
-        const systemPromptObj = CratePrompt.buildSystemPrompt(promptContext)
+        const systemPromptObj = CratePrompt.buildSystemPrompt(promptContext);
 
         // Extract text content from the Prompt object
-        const systemPrompt = extractSystemText(systemPromptObj)
-        const userMessage = buildPlayMessage(play)
+        const systemPrompt = extractSystemText(systemPromptObj);
+        const userMessage = buildPlayMessage(play);
 
         // Get show name for metadata
-        let showName: string | undefined
-        let hostNames: string[] | undefined
+        let showName: string | undefined;
+        let hostNames: string[] | undefined;
 
         if (enrichedShowContext) {
           if ("programName" in enrichedShowContext) {
-            showName = enrichedShowContext.programName
-            hostNames = [...enrichedShowContext.hostNames]
+            showName = enrichedShowContext.programName;
+            hostNames = [...enrichedShowContext.hostNames];
           } else {
-            showName = enrichedShowContext.name
-            hostNames = enrichedShowContext.host ? [enrichedShowContext.host] : undefined
+            showName = enrichedShowContext.name;
+            hostNames = enrichedShowContext.host
+              ? [enrichedShowContext.host]
+              : undefined;
           }
         }
 
         // Check if we have DJ bio for any hosts
         const hasDjBio =
-          hostNames?.some((name) => Option.isSome(assets.findDjBio(name))) ?? false
+          hostNames?.some((name) => Option.isSome(assets.findDjBio(name))) ??
+          false;
 
         // Build metadata
         const metadata: BuiltPromptMetadata = {
@@ -317,35 +336,35 @@ const makePromptBuilderService = Effect.gen(function* () {
           hasDjBio,
           ...(showName ? { showName } : {}),
           ...(hostNames ? { hostNames } : {}),
-        }
+        };
 
         return {
           systemPrompt,
           userMessage,
           metadata,
-        } satisfies BuiltPrompt
+        } satisfies BuiltPrompt;
       },
       catch: (error) =>
         new PromptBuildError({
           message: "Failed to build prompt",
           cause: error,
         }),
-    })
+    });
 
   const buildForKexpPlay = (
     play: Kexp.KexpTrackPlay,
     options: {
-      show?: Kexp.KexpShow
-      recentInsights?: InsightSummary[]
+      show?: Kexp.KexpShow;
+      recentInsights?: InsightSummary[];
     } = {}
   ): Effect.Effect<BuiltPrompt, PromptBuildError> =>
     Effect.try({
       try: () => {
-        const playContext = kexpPlayToPlayContext(play)
+        const playContext = kexpPlayToPlayContext(play);
 
         const showContext = options.show
           ? kexpShowToShowContext(options.show)
-          : undefined
+          : undefined;
 
         // Build prompt context - use play's airdate for temporal reasoning
         // so "tonight" in DJ comments resolves relative to when the music aired
@@ -353,17 +372,19 @@ const makePromptBuilderService = Effect.gen(function* () {
           currentTime: new Date(playContext.airdate),
           playData: playContext,
           ...(showContext ? { showContext } : {}),
-          ...(options.recentInsights ? { recentInsights: options.recentInsights } : {}),
-        }
+          ...(options.recentInsights
+            ? { recentInsights: options.recentInsights }
+            : {}),
+        };
 
-        const systemPromptObj = CratePrompt.buildSystemPrompt(promptContext)
-        const systemPrompt = extractSystemText(systemPromptObj)
-        const userMessage = buildPlayMessage(playContext)
+        const systemPromptObj = CratePrompt.buildSystemPrompt(promptContext);
+        const systemPrompt = extractSystemText(systemPromptObj);
+        const userMessage = buildPlayMessage(playContext);
 
         const hasDjBio =
           showContext?.hostNames.some((name) =>
             Option.isSome(assets.findDjBio(name))
-          ) ?? false
+          ) ?? false;
 
         // Build metadata
         const metadata: BuiltPromptMetadata = {
@@ -372,38 +393,42 @@ const makePromptBuilderService = Effect.gen(function* () {
           track: play.song || "Unknown Track",
           hasComment: !!play.comment,
           hasDjBio,
-          ...(showContext?.programName ? { showName: showContext.programName } : {}),
-          ...(showContext?.hostNames ? { hostNames: showContext.hostNames } : {}),
-        }
+          ...(showContext?.programName
+            ? { showName: showContext.programName }
+            : {}),
+          ...(showContext?.hostNames
+            ? { hostNames: showContext.hostNames }
+            : {}),
+        };
 
         return {
           systemPrompt,
           userMessage,
           metadata,
-        } satisfies BuiltPrompt
+        } satisfies BuiltPrompt;
       },
       catch: (error) =>
         new PromptBuildError({
           message: "Failed to build prompt for KEXP play",
           cause: error,
         }),
-    })
+    });
 
   const buildPromptForKexpPlay = (
     play: Kexp.KexpTrackPlay,
     options: {
-      show?: Kexp.KexpShow
-      recentInsights?: InsightSummary[]
+      show?: Kexp.KexpShow;
+      recentInsights?: InsightSummary[];
     } = {}
   ): Effect.Effect<Prompt.Prompt, PromptBuildError> =>
     pipe(
       Effect.try({
         try: () => {
-          const playContext = kexpPlayToPlayContext(play)
+          const playContext = kexpPlayToPlayContext(play);
 
           const showContext = options.show
             ? kexpShowToShowContext(options.show)
-            : undefined
+            : undefined;
 
           // Use play's airdate for temporal reasoning so "tonight" in DJ
           // comments resolves relative to when the music aired
@@ -411,11 +436,13 @@ const makePromptBuilderService = Effect.gen(function* () {
             currentTime: new Date(playContext.airdate),
             playData: playContext,
             ...(showContext ? { showContext } : {}),
-            ...(options.recentInsights ? { recentInsights: options.recentInsights } : {}),
-          }
+            ...(options.recentInsights
+              ? { recentInsights: options.recentInsights }
+              : {}),
+          };
 
           // Build system prompt using CratePrompt
-          const systemPrompt = CratePrompt.buildSystemPrompt(promptContext)
+          const systemPrompt = CratePrompt.buildSystemPrompt(promptContext);
 
           // Merge with user message using Prompt.merge
           return pipe(
@@ -424,11 +451,13 @@ const makePromptBuilderService = Effect.gen(function* () {
               Prompt.make([
                 {
                   role: "user",
-                  content: [{ type: "text", text: buildPlayMessage(playContext) }],
+                  content: [
+                    { type: "text", text: buildPlayMessage(playContext) },
+                  ],
                 },
               ])
             )
-          )
+          );
         },
         catch: (error) =>
           new PromptBuildError({
@@ -444,7 +473,7 @@ const makePromptBuilderService = Effect.gen(function* () {
         })
       ),
       Effect.withSpan("PromptBuilder.buildPromptForKexpPlay")
-    )
+    );
 
   return {
     buildForPlay,
@@ -456,8 +485,8 @@ const makePromptBuilderService = Effect.gen(function* () {
       Effect.succeed(Option.getOrUndefined(assets.findShowDescription(name))),
     getAllDjBios: () => Effect.succeed(assets.djBios),
     getAllShowDescriptions: () => Effect.succeed(assets.showDescriptions),
-  } satisfies PromptBuilderServiceInterface
-})
+  } satisfies PromptBuilderServiceInterface;
+});
 
 // =============================================================================
 // Layers
@@ -467,8 +496,11 @@ const makePromptBuilderService = Effect.gen(function* () {
  * Live layer for PromptBuilderService
  * Requires Assets service
  */
-export const PromptBuilderServiceLive: Layer.Layer<PromptBuilderService, never, Assets> =
-  Layer.effect(PromptBuilderService, makePromptBuilderService)
+export const PromptBuilderServiceLive: Layer.Layer<
+  PromptBuilderService,
+  never,
+  Assets
+> = Layer.effect(PromptBuilderService, makePromptBuilderService);
 
 /**
  * Fully composed layer with all dependencies (Assets)
@@ -476,14 +508,13 @@ export const PromptBuilderServiceLive: Layer.Layer<PromptBuilderService, never, 
  * Uses Layer.provideMerge to properly compose layers.
  */
 export const PromptBuilderServiceFull: Layer.Layer<PromptBuilderService> =
-  Layer.provideMerge(PromptBuilderServiceLive, AssetsLive)
+  Layer.provideMerge(PromptBuilderServiceLive, AssetsLive);
 
 /**
  * Test layer with mock implementation
  */
-export const PromptBuilderServiceTest: Layer.Layer<PromptBuilderService> = Layer.succeed(
-  PromptBuilderService,
-  {
+export const PromptBuilderServiceTest: Layer.Layer<PromptBuilderService> =
+  Layer.succeed(PromptBuilderService, {
     buildForPlay: (play, _options) =>
       Effect.succeed({
         systemPrompt: "TEST_SYSTEM_PROMPT",
@@ -517,7 +548,10 @@ export const PromptBuilderServiceTest: Layer.Layer<PromptBuilderService> = Layer
           {
             role: "user",
             content: [
-              { type: "text", text: buildPlayMessage(kexpPlayToPlayContext(play)) },
+              {
+                type: "text",
+                text: buildPlayMessage(kexpPlayToPlayContext(play)),
+              },
             ],
           },
         ])
@@ -527,18 +561,17 @@ export const PromptBuilderServiceTest: Layer.Layer<PromptBuilderService> = Layer
     getShowDescription: () => Effect.succeed(undefined),
     getAllDjBios: () => Effect.succeed([]),
     getAllShowDescriptions: () => Effect.succeed([]),
-  } satisfies PromptBuilderServiceInterface
-)
+  } satisfies PromptBuilderServiceInterface);
 
 // =============================================================================
 // Re-exports for backwards compatibility
 // =============================================================================
 
-export { type DjBio, type ShowDescription } from "./Assets.js"
+export { type DjBio, type ShowDescription } from "./Assets.js";
 export type {
   PlayContext,
   ShowContext,
   SimpleShowContext,
   InsightSummary,
   PromptContext,
-} from "../prompts/system-prompt.js"
+} from "../prompts/system-prompt.js";

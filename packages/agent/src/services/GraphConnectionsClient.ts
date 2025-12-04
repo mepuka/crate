@@ -53,18 +53,38 @@ export class GraphConnectionsClient extends Effect.Service<GraphConnectionsClien
           })
           .pipe(
             Effect.flatMap(
-              HttpClientResponse.schemaBodyJson(GraphConnectionsResponse)
+              HttpClientResponse.matchStatus({
+                "2xx": HttpClientResponse.schemaBodyJson(
+                  GraphConnectionsResponse
+                ),
+                orElse: (response) =>
+                  response.text.pipe(
+                    Effect.flatMap((body) =>
+                      Effect.fail(
+                        new GraphApiError({
+                          message: `Graph connections HTTP ${response.status}`,
+                          query: JSON.stringify({
+                            query_type: params.query_type,
+                            mbids: params.mbids,
+                          }),
+                          cause: body,
+                        })
+                      )
+                    )
+                  ),
+              })
             ),
-            Effect.mapError(
-              (error) =>
-                new GraphApiError({
-                  message: "Graph connections request failed",
-                  query: JSON.stringify({
-                    query_type: params.query_type,
-                    mbids: params.mbids,
-                  }),
-                  cause: error,
-                })
+            Effect.mapError((error) =>
+              error instanceof GraphApiError
+                ? error
+                : new GraphApiError({
+                    message: "Graph connections request failed",
+                    query: JSON.stringify({
+                      query_type: params.query_type,
+                      mbids: params.mbids,
+                    }),
+                    cause: error,
+                  })
             )
           );
 

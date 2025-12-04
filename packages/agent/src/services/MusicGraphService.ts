@@ -31,6 +31,14 @@ export interface GraphEdgeData {
   readonly endDate?: string;
 }
 
+/**
+ * A neighbor node with its connecting edge data
+ */
+export interface NeighborWithEdge {
+  readonly node: GraphNode;
+  readonly edge: GraphEdgeData;
+}
+
 interface GraphState {
   readonly graph: Graph.DirectedGraph<GraphNode, GraphEdgeData>;
   readonly indexByMbid: HashMap.HashMap<Mbid, Graph.NodeIndex>;
@@ -45,7 +53,10 @@ export interface MusicGraphServiceInterface {
     },
     GraphApiError
   >;
+  /** Get neighbor nodes (without edge data) */
   readonly neighbors: (mbid: Mbid) => Effect.Effect<readonly GraphNode[]>;
+  /** Get outgoing edges with full edge data - preserves relationship context */
+  readonly outgoingEdges: (mbid: Mbid) => Effect.Effect<readonly NeighborWithEdge[]>;
   readonly path: (
     from: Mbid,
     to: Mbid
@@ -186,6 +197,36 @@ const makeMusicGraphService = Effect.gen(function* () {
       })
     );
 
+  const outgoingEdges = (mbid: Mbid): Effect.Effect<readonly NeighborWithEdge[]> =>
+    Ref.get(state).pipe(
+      Effect.map((s) => {
+        const sourceIdx = HashMap.get(s.indexByMbid, mbid);
+        if (Option.isNone(sourceIdx)) return [];
+
+        // Use Graph.findEdges for efficient edge lookup by source
+        const edgeIndices = Graph.findEdges(
+          s.graph,
+          (_, source) => source === sourceIdx.value
+        );
+
+        const result: NeighborWithEdge[] = [];
+        for (const edgeIdx of edgeIndices) {
+          const edgeOpt = Graph.getEdge(s.graph, edgeIdx);
+          if (Option.isSome(edgeOpt)) {
+            const edge = edgeOpt.value;
+            const targetNode = Graph.getNode(s.graph, edge.target);
+            if (Option.isSome(targetNode)) {
+              result.push({
+                node: targetNode.value,
+                edge: edge.data,
+              });
+            }
+          }
+        }
+        return result;
+      })
+    );
+
   const path = (
     from: Mbid,
     to: Mbid
@@ -247,6 +288,7 @@ const makeMusicGraphService = Effect.gen(function* () {
   return {
     expand,
     neighbors,
+    outgoingEdges,
     path,
     snapshot,
     reset,
