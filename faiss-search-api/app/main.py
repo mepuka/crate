@@ -238,9 +238,6 @@ app.add_middleware(CacheHeadersMiddleware)
 app.include_router(embeddings.router)
 app.include_router(graph.router)
 
-# Override graph router dependency to use our db_service
-graph.get_db_service = get_db_service
-
 
 # Dependency injection
 def get_search_service() -> FAISSSearchService:
@@ -276,6 +273,10 @@ def get_hybrid_search_service() -> HybridSearchService:
             detail="Hybrid search service not available - BM25 index not built"
         )
     return hybrid_search_service
+
+
+# Wire up graph router's dependency to use our get_db_service
+app.dependency_overrides[graph.get_db_service] = get_db_service
 
 
 # Endpoints
