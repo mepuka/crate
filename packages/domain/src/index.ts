@@ -13,5 +13,13 @@ export * as Nlp from "./nlp/index.js"
 // Graph schemas (relations, edges, queries)
 export * as Graph from "./graph/schemas.js"
 
+// Re-export commonly used graph types for direct import
+export {
+  GraphQueryType,
+  GraphConnectionsRequest,
+  GraphConnectionsResponse,
+  ConnectionNode
+} from "./graph/schemas.js"
+
 // CSV utilities (not exported by default to prevent bundling into workers)
 // Import directly from "@crate/domain/csv/parseLines" if needed

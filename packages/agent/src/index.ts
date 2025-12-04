@@ -7,7 +7,7 @@
 import { Layer } from "effect"
 import { FetchHttpClient } from "@effect/platform"
 import { FaissConfig, FaissClient } from "./FaissClient.js"
-import { MusicAgentLive, MusicAgentWithAnthropicLive } from "./MusicAgent.js"
+import { MusicAgentWithAnthropicLive } from "./MusicAgent.js"
 
 // =============================================================================
 // Legacy Services (FaissClient, MusicAgent)
@@ -123,7 +123,6 @@ export {
 export {
   // Common types
   MbEntityType,
-  MbId,
   // Schemas
   PlayResultSchema,
   SearchPlaysParams,
@@ -166,17 +165,6 @@ export {
   type CrateToolServices,
   type CrateToolsContext
 } from "./layers.js"
-
-// =============================================================================
-// MCP Server
-// =============================================================================
-export {
-  SERVER_INFO,
-  CrateMcpServerStdio,
-  CrateMcpServerHttp,
-  runStdio,
-  getClaudeDesktopConfig
-} from "./mcp/server.js"
 
 // =============================================================================
 // Legacy Layer (deprecated - use MusicAgentWithAnthropicLive instead)

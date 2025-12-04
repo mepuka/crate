@@ -10,9 +10,7 @@
 export {
   // Common types
   MbEntityType,
-  MbId,
   type MbEntityType as MbEntityTypeValue,
-  type MbId as MbIdValue,
   // Play result
   PlayResultSchema,
   type PlayResult,

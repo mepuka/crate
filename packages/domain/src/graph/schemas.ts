@@ -32,7 +32,7 @@ export class BandMemberRelation extends Schema.Class<BandMemberRelation>("BandMe
   type: Schema.NullOr(ArtistType),
   begin: Schema.NullOr(Schema.String),
   end: Schema.NullOr(Schema.String),
-  attributes: Schema.Array(Schema.String).pipe(Schema.withDefault(() => []))
+  attributes: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] })
 }) {}
 
 /**
@@ -44,7 +44,7 @@ export class MemberOfBandRelation extends Schema.Class<MemberOfBandRelation>("Me
   type: Schema.NullOr(ArtistType),
   begin: Schema.NullOr(Schema.String),
   end: Schema.NullOr(Schema.String),
-  attributes: Schema.Array(Schema.String).pipe(Schema.withDefault(() => []))
+  attributes: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] })
 }) {}
 
 /**
@@ -92,11 +92,11 @@ export const UrlsSchema = Schema.Record({
  * Full artist relations JSON structure
  */
 export class ArtistRelations extends Schema.Class<ArtistRelations>("ArtistRelations")({
-  band_members: Schema.Array(BandMemberRelation).pipe(Schema.withDefault(() => [])),
-  member_of_bands: Schema.Array(MemberOfBandRelation).pipe(Schema.withDefault(() => [])),
-  collaborators: Schema.Array(Schema.Unknown).pipe(Schema.withDefault(() => [])), // Currently empty
-  label_relations: Schema.Array(ArtistLabelRelation).pipe(Schema.withDefault(() => [])),
-  events: Schema.Array(EventRelation).pipe(Schema.withDefault(() => [])),
+  band_members: Schema.optionalWith(Schema.Array(BandMemberRelation), { default: () => [] }),
+  member_of_bands: Schema.optionalWith(Schema.Array(MemberOfBandRelation), { default: () => [] }),
+  collaborators: Schema.optionalWith(Schema.Array(Schema.Unknown), { default: () => [] }), // Currently empty
+  label_relations: Schema.optionalWith(Schema.Array(ArtistLabelRelation), { default: () => [] }),
+  events: Schema.optionalWith(Schema.Array(EventRelation), { default: () => [] }),
   urls: Schema.optional(UrlsSchema)
 }) {}
 
@@ -104,11 +104,11 @@ export class ArtistRelations extends Schema.Class<ArtistRelations>("ArtistRelati
  * Full label relations JSON structure
  */
 export class LabelRelations extends Schema.Class<LabelRelations>("LabelRelations")({
-  band_members: Schema.Array(Schema.Unknown).pipe(Schema.withDefault(() => [])), // Not used for labels
-  member_of_bands: Schema.Array(Schema.Unknown).pipe(Schema.withDefault(() => [])),
-  collaborators: Schema.Array(Schema.Unknown).pipe(Schema.withDefault(() => [])),
-  label_relations: Schema.Array(LabelLabelRelation).pipe(Schema.withDefault(() => [])),
-  events: Schema.Array(Schema.Unknown).pipe(Schema.withDefault(() => [])),
+  band_members: Schema.optionalWith(Schema.Array(Schema.Unknown), { default: () => [] }), // Not used for labels
+  member_of_bands: Schema.optionalWith(Schema.Array(Schema.Unknown), { default: () => [] }),
+  collaborators: Schema.optionalWith(Schema.Array(Schema.Unknown), { default: () => [] }),
+  label_relations: Schema.optionalWith(Schema.Array(LabelLabelRelation), { default: () => [] }),
+  events: Schema.optionalWith(Schema.Array(Schema.Unknown), { default: () => [] }),
   urls: Schema.optional(UrlsSchema)
 }) {}
 
@@ -122,7 +122,7 @@ export class LabelRelations extends Schema.Class<LabelRelations>("LabelRelations
 export class ArtistCreditEntry extends Schema.Class<ArtistCreditEntry>("ArtistCreditEntry")({
   mbid: Schema.String,
   name: Schema.String,
-  joinphrase: Schema.String.pipe(Schema.withDefault(() => ""))
+  joinphrase: Schema.optionalWith(Schema.String, { default: () => "" })
 }) {}
 
 /**
@@ -302,6 +302,7 @@ export const GraphQueryType = Schema.Literal(
   "label_hierarchy",
   "covers",
   "artist_origin",
+  "artists_from_area",
   "recorded_at",
   "collaborators"
 )

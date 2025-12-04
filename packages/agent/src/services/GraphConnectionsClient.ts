@@ -13,13 +13,13 @@ import {
 import {
   GraphConnectionsRequest,
   GraphConnectionsResponse,
-} from "@crate/domain/graph/schemas.js";
+} from "@crate/domain";
 import { makeJsonClient } from "./http-utils.js";
 import { FaissConfig } from "../config.js";
 import { GraphApiError } from "./errors.js";
 
-export type GraphConnectionsRequest = typeof GraphConnectionsRequest.Type;
-export type GraphConnectionsResponse = typeof GraphConnectionsResponse.Type;
+export type GraphConnectionsRequestType = typeof GraphConnectionsRequest.Type;
+export type GraphConnectionsResponseType = typeof GraphConnectionsResponse.Type;
 
 /**
  * Tagged error for graph API failures

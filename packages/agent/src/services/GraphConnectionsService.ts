@@ -9,13 +9,12 @@ import { Context, Effect, Layer } from "effect"
 import {
   GraphConnectionsClient,
   GraphConnectionsClientLive,
-  type GraphConnectionsClientInterface
+  type GraphConnectionsRequestType as GraphConnectionsRequest,
+  type GraphConnectionsResponseType as GraphConnectionsResponse
 } from "./GraphConnectionsClient.js"
 import { GraphApiError } from "./errors.js"
-import type {
-  GraphConnectionsRequest,
-  GraphConnectionsResponse
-} from "@crate/domain/graph/schemas"
+
+export type { GraphConnectionsRequest, GraphConnectionsResponse }
 
 export interface GraphConnectionsServiceInterface {
   readonly connections: (

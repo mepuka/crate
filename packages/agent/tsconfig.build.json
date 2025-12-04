@@ -1,5 +1,7 @@
 {
   "extends": "./tsconfig.src.json",
+  "include": ["src/**/*", "assets/**/*.json"],
+  "exclude": ["src/mcp"],
   "compilerOptions": {
     "types": ["node"],
     "tsBuildInfoFile": ".tsbuildinfo/build.tsbuildinfo",

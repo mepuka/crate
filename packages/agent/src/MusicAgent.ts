@@ -22,7 +22,6 @@ import {
   PromptBuilderService,
   PromptBuilderServiceFull,
   InsightSessionService,
-  InsightSessionServiceLive,
 } from "./services/index.js";
 import { CrateToolkit } from "./tools/definitions.js";
 import { CrateToolsLive, AnthropicModelLive } from "./layers.js";
