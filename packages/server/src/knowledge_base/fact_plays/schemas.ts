@@ -1,5 +1,4 @@
-import type { RotationStatus } from "@crate/domain/kexp/schemas.js"
-import { KexpTrackPlay } from "@crate/domain/kexp/schemas.js"
+import { Kexp } from "@crate/domain"
 import { Model } from "@effect/sql"
 import { DateTime, Equal, Hash, Schema } from "effect"
 
@@ -77,7 +76,7 @@ export class FactPlay extends Model.Class<FactPlay>("FactPlay")({
   }
 }
 
-export const factPlayFromKexpPlay = Schema.transform(KexpTrackPlay, Schema.asSchema(FactPlay.insert), {
+export const factPlayFromKexpPlay = Schema.transform(Kexp.KexpTrackPlay, Schema.asSchema(FactPlay.insert), {
   decode: (play) => ({
     id: play.id,
     airdate: play.airdate,
@@ -124,7 +123,7 @@ export const factPlayFromKexpPlay = Schema.transform(KexpTrackPlay, Schema.asSch
     labels: play.labels ? JSON.parse(play.labels) : null,
     label_ids: play.label_ids ? JSON.parse(play.label_ids) : null,
     release_date: play.release_date,
-    rotation_status: play.rotation_status as RotationStatus,
+    rotation_status: play.rotation_status as Kexp.RotationStatus,
     is_local: play.is_local === 1,
     is_request: play.is_request === 1,
     is_live: play.is_live === 1,

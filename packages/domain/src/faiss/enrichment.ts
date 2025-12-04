@@ -75,7 +75,8 @@ export class CreateInsightsRequest extends Schema.Class<CreateInsightsRequest>("
  * Response from /api/insights POST
  */
 export class InsightsResponse extends Schema.Class<InsightsResponse>("InsightsResponse")({
-  status: Schema.String,
+  // Some deployments may omit status; default to "success" for forward compatibility.
+  status: Schema.optionalWith(Schema.String, { default: () => "success" }),
   count: Schema.Number,
   insight_ids: Schema.Array(Schema.Number)
 }) {}

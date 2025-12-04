@@ -58,21 +58,12 @@
       "@crate/api": ["./packages/api/src/index.ts"],
       "@crate/api/*": ["./packages/api/src/*"],
       "@crate/api/test/*": ["./packages/api/test/*"],
-      "@crate/cli": ["./packages/cli/src/index.ts"],
-      "@crate/cli/*": ["./packages/cli/src/*"],
-      "@crate/cli/test/*": ["./packages/cli/test/*"],
-      "@crate/domain": ["./packages/domain/dist/dist/dts/index.d.ts"],
-      "@crate/domain/*": ["./packages/domain/dist/dist/dts/*"],
-      "@crate/domain/test/*": ["./packages/domain/test/*"],
       "@crate/server": ["./packages/server/src/index.ts"],
       "@crate/server/*": ["./packages/server/src/*"],
       "@crate/server/test/*": ["./packages/server/test/*"],
       "@crate/web": ["./packages/web/src/index.ts"],
       "@crate/web/*": ["./packages/web/src/*"],
-      "@crate/web/test/*": ["./packages/web/test/*"],
-      "@crate/nlp-wink": ["./packages/nlp-wink/src/index.ts"],
-      "@crate/nlp-wink/*": ["./packages/nlp-wink/src/*"],
-      "@crate/nlp-wink/test/*": ["./packages/nlp-wink/test/*"]
+      "@crate/web/test/*": ["./packages/web/test/*"]
     }
   }
 }

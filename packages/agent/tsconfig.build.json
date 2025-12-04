@@ -5,9 +5,12 @@
   "compilerOptions": {
     "types": ["node"],
     "tsBuildInfoFile": ".tsbuildinfo/build.tsbuildinfo",
-    "outDir": "build/esm",
-    "declarationDir": "build/dts",
+    "rootDir": ".",
+    "outDir": "dist",
     "noEmit": false,
     "stripInternal": true
-  }
+  },
+  "references": [
+    { "path": "../domain/tsconfig.build.json" }
+  ]
 }

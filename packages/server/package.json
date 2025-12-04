@@ -10,17 +10,14 @@
     "directory": "packages/server"
   },
   "scripts": {
-    "codegen": "build-utils prepare-v2",
-    "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2",
-    "build-esm": "tsc -b tsconfig.build.json",
-    "build-cjs": "babel build/esm --plugins @babel/transform-export-namespace-from --plugins @babel/transform-modules-commonjs --out-dir build/cjs --source-maps",
-    "build-annotate": "babel build/esm --plugins annotate-pure-calls --out-dir build/esm --source-maps",
-    "start": "bun run ./build/esm/server.js",
-    "http:server": "bun run ./build/esm/http/server.js",
+    "build": "tsc -b tsconfig.build.json",
+    "start": "bun run ./dist/server.js",
+    "http:server": "bun run ./dist/http/server.js",
     "http:dev": "bun --watch ./src/http/server.ts",
     "check": "tsc -b tsconfig.json",
     "test": "vitest",
-    "coverage": "vitest --coverage"
+    "coverage": "vitest --coverage",
+    "clean": "rm -rf dist build .tsbuildinfo"
   },
   "dependencies": {
     "@crate/domain": "workspace:^",
@@ -31,23 +28,7 @@
     "@effect/sql-sqlite-bun": "^0.49.0",
     "effect": "^3.19.3"
   },
-  "effect": {
-    "generateExports": {
-      "include": [
-        "**/*.ts"
-      ]
-    },
-    "generateIndex": {
-      "include": [
-        "**/*.ts"
-      ]
-    }
-  },
   "devDependencies": {
-    "@babel/cli": "^7.28.3",
-    "@babel/core": "^7.28.5",
-    "@babel/plugin-transform-export-namespace-from": "^7.27.1",
-    "@babel/plugin-transform-modules-commonjs": "^7.27.1",
-    "babel-plugin-annotate-pure-calls": "^0.5.0"
+    "typescript": "^5.9.2"
   }
 }

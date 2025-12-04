@@ -9,19 +9,20 @@
     "url": "https://github.com/mkessy/crate",
     "directory": "packages/agent"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts"
     }
   },
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "check": "tsc -b tsconfig.json",
     "dev": "bun --watch src/examples/basic.ts",
-    "smoke:graph": "bun --env-file=../../.env src/scripts/smoke-test-graph.ts"
+    "smoke:graph": "bun --env-file=../../.env src/scripts/smoke-test-graph.ts",
+    "smoke:music-graph": "bun --env-file=../../.env src/scripts/smoke-test-music-graph-service.ts"
   },
   "dependencies": {
     "@crate/api": "workspace:^",

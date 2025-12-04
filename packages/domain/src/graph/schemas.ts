@@ -329,11 +329,13 @@ export const ConnectionNode = Schema.Struct({
   name: Schema.String,
   node_type: Schema.Literal("artist", "band", "label", "recording", "work", "area", "place"),
   relationship_type: Schema.String,
-  attributes: Schema.optional(Schema.Array(Schema.String)),
-  begin_date: Schema.optional(Schema.String),
-  end_date: Schema.optional(Schema.String),
-  via_mbid: Schema.optional(Schema.String),
-  via_name: Schema.optional(Schema.String)
+  // These fields are nullable in the Python / FastAPI models, so we accept nulls
+  // to keep the shared contract aligned across languages.
+  attributes: Schema.NullOr(Schema.Array(Schema.String)),
+  begin_date: Schema.NullOr(Schema.String),
+  end_date: Schema.NullOr(Schema.String),
+  via_mbid: Schema.NullOr(Schema.String),
+  via_name: Schema.NullOr(Schema.String)
 })
 export type ConnectionNode = typeof ConnectionNode.Type
 
