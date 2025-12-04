@@ -1084,6 +1084,412 @@ class DatabaseService:
         self.conn.commit()
         return cursor.rowcount > 0
 
+    # =========================================================================
+    # Graph Query Methods
+    # =========================================================================
+
+    def query_band_members(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True
+    ) -> List[dict]:
+        """Get band members for given band MBIDs."""
+        if not mbids:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        cursor.execute(f"""
+            SELECT
+                target_mbid, target_name, relationship_type,
+                attributes, begin_date, end_date,
+                source_mbid, source_name
+            FROM artist_edges
+            WHERE source_mbid IN ({placeholders})
+              AND relationship_type = 'band_member'
+            ORDER BY target_name
+            LIMIT ?
+        """, [*mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1],
+                'node_type': 'artist',
+                'relationship_type': row[2],
+                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
+                'begin_date': row[4],
+                'end_date': row[5],
+                'via_mbid': row[6],
+                'via_name': row[7]
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def query_member_of(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True
+    ) -> List[dict]:
+        """Get bands an artist is member of."""
+        if not mbids:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        cursor.execute(f"""
+            SELECT
+                target_mbid, target_name, relationship_type,
+                attributes, begin_date, end_date
+            FROM artist_edges
+            WHERE source_mbid IN ({placeholders})
+              AND relationship_type = 'member_of'
+            ORDER BY target_name
+            LIMIT ?
+        """, [*mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1],
+                'node_type': 'band',
+                'relationship_type': row[2],
+                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
+                'begin_date': row[4],
+                'end_date': row[5],
+                'via_mbid': None,
+                'via_name': None
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def query_labelmates(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True
+    ) -> List[dict]:
+        """Get artists who share labels with input artists."""
+        if not mbids:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        # Find labelmates via shared labels
+        cursor.execute(f"""
+            WITH source_labels AS (
+                SELECT DISTINCT label_mbid, label_name
+                FROM artist_label_edges
+                WHERE artist_mbid IN ({placeholders})
+            )
+            SELECT DISTINCT
+                ale.artist_mbid,
+                ale.artist_name,
+                'labelmate' as relationship_type,
+                ale.begin_date,
+                ale.end_date,
+                sl.label_mbid,
+                sl.label_name
+            FROM artist_label_edges ale
+            JOIN source_labels sl ON ale.label_mbid = sl.label_mbid
+            WHERE ale.artist_mbid NOT IN ({placeholders})
+            ORDER BY ale.artist_name
+            LIMIT ?
+        """, [*mbids, *mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1],
+                'node_type': 'artist',
+                'relationship_type': row[2],
+                'attributes': None,
+                'begin_date': row[3],
+                'end_date': row[4],
+                'via_mbid': row[5],
+                'via_name': row[6]
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def query_covers(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True
+    ) -> List[dict]:
+        """Get other recordings of the same work(s) - cover versions."""
+        if not mbids:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        cursor.execute(f"""
+            WITH source_works AS (
+                SELECT DISTINCT work_mbid, work_title
+                FROM recording_work_links
+                WHERE recording_mbid IN ({placeholders})
+            )
+            SELECT DISTINCT
+                rwl.recording_mbid,
+                COALESCE(r.song_title, rwl.work_title) as name,
+                rwl.attributes,
+                sw.work_mbid,
+                sw.work_title
+            FROM recording_work_links rwl
+            JOIN source_works sw ON rwl.work_mbid = sw.work_mbid
+            LEFT JOIN mb_recordings r ON rwl.recording_mbid = r.recording_mbid
+            WHERE rwl.recording_mbid NOT IN ({placeholders})
+            LIMIT ?
+        """, [*mbids, *mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1] or 'Unknown',
+                'node_type': 'recording',
+                'relationship_type': 'cover',
+                'attributes': json.loads(row[2]) if row[2] and include_attributes else None,
+                'begin_date': None,
+                'end_date': None,
+                'via_mbid': row[3],
+                'via_name': row[4]
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def query_artist_origin(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True
+    ) -> List[dict]:
+        """Get artist's origin area."""
+        if not mbids:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        cursor.execute(f"""
+            SELECT
+                area_mbid,
+                area_name,
+                relationship_type,
+                area_type,
+                artist_mbid,
+                artist_name
+            FROM artist_area_edges
+            WHERE artist_mbid IN ({placeholders})
+            LIMIT ?
+        """, [*mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1],
+                'node_type': 'area',
+                'relationship_type': row[2],
+                'attributes': [row[3]] if row[3] else None,
+                'begin_date': None,
+                'end_date': None,
+                'via_mbid': row[4],
+                'via_name': row[5]
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def query_artists_from_area(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True
+    ) -> List[dict]:
+        """Get artists from an area (by MBID or name)."""
+        if not mbids:
+            return []
+
+        # Support both MBIDs and area names
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        cursor.execute(f"""
+            SELECT
+                artist_mbid,
+                artist_name,
+                relationship_type,
+                area_type,
+                area_mbid,
+                area_name
+            FROM artist_area_edges
+            WHERE area_mbid IN ({placeholders})
+               OR area_name IN ({placeholders})
+            ORDER BY artist_name
+            LIMIT ?
+        """, [*mbids, *mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1],
+                'node_type': 'artist',
+                'relationship_type': row[2],
+                'attributes': [row[3]] if row[3] else None,
+                'begin_date': None,
+                'end_date': None,
+                'via_mbid': row[4],
+                'via_name': row[5]
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def query_recorded_at(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True
+    ) -> List[dict]:
+        """Get recordings made at a place (by MBID or name)."""
+        if not mbids:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        cursor.execute(f"""
+            SELECT
+                recording_mbid,
+                recording_title,
+                relationship_type,
+                place_type,
+                begin_date,
+                end_date,
+                place_mbid,
+                place_name
+            FROM place_recording_edges
+            WHERE place_mbid IN ({placeholders})
+               OR place_name IN ({placeholders})
+            ORDER BY recording_title
+            LIMIT ?
+        """, [*mbids, *mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1] or 'Unknown',
+                'node_type': 'recording',
+                'relationship_type': row[2],
+                'attributes': [row[3]] if row[3] else None,
+                'begin_date': row[4],
+                'end_date': row[5],
+                'via_mbid': row[6],
+                'via_name': row[7]
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def query_collaborators(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True
+    ) -> List[dict]:
+        """Get artists who shared bands with input artist."""
+        if not mbids:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        cursor.execute(f"""
+            WITH source_bands AS (
+                SELECT DISTINCT target_mbid as band_mbid, target_name as band_name
+                FROM artist_edges
+                WHERE source_mbid IN ({placeholders})
+                  AND relationship_type = 'member_of'
+            )
+            SELECT DISTINCT
+                ae.source_mbid,
+                ae.source_name,
+                ae.attributes,
+                ae.begin_date,
+                ae.end_date,
+                sb.band_mbid,
+                sb.band_name
+            FROM artist_edges ae
+            JOIN source_bands sb ON ae.target_mbid = sb.band_mbid
+            WHERE ae.source_mbid NOT IN ({placeholders})
+              AND ae.relationship_type = 'member_of'
+            ORDER BY ae.source_name
+            LIMIT ?
+        """, [*mbids, *mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1],
+                'node_type': 'artist',
+                'relationship_type': 'collaborator',
+                'attributes': json.loads(row[2]) if row[2] and include_attributes else None,
+                'begin_date': row[3],
+                'end_date': row[4],
+                'via_mbid': row[5],
+                'via_name': row[6]
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def query_label_hierarchy(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True
+    ) -> List[dict]:
+        """Get label ownership/distribution hierarchy."""
+        if not mbids:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        # Get both directions: labels owned by and labels that own
+        cursor.execute(f"""
+            SELECT
+                target_mbid,
+                target_name,
+                relationship_type,
+                begin_date,
+                end_date,
+                source_mbid,
+                source_name
+            FROM label_edges
+            WHERE source_mbid IN ({placeholders})
+               OR target_mbid IN ({placeholders})
+            ORDER BY target_name
+            LIMIT ?
+        """, [*mbids, *mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1],
+                'node_type': 'label',
+                'relationship_type': row[2],
+                'attributes': None,
+                'begin_date': row[3],
+                'end_date': row[4],
+                'via_mbid': row[5],
+                'via_name': row[6]
+            }
+            for row in cursor.fetchall()
+        ]
+
     def close(self):
         """Close database connection."""
         if self._conn:

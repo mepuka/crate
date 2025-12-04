@@ -29,7 +29,7 @@ from .models.insights import (
     Insight, extract_referenced_mbids, generate_summary
 )
 from .config import settings
-from .routes import embeddings
+from .routes import embeddings, graph
 import json
 import os
 from fastapi import Header
@@ -158,6 +158,7 @@ class CacheHeadersMiddleware(BaseHTTPMiddleware):
         "/api/plays/timeline": 30,            # 30 seconds - live updates need fresh data
         "/api/plays/count": 300,              # 5 minutes - entity play counts are semi-stable
         "/api/plays/": 604800,                # 1 week (for /api/plays/{id} pattern)
+        "/api/graph/connections": 604800,     # 1 week - deterministic graph data
         "/api/image-proxy": 2592000,          # 30 days - images are static
         "/openapi.json": 3600,                # 1 hour
         "/docs": 3600,                        # 1 hour
@@ -235,6 +236,10 @@ app.add_middleware(CacheHeadersMiddleware)
 
 # Include routers
 app.include_router(embeddings.router)
+app.include_router(graph.router)
+
+# Override graph router dependency to use our db_service
+graph.get_db_service = get_db_service
 
 
 # Dependency injection

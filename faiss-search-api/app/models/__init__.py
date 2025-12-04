@@ -117,4 +117,20 @@ __all__ = [
     # Helpers
     "extract_referenced_mbids",
     "generate_summary",
+
+    # Graph models
+    "GraphQueryType",
+    "NodeType",
+    "GraphConnectionsRequest",
+    "ConnectionNode",
+    "GraphConnectionsResponse",
 ]
+
+# Re-export graph models
+from .graph import (
+    GraphQueryType,
+    NodeType,
+    GraphConnectionsRequest,
+    ConnectionNode,
+    GraphConnectionsResponse,
+)
