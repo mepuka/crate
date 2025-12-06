@@ -61,6 +61,33 @@ export const PlayResultSchema = Schema.Struct({
 })
 export type PlayResult = typeof PlayResultSchema.Type
 
+/**
+ * Compact play result for tool responses - omits fields the model doesn't use.
+ *
+ * Drops: show, image_uri, thumbnail_uri, release_date (saves ~150 tokens per result)
+ *
+ * Use this for tool responses; use PlayResultSchema for API parsing.
+ */
+export const PlayResultCompact = Schema.Struct({
+  id: Schema.Number,
+  artist: Schema.String,
+  song: Schema.String,
+  similarity: Schema.Number,
+  album: Schema.NullOr(Schema.String),
+  airdate: Schema.String,
+  labels: Schema.Array(Schema.String),
+  rotation_status: Schema.NullOr(Schema.String),
+  is_local: Schema.Boolean,
+  is_live: Schema.Boolean,
+  is_request: Schema.Boolean,
+  comment: Schema.NullOr(Schema.String),
+  artist_mbid: Schema.Array(Schema.String),
+  recording_mbid: Schema.NullOr(Schema.String),
+  release_mbid: Schema.NullOr(Schema.String),
+  release_group_mbid: Schema.NullOr(Schema.String),
+})
+export type PlayResultCompact = typeof PlayResultCompact.Type
+
 // =============================================================================
 // SearchPlays Tool Schemas
 // =============================================================================
@@ -105,9 +132,11 @@ export type SearchPlaysParams = typeof SearchPlaysParams.Type
 
 /**
  * Response from play timeline browsing
+ *
+ * Uses PlayResultCompact to reduce token usage (drops image_uri, thumbnail_uri, show, release_date)
  */
 export const SearchPlaysResponse = Schema.Struct({
-  results: Schema.Array(PlayResultSchema),
+  results: Schema.Array(PlayResultCompact),
   total: Schema.Number,
   query_time_ms: Schema.Number,
   /** Error message if the API call failed (empty results returned on error) */
@@ -142,9 +171,11 @@ export type SemanticSearchParams = typeof SemanticSearchParams.Type
 
 /**
  * Response from semantic search
+ *
+ * Uses PlayResultCompact to reduce token usage (drops image_uri, thumbnail_uri, show, release_date)
  */
 export const SemanticSearchResponse = Schema.Struct({
-  results: Schema.Array(PlayResultSchema),
+  results: Schema.Array(PlayResultCompact),
   total: Schema.Number,
   query_time_ms: Schema.Number,
   query: Schema.String,
@@ -361,12 +392,34 @@ export const ConnectionNode = Schema.Struct({
 export type ConnectionNode = typeof ConnectionNode.Type
 
 /**
+ * Compact connection node - uses optional fields instead of nullable.
+ *
+ * When serialized to JSON, undefined fields are omitted entirely,
+ * reducing token usage for sparse connection data (~38% savings).
+ */
+export const ConnectionNodeCompact = Schema.Struct({
+  mbid: Schema.String,
+  name: Schema.String,
+  node_type: Schema.Literal("artist", "band", "label", "recording", "work", "area", "place"),
+  relationship_type: Schema.String,
+  // Optional fields - omitted when not present (vs null which serializes)
+  attributes: Schema.optional(Schema.Array(Schema.String)),
+  begin_date: Schema.optional(Schema.String),
+  end_date: Schema.optional(Schema.String),
+  via_mbid: Schema.optional(Schema.String),
+  via_name: Schema.optional(Schema.String),
+})
+export type ConnectionNodeCompact = typeof ConnectionNodeCompact.Type
+
+/**
  * Response from graph connections API
+ *
+ * Uses ConnectionNodeCompact to reduce token usage (omits null fields)
  */
 export const GraphConnectionsResponse = Schema.Struct({
   query_type: GraphQueryType,
   source_mbids: Schema.Array(Schema.String),
-  connections: Schema.Array(ConnectionNode),
+  connections: Schema.Array(ConnectionNodeCompact),
   total: Schema.Number,
   query_time_ms: Schema.Number,
   /** Error message if the API call failed (empty connections returned on error) */
@@ -395,7 +448,7 @@ export const ExploreGraphResponse = Schema.Struct({
   summary: Schema.String,
   new_nodes_count: Schema.Number,
   new_edges_count: Schema.Number,
-  neighbors: Schema.optional(Schema.Array(ConnectionNode)),
+  neighbors: Schema.optional(Schema.Array(ConnectionNodeCompact)),
   /** Error message if the API call failed (zero counts returned on error) */
   _error: Schema.optional(Schema.String)
 })

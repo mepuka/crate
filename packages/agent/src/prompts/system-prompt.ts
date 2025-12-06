@@ -1303,11 +1303,148 @@ export function formatPlayData(play: PlayContext): string {
 }
 
 // =============================================================================
-// PROMPT BUILDER
+// CACHEABLE STATIC PROMPT
+// =============================================================================
+
+/**
+ * Combined static sections for prompt caching.
+ *
+ * This string contains all sections that never change between requests.
+ * It should be sent with cache_control: { type: "ephemeral" } to enable
+ * Anthropic prompt caching.
+ *
+ * Token count: ~8,500 tokens (85% of total system prompt)
+ *
+ * Section Order:
+ * 1. Core Identity & Philosophy (who you are)
+ * 2. KEXP Culture (context you need)
+ * 3. Data Model (what you're working with)
+ * 4. MBID Instructions (technical)
+ * 5. Graph Instructions (technical)
+ * 6. Insight Types (what to produce)
+ * 7. Tools (how to research)
+ * 8. Insight Continuity (session coherence)
+ * 9. Research Process (methodology)
+ * 10. Guidelines & Constraints (rules)
+ */
+export const STATIC_SYSTEM_PROMPT = [
+  // === IDENTITY (who you are) ===
+  CORE_IDENTITY,
+  PHILOSOPHY,
+  TONE,
+  STORYTELLING,
+
+  // === KEXP CONTEXT (what you need to know) ===
+  KEXP_CULTURE,
+  KEXP_DJ_COMMENT_PATTERNS,
+  KEXP_ROTATION,
+
+  // === DATA MODEL (what you're working with) ===
+  DATA_MODEL,
+
+  // === TECHNICAL INSTRUCTIONS ===
+  MBID_INSTRUCTION,
+  GRAPH_INSTRUCTION,
+  INSIGHT_TYPES,
+  TOOLS,
+  INSIGHT_CONTINUITY,
+
+  // === RESEARCH PROCESS ===
+  RESEARCH_PROCESS,
+  WHEN_ZERO_INSIGHTS,
+
+  // === RULES & CONSTRAINTS ===
+  GUIDELINES,
+  TEMPORAL_REASONING,
+  CONFIDENCE,
+  CONSTRAINTS,
+].join("\n\n---\n\n");
+
+/**
+ * Build only the dynamic portions of the system prompt.
+ *
+ * This is combined with STATIC_SYSTEM_PROMPT at runtime.
+ * The dynamic portion is NOT cached.
+ *
+ * Token count: ~1,500 tokens (15% of total system prompt)
+ */
+export function buildDynamicPrompt(ctx: PromptContext): string {
+  const sections: string[] = [];
+
+  sections.push(formatTimeContext(ctx.currentTime));
+
+  if (ctx.showContext) {
+    sections.push(formatShowContext(ctx.showContext));
+  }
+
+  if (ctx.recentInsights) {
+    sections.push(formatRecentInsights(ctx.recentInsights));
+  }
+
+  return sections.join("\n\n---\n\n");
+}
+
+/**
+ * Message structure for prompt caching.
+ *
+ * The `cache` field indicates whether this content block should be cached.
+ * When using with @effect/ai Anthropic provider, set cache_control on cached blocks.
+ */
+export interface CacheableMessage {
+  role: "system" | "user";
+  content: string;
+  cache?: boolean;
+}
+
+/**
+ * Create prompt messages structured for Anthropic prompt caching.
+ *
+ * Returns separate message blocks:
+ * 1. Static system prompt (cache: true) - ~8,500 tokens, cached
+ * 2. Dynamic system prompt (cache: false) - ~1,500 tokens, not cached
+ * 3. User message with play data (cache: false) - varies
+ *
+ * @example
+ * ```ts
+ * const messages = createCacheablePromptMessages(ctx);
+ * // messages[0].cache === true  (static, cacheable)
+ * // messages[1].cache === false (dynamic)
+ * // messages[2].cache === false (play data)
+ * ```
+ */
+export function createCacheablePromptMessages(ctx: PromptContext): CacheableMessage[] {
+  const messages: CacheableMessage[] = [
+    {
+      role: "system",
+      content: STATIC_SYSTEM_PROMPT,
+      cache: true,
+    },
+    {
+      role: "system",
+      content: buildDynamicPrompt(ctx),
+      cache: false,
+    },
+  ];
+
+  if (ctx.playData) {
+    messages.push({
+      role: "user",
+      content: buildPlayMessage(ctx.playData),
+      cache: false,
+    });
+  }
+
+  return messages;
+}
+
+// =============================================================================
+// PROMPT BUILDER (Legacy - combines static + dynamic)
 // =============================================================================
 
 /**
  * Build the complete system prompt from modular sections.
+ *
+ * @deprecated Use createCacheablePromptMessages for prompt caching support.
  *
  * Section Order (optimized for attention):
  * 1. Core Identity & Philosophy (who you are)
@@ -1414,6 +1551,7 @@ export const CratePrompt = {
   KEXP_ROTATION,
   DATA_MODEL,
   MBID_INSTRUCTION,
+  GRAPH_INSTRUCTION,
   INSIGHT_TYPES,
   TOOLS,
   INSIGHT_CONTINUITY,
@@ -1423,6 +1561,11 @@ export const CratePrompt = {
   TEMPORAL_REASONING,
   CONFIDENCE,
   CONSTRAINTS,
+
+  // NEW: Cacheable prompt building
+  STATIC_SYSTEM_PROMPT,
+  buildDynamicPrompt,
+  createCacheablePromptMessages,
 
   // Formatting functions
   formatTimeContext,

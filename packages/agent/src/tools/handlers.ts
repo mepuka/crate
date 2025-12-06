@@ -29,8 +29,9 @@ import type {
   FindGraphPathResponse,
   QueryCachedNeighborsParams,
   QueryCachedNeighborsResponse,
+  ConnectionNodeCompact,
 } from "./schemas.js";
-import { transformPlayResult } from "../services/http-utils.js";
+import { toCompactPlayResult, toCompactConnection } from "../services/http-utils.js";
 
 import {
   SearchPlaysService,
@@ -141,9 +142,9 @@ const makeSearchPlaysHandler =
         );
 
         // Transform timeline response to match SearchPlaysResponse schema
-        // Uses shared transformPlayResult for Date -> ISO string conversion
+        // Uses shared toCompactPlayResult for Date -> ISO string conversion
         const results = response.results.map((play) =>
-          transformPlayResult(play, 1.0)
+          toCompactPlayResult(play, 1.0)
         );
 
         yield* Effect.annotateCurrentSpan({
@@ -206,9 +207,9 @@ const makeSemanticSearchHandler =
             )
           );
 
-        // Transform to match tool schema - uses shared transformPlayResult
+        // Transform to match tool schema - uses shared toCompactPlayResult
         const results = response.results.map((play) =>
-          transformPlayResult(play)
+          toCompactPlayResult(play)
         );
 
         yield* Effect.annotateCurrentSpan({
@@ -379,7 +380,16 @@ const makeGraphConnectionsHandler =
           query_type: params.query_type,
           mbids: params.mbids.join(","),
         });
-        const response = yield* service.connections(params).pipe(
+
+        // Call service and transform success case
+        const result = yield* service.connections(params).pipe(
+          Effect.map((response) => ({
+            query_type: response.query_type,
+            source_mbids: response.source_mbids,
+            connections: response.connections.map(toCompactConnection),
+            total: response.total,
+            query_time_ms: response.query_time_ms,
+          })),
           // Map service error to success with empty results for tool robustness
           Effect.catchAll((error) =>
             Effect.gen(function* () {
@@ -387,7 +397,7 @@ const makeGraphConnectionsHandler =
               yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
               return {
                 query_type: params.query_type,
-                connections: [],
+                connections: [] as ConnectionNodeCompact[],
                 total: 0,
                 query_time_ms: 0,
                 source_mbids: params.mbids,
@@ -396,10 +406,11 @@ const makeGraphConnectionsHandler =
             })
           )
         );
+
         yield* Effect.logDebug(
-          `graph_connections returned ${response.connections.length} connections`
+          `graph_connections returned ${result.connections.length} connections`
         );
-        return response;
+        return result;
       }),
       Effect.withSpan("Tool.graph_connections")
     );
@@ -454,19 +465,10 @@ const makeExploreGraphHandler =
 
         // Use connections directly from expand result - preserves all edge data!
         // No need to call neighbors() which loses relationship context.
+        // Transform to compact format (null -> undefined for optional fields)
         const neighbors =
           result.hasConnections && "connections" in result
-            ? result.connections.connections.map((conn) => ({
-                mbid: conn.mbid,
-                name: conn.name,
-                node_type: conn.node_type,
-                relationship_type: conn.relationship_type,
-                attributes: conn.attributes,
-                begin_date: conn.begin_date,
-                end_date: conn.end_date,
-                via_mbid: conn.via_mbid,
-                via_name: conn.via_name,
-              }))
+            ? result.connections.connections.map(toCompactConnection)
             : [];
 
         yield* Effect.annotateCurrentSpan({
