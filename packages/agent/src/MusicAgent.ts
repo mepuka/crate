@@ -12,12 +12,12 @@
  * @module
  */
 
-import { Effect, Data, Schema, Layer, pipe } from "effect";
+import { Effect, Data, Schema, Layer, pipe, Clock } from "effect";
 import { LanguageModel, Chat, Prompt, Tool, Toolkit } from "@effect/ai";
 import type * as Kexp from "@crate/domain/kexp/schemas";
 // EnrichmentRequest and EnrichmentItem no longer used - using postInsights directly
 import { FaissClient } from "./FaissClient.js";
-import type { InsightRecord } from "@crate/domain/faiss/schemas";
+import type { InsightRecord, EvalContext, ToolCallRecord } from "@crate/domain/faiss/schemas";
 import {
   PromptBuilderService,
   PromptBuilderServiceFull,
@@ -246,7 +246,22 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
       readonly chat: Chat.Service;
       readonly iteration: number;
       readonly response: LanguageModel.GenerateTextResponse<Tools> | null;
+      readonly toolCalls: readonly ToolCallRecord[];
     };
+
+    /**
+     * Result from running the agent loop, including research metadata for eval
+     */
+    interface AgentLoopResult<Tools extends Record<string, Tool.Any>> {
+      readonly response: LanguageModel.GenerateObjectResponse<Tools, InsightsResponseEncoded>;
+      readonly researchMeta: {
+        readonly iterationCount: number;
+        readonly toolsCalled: readonly string[];
+        readonly totalToolCalls: number;
+        readonly researchDurationMs: number;
+        readonly toolCalls: readonly ToolCallRecord[];
+      };
+    }
 
     /**
      * Run two-phase agent loop:
@@ -258,6 +273,8 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
      * tool requirements. By separating the phases, we can force tool usage
      * during research while still getting structured output.
      *
+     * Returns both the response and research metadata for evaluation.
+     *
      * @param initialPrompt - The initial prompt from CratePrompt
      * @param toolkit - The toolkit with tools and handlers
      * @param maxIterations - Maximum number of iterations (default: 10)
@@ -267,7 +284,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
       toolkit: Toolkit.WithHandler<Tools>,
       maxIterations: number = 10
     ): Effect.Effect<
-      LanguageModel.GenerateObjectResponse<Tools, InsightsResponseEncoded>,
+      AgentLoopResult<Tools>,
       MusicAgentError,
       MusicAgentRequirements
     > =>
@@ -275,16 +292,20 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
         // Initialize chat with CratePrompt system prompt and user message
         const chat = yield* Chat.fromPrompt(initialPrompt);
 
+        // Track research start time for duration calculation
+        const researchStartTime = yield* Clock.currentTimeMillis;
+
         // =============================================================================
         // Phase 1: Research - use generateText with forced tool calls
         // =============================================================================
         yield* Effect.logDebug("Starting research phase");
 
-        yield* Effect.iterate(
+        const finalState = yield* Effect.iterate(
           {
             chat,
             iteration: 0,
             response: null,
+            toolCalls: [] as readonly ToolCallRecord[],
           } as ResearchState<Tools>,
           {
             // Continue while:
@@ -305,6 +326,8 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                     iteration: state.iteration + 1,
                     max_iterations: maxIterations,
                   });
+
+                  const iterationStartTime = yield* Clock.currentTimeMillis;
 
                   // Use generateText with toolChoice to force tool calls
                   // On first iteration, REQUIRE a tool call
@@ -339,7 +362,18 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                       )
                     );
 
+                  const iterationEndTime = yield* Clock.currentTimeMillis;
                   const toolCallCount = response.toolCalls.length;
+
+                  // Record tool calls for eval context
+                  const newToolCalls: ToolCallRecord[] = response.toolCalls.map(
+                    (tc) => ({
+                      iteration: state.iteration,
+                      tool_name: tc.name,
+                      timestamp: new Date().toISOString(),
+                      duration_ms: Number(iterationEndTime - iterationStartTime),
+                    })
+                  );
 
                   yield* Effect.annotateCurrentSpan({
                     tool_call_count: toolCallCount,
@@ -361,6 +395,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                     chat,
                     iteration: state.iteration + 1,
                     response,
+                    toolCalls: [...state.toolCalls, ...newToolCalls],
                   } as ResearchState<Tools>;
                 }),
                 Effect.withSpan("MusicAgent.researchIteration", {
@@ -369,6 +404,20 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
               ),
           }
         );
+
+        // Calculate research duration
+        const researchEndTime = yield* Clock.currentTimeMillis;
+        const researchDurationMs = Number(researchEndTime - researchStartTime);
+
+        // Build research metadata for eval context
+        const toolsCalled = [...new Set(finalState.toolCalls.map((tc) => tc.tool_name))];
+        const researchMeta = {
+          iterationCount: finalState.iteration,
+          toolsCalled,
+          totalToolCalls: finalState.toolCalls.length,
+          researchDurationMs,
+          toolCalls: finalState.toolCalls,
+        };
 
         // =============================================================================
         // Phase 2: Output - use generateObject to produce structured insights
@@ -413,9 +462,12 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
         yield* Effect.annotateCurrentSpan({
           phase: "complete",
           insight_count: rawInsights.length,
+          iteration_count: researchMeta.iterationCount,
+          total_tool_calls: researchMeta.totalToolCalls,
+          research_duration_ms: researchMeta.researchDurationMs,
         });
 
-        return response;
+        return { response, researchMeta };
       }).pipe(Effect.withSpan("MusicAgent.runAgentLoop"));
 
     /**
@@ -620,7 +672,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                 // Chat automatically manages conversation history including tool calls and results
                 // Effect.iterate provides declarative stateful iteration
                 // LanguageModel is provided externally via MusicAgentLive layer
-                const response = yield* runAgentLoop(prompt, toolkit, 10).pipe(
+                const { response, researchMeta } = yield* runAgentLoop(prompt, toolkit, 10).pipe(
                   Effect.mapError(
                     (error) =>
                       new MusicAgentError({
@@ -647,6 +699,26 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
 
                 // Extract insights from decoded response
                 const insights = decoded.insights;
+
+                // Get session ID for eval context
+                const sessionId = yield* insightSession.getSessionId();
+
+                // Build eval context from research metadata
+                const evalContext: EvalContext = {
+                  session_id: sessionId,
+                  iteration_count: researchMeta.iterationCount,
+                  tools_called: [...researchMeta.toolsCalled],
+                  total_tool_calls: researchMeta.totalToolCalls,
+                  research_duration_ms: researchMeta.researchDurationMs,
+                  had_existing_insights: existingInsights.length > 0,
+                  existing_insight_count: existingInsights.length,
+                  tool_calls: researchMeta.toolCalls.map(tc => ({
+                    iteration: tc.iteration,
+                    tool_name: tc.tool_name,
+                    timestamp: tc.timestamp,
+                    duration_ms: tc.duration_ms,
+                  })),
+                };
 
                 // Annotate span with insight count and types
                 const insightTypes = insights.map((i) => i._tag);
@@ -678,9 +750,8 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   );
                 }
 
-                // Return the decoded insights directly (not wrapped in EnrichmentItem)
-                // The insights will be posted to /api/insights which expects raw Insight objects
-                return insights;
+                // Return insights with their eval context
+                return { insights, evalContext };
               }),
               Effect.withSpan("MusicAgent.processPlay", {
                 attributes: { play_id: play.id },
@@ -691,7 +762,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
           // Each play clears the session then seeds with its own existing insights.
           // Sequential processing prevents race conditions on the shared session state.
           // Future: use per-play scoped sessions to enable parallelization
-          const enrichmentArrays = yield* Effect.forEach(plays, processPlay, {
+          const playResults = yield* Effect.forEach(plays, processPlay, {
             concurrency: 1, // Sequential to maintain session isolation
           }).pipe(
             Effect.mapError(
@@ -703,12 +774,16 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             )
           );
 
-          // Flatten the array of arrays into a single array of Insight objects
-          const insights = enrichmentArrays.flat();
+          // Flatten insights from all play results
+          const allInsights = playResults.flatMap((r) => r.insights);
+
+          // Collect eval contexts (one per play that produced insights)
+          // We'll use the first eval context for the batch since they share session
+          const evalContexts = playResults.map((r) => r.evalContext);
 
           // Post insights back to FAISS API via /api/insights endpoint
           // If no insights were produced, skip posting
-          if (insights.length === 0) {
+          if (allInsights.length === 0) {
             yield* Effect.logInfo(
               `No insights to post for ${plays.length} plays`
             );
@@ -716,8 +791,12 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             return { count: 0 };
           }
 
+          // Use the first eval context as shared context for the batch
+          // All plays in a batch share the same session
+          const sharedEvalContext = evalContexts[0];
+
           const insightsResponse = yield* faissClient
-            .postInsights(insights)
+            .postInsights(allInsights, sharedEvalContext)
             .pipe(
               Effect.mapError(
                 (error) =>

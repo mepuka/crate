@@ -1063,6 +1063,10 @@ async def create_insights(
     try:
         # Transform Pydantic models to dicts for database
         insight_dicts = []
+
+        # Convert eval_context to dict if present
+        eval_context_dict = request.eval_context.model_dump() if request.eval_context else None
+
         for insight in request.insights:
             # Get the insight tag (type discriminator)
             tag = insight.tag if hasattr(insight, 'tag') else insight.model_dump().get("_tag")
@@ -1088,6 +1092,7 @@ async def create_insights(
                 'referenced_label_mbid': ref_mbids.get('referenced_label_mbid'),
                 'data': insight.model_dump(),
                 'summary': summary,
+                'eval_context': eval_context_dict,  # Shared across all insights in batch
             }
             insight_dicts.append(insight_dict)
 

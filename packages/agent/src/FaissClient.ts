@@ -25,6 +25,7 @@ import {
   SearchResponse as SearchResponseSchema,
   TimelineParams,
   TimelineResponse as TimelineResponseSchema,
+  EvalContext,
 } from "@crate/domain/faiss/schemas";
 import type { Insight } from "./prompts/insights.js";
 
@@ -194,11 +195,18 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
        * - Pydantic validation of insight structure
        * - MBID extraction for efficient entity queries
        * - Auto-generated summaries
+       * - Optional eval_context for evaluation/debugging
        */
-      postInsights: (insights: readonly Insight[]) =>
+      postInsights: (
+        insights: readonly Insight[],
+        evalContext?: typeof EvalContext.Type
+      ) =>
         client
           .post("/api/insights", {
-            body: HttpBody.unsafeJson({ insights }),
+            body: HttpBody.unsafeJson({
+              insights,
+              ...(evalContext && { eval_context: evalContext }),
+            }),
           })
           .pipe(
             Effect.flatMap(HttpClientResponse.schemaBodyJson(InsightsResponse)),

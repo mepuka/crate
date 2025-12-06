@@ -858,6 +858,7 @@ class DatabaseService:
                 - referenced_*_mbid: Optional referenced MBIDs
                 - data: Full insight JSON
                 - summary: Optional generated summary
+                - eval_context: Optional evaluation context dict
 
         Returns:
             List of inserted insight IDs
@@ -866,6 +867,11 @@ class DatabaseService:
         inserted_ids = []
 
         for insight in insights:
+            # Serialize eval_context if present
+            eval_context_json = None
+            if insight.get('eval_context'):
+                eval_context_json = json.dumps(insight['eval_context']) if isinstance(insight['eval_context'], dict) else insight['eval_context']
+
             # Insert into insights table
             cursor.execute("""
                 INSERT INTO insights (
@@ -881,8 +887,9 @@ class DatabaseService:
                     referenced_label_mbid,
                     data,
                     summary,
+                    eval_context,
                     schema_version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v1')
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v1')
             """, (
                 insight['insight_type'],
                 insight['play_id'],
@@ -896,6 +903,7 @@ class DatabaseService:
                 insight.get('referenced_label_mbid'),
                 json.dumps(insight['data']) if isinstance(insight['data'], dict) else insight['data'],
                 insight.get('summary'),
+                eval_context_json,
             ))
             insight_id = cursor.lastrowid
             inserted_ids.append(insight_id)
@@ -935,7 +943,7 @@ class DatabaseService:
                 source_recording_mbid, source_release_mbid,
                 referenced_artist_mbid, referenced_recording_mbid,
                 referenced_release_mbid, referenced_label_mbid,
-                data, summary, created_at, updated_at
+                data, summary, created_at, updated_at, eval_context
             FROM insights
             WHERE play_id = ?
         """
@@ -949,6 +957,7 @@ class DatabaseService:
         insights = []
         for row in rows:
             data = json.loads(row[11]) if isinstance(row[11], str) else row[11]
+            eval_context = json.loads(row[15]) if row[15] and isinstance(row[15], str) else row[15]
             insights.append({
                 'id': row[0],
                 'insight_type': row[1],
@@ -965,6 +974,7 @@ class DatabaseService:
                 'summary': row[12],
                 'created_at': row[13],
                 'updated_at': row[14],
+                'eval_context': eval_context,
             })
 
         return insights
@@ -1033,7 +1043,7 @@ class DatabaseService:
                 source_recording_mbid, source_release_mbid,
                 referenced_artist_mbid, referenced_recording_mbid,
                 referenced_release_mbid, referenced_label_mbid,
-                data, summary, created_at, updated_at
+                data, summary, created_at, updated_at, eval_context
             FROM insights
             WHERE {where_clause}
             ORDER BY created_at DESC
@@ -1045,6 +1055,7 @@ class DatabaseService:
         insights = []
         for row in rows:
             data = json.loads(row[11]) if isinstance(row[11], str) else row[11]
+            eval_context = json.loads(row[15]) if row[15] and isinstance(row[15], str) else row[15]
             insights.append({
                 'id': row[0],
                 'insight_type': row[1],
@@ -1061,6 +1072,7 @@ class DatabaseService:
                 'summary': row[12],
                 'created_at': row[13],
                 'updated_at': row[14],
+                'eval_context': eval_context,
             })
 
         return {'insights': insights, 'total': total}

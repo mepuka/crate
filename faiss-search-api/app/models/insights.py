@@ -193,12 +193,50 @@ Insight = Annotated[
 
 
 # =============================================================================
+# Evaluation Context Models
+# =============================================================================
+
+class ToolCallRecord(BaseModel):
+    """Record of a single tool call during research phase."""
+    iteration: int
+    tool_name: str
+    parameters: Optional[dict] = None
+    result_summary: Optional[str] = None
+    result_count: Optional[int] = None
+    duration_ms: Optional[int] = None
+    timestamp: str
+
+
+class EvalContext(BaseModel):
+    """
+    Evaluation context for an insight batch.
+
+    Captures metadata about the research process that produced the insights.
+    This enables:
+    - Understanding which tools contributed to insights
+    - Measuring research efficiency (iterations, tool calls)
+    - A/B testing of prompt variations
+    - Debugging and improvement of the agent
+    """
+    session_id: str
+    iteration_count: int
+    tools_called: List[str]
+    total_tool_calls: int
+    research_duration_ms: Optional[int] = None
+    model: Optional[str] = None
+    had_existing_insights: Optional[bool] = None
+    existing_insight_count: Optional[int] = None
+    tool_calls: Optional[List[ToolCallRecord]] = None
+
+
+# =============================================================================
 # API Request/Response Models
 # =============================================================================
 
 class CreateInsightsRequest(BaseModel):
-    """Request to create multiple insights."""
+    """Request to create multiple insights with optional eval context."""
     insights: List[Insight]
+    eval_context: Optional[EvalContext] = None
 
 
 class InsightRecord(BaseModel):
@@ -220,6 +258,9 @@ class InsightRecord(BaseModel):
     referenced_recording_mbid: Optional[str] = None
     referenced_release_mbid: Optional[str] = None
     referenced_label_mbid: Optional[str] = None
+
+    # Evaluation context (optional, for insights with eval tracking)
+    eval_context: Optional[dict] = None
 
 
 class InsightsResponse(BaseModel):

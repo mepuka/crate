@@ -119,3 +119,85 @@ export class PlayInsightsResponse extends Schema.Class<PlayInsightsResponse>("Pl
   insights: Schema.Array(InsightRecord),
   total: Schema.Number
 }) {}
+
+// =============================================================================
+// Evaluation Context Schemas
+// =============================================================================
+// These schemas capture metadata about how insights were generated,
+// enabling evaluation and improvement of the agent.
+
+/**
+ * Record of a single tool call during research phase
+ *
+ * Captures what tool was called, with what parameters, and what it returned.
+ * This enables analysis of research patterns and tool effectiveness.
+ */
+export class ToolCallRecord extends Schema.Class<ToolCallRecord>("ToolCallRecord")({
+  /** Which iteration this tool was called in (0-indexed) */
+  iteration: Schema.Number,
+  /** Name of the tool called */
+  tool_name: Schema.String,
+  /** Parameters passed to the tool (may be truncated for large params) */
+  parameters: Schema.optional(Schema.Unknown),
+  /** Summary of the result (e.g., count of results, error message) */
+  result_summary: Schema.optional(Schema.String),
+  /** Number of results returned (for search-type tools) */
+  result_count: Schema.optional(Schema.Number),
+  /** Duration in milliseconds */
+  duration_ms: Schema.optional(Schema.Number),
+  /** ISO timestamp of when the tool was called */
+  timestamp: Schema.String
+}) {}
+
+/**
+ * Evaluation context for an insight
+ *
+ * Captures metadata about the research process that produced the insight.
+ * This enables:
+ * - Understanding which tools contributed to the insight
+ * - Measuring research efficiency (iterations, tool calls)
+ * - A/B testing of prompt variations
+ * - Debugging and improvement of the agent
+ */
+export class EvalContext extends Schema.Class<EvalContext>("EvalContext")({
+  /** Unique session ID for this enrichment run */
+  session_id: Schema.String,
+  /** Total number of research iterations before output phase */
+  iteration_count: Schema.Number,
+  /** Ordered list of tools called across all iterations */
+  tools_called: Schema.Array(Schema.String),
+  /** Total number of tool calls */
+  total_tool_calls: Schema.Number,
+  /** Duration of research phase in milliseconds */
+  research_duration_ms: Schema.optional(Schema.Number),
+  /** Model used for generation (e.g., "claude-sonnet-4-20250514") */
+  model: Schema.optional(Schema.String),
+  /** Whether existing insights were found for this play */
+  had_existing_insights: Schema.optional(Schema.Boolean),
+  /** Count of existing insights pre-seeded */
+  existing_insight_count: Schema.optional(Schema.Number),
+  /** Detailed tool call records (optional, can be expensive to store) */
+  tool_calls: Schema.optional(Schema.Array(ToolCallRecord))
+}) {}
+
+/**
+ * Extended insight with eval context for POST /api/insights
+ *
+ * The eval_context is optional to maintain backwards compatibility.
+ * New enrichments should include it for evaluation support.
+ */
+export const InsightWithEvalContext = Schema.Struct({
+  /** The insight data (will be validated by Python discriminated union) */
+  insight: Schema.Unknown,
+  /** Optional evaluation context */
+  eval_context: Schema.optional(EvalContext)
+})
+export type InsightWithEvalContext = typeof InsightWithEvalContext.Type
+
+/**
+ * Extended request to POST insights with eval context
+ */
+export class CreateInsightsWithEvalRequest extends Schema.Class<CreateInsightsWithEvalRequest>("CreateInsightsWithEvalRequest")({
+  /** Array of insights with optional eval context */
+  insights: Schema.Array(InsightWithEvalContext)
+}) {}
