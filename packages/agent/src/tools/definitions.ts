@@ -59,6 +59,7 @@ Returns plays with metadata including airdate, labels, and MusicBrainz IDs.
 On API error, returns empty results with _error field describing the failure.`,
   parameters: SearchPlaysParams.fields,
   success: SearchPlaysResponse,
+  failureMode: "return",
 });
 
 /**
@@ -82,6 +83,7 @@ Supports pagination with offset parameter for browsing large result sets.
 On API error, returns empty results with _error field describing the failure.`,
   parameters: SemanticSearchParams.fields,
   success: SemanticSearchResponse,
+  failureMode: "return",
 });
 
 /**
@@ -93,17 +95,25 @@ On API error, returns empty results with _error field describing the failure.`,
 export const ResolveMbidTool = Tool.make("resolve_mbid", {
   description: `Resolve names to MusicBrainz IDs by searching the MusicBrainz database.
 
-Use this tool when:
+**Use this tool when:**
 - You have an artist/track name but need the canonical MBID
 - You need to disambiguate entities (e.g., multiple "The National" artists)
 - Search results lack MBIDs and you need them for search_plays
+- DJ mentions a venue/studio you want to identify
 
-entity_type must be one of: artist, recording, release, release_group, label
+**⚠️ entity_type MUST be one of these 6 ONLY:**
+✅ artist, recording, release, release_group, label, place
+
+**❌ NOT Supported (will fail):**
+- area (cities/countries) → Skip, use graph tools for geographic info
+- event (concerts/festivals) → Skip, extract from DJ comment
+- work (compositions) → Skip, resolve via recording instead
+
 Use artist_hint to disambiguate recordings/releases (e.g., "Squeeze" by "SASAMI").
-
 Returns multiple matches ranked by relevance with disambiguation info.`,
   parameters: ResolveMbidParams.fields,
   success: ResolveMbidResponse,
+  failureMode: "return",
 });
 
 /**
@@ -125,6 +135,7 @@ Set extract_links=true to also get links from the page for further research.
 Returns cleaned markdown text content suitable for analysis.`,
   parameters: FetchLinkParams.fields,
   success: FetchLinkResponse,
+  failureMode: "return",
 });
 
 /**
@@ -144,6 +155,7 @@ Use this to:
 Optional filters: artist_mbid, entity_type, limit`,
   parameters: GetRecentInsightsParams.fields,
   success: GetRecentInsightsResponse,
+  failureMode: "return",
 });
 
 /**
@@ -162,6 +174,7 @@ Provide MBIDs (1-50); returns typed connections with provenance.
 On API error, returns empty connections array with _error field describing the failure.`,
   parameters: GraphConnectionsParams.fields,
   success: GraphConnectionsResponse,
+  failureMode: "return",
 });
 
 /**
@@ -186,6 +199,7 @@ relationship context (relationship_type, attributes, dates, via provenance).
 On API error, returns empty results - check new_nodes_count=0 as potential failure signal.`,
   parameters: ExploreGraphParams.fields,
   success: ExploreGraphResponse,
+  failureMode: "return",
 });
 
 /**
@@ -202,6 +216,7 @@ Returns empty path if no connection exists in the cache.
 Expand with explore_graph first if entities aren't in cache yet.`,
   parameters: FindGraphPathParams.fields,
   success: FindGraphPathResponse,
+  failureMode: "return",
 });
 
 /**
@@ -219,6 +234,7 @@ Returns full relationship context by default (include_edges=true).
 Returns empty array if MBID not in cache - use explore_graph first.`,
   parameters: QueryCachedNeighborsParams.fields,
   success: QueryCachedNeighborsResponse,
+  failureMode: "return",
 });
 
 // =============================================================================

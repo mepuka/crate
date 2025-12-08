@@ -26,7 +26,8 @@ export const MbEntityType = Schema.Literal(
   "recording",
   "release",
   "release_group",
-  "label"
+  "label",
+  "place"
 )
 export type MbEntityType = typeof MbEntityType.Type
 
@@ -200,7 +201,7 @@ export const ResolveMbidParams = Schema.Struct({
   }),
   /** Type of MusicBrainz entity to search for */
   entity_type: MbEntityType.annotations({
-    description: "Type of MusicBrainz entity to search for: artist, recording, release, release_group, or label"
+    description: "Type of MusicBrainz entity to search for: artist, recording, release, release_group, label, or place (venues, studios)"
   }),
   /** Artist name to help disambiguate recordings/releases */
   artist_hint: Schema.optional(Schema.String).annotations({
