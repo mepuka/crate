@@ -259,6 +259,43 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
               })
           )
         ),
+
+      /**
+       * GET insights from plays within a time window (same show context)
+       *
+       * Fetches insights for plays aired within ±windowHours of the given play.
+       * This provides temporal context from the same DJ show, enabling the agent
+       * to see what insights were produced for nearby plays on the timeline.
+       *
+       * @param playId - The center play to build context around
+       * @param windowHours - Hours before/after to include (default 3 = typical show length)
+       * @param limit - Maximum insights to return (default 20)
+       */
+      getInsightsForContext: (
+        playId: number,
+        windowHours: number = 3,
+        limit: number = 20
+      ) =>
+        client
+          .get(`/api/insights/context`, {
+            urlParams: {
+              play_id: playId.toString(),
+              window_hours: windowHours.toString(),
+              limit: limit.toString(),
+            },
+          })
+          .pipe(
+            Effect.flatMap(
+              HttpClientResponse.schemaBodyJson(GetInsightsResponse)
+            ),
+            Effect.mapError(
+              (error) =>
+                new FaissApiError({
+                  message: `Get context insights for play ${playId} failed`,
+                  cause: error,
+                })
+            )
+          ),
     };
   }),
   dependencies: [FaissConfig.Default, FetchHttpClient.layer],

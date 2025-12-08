@@ -495,33 +495,9 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             play_ids: playIds.join(","),
           });
 
-          // Seed session with recent temporal insights (what we've been producing recently)
-          // This gives the agent context about recent work across all plays
-          const recentInsights = yield* faissClient
-            .getRecentInsights(15)
-            .pipe(
-              Effect.map((response) =>
-                response.insights.map((record) =>
-                  insightRecordToSummary(record, {
-                    artist: "Unknown", // We don't have play context for these
-                    song: "Unknown",
-                  })
-                )
-              ),
-              Effect.catchAll((error) => {
-                return Effect.logWarning(
-                  `Failed to fetch recent insights: ${error.message}`
-                ).pipe(Effect.map(() => [] as InsightSummary[]));
-              }),
-              Effect.withSpan("MusicAgent.fetchRecentInsights")
-            );
-
-          if (recentInsights.length > 0) {
-            yield* insightSession.seedWithExistingInsights(recentInsights);
-            yield* Effect.logDebug(
-              `Pre-seeded session with ${recentInsights.length} recent insights for temporal context`
-            );
-          }
+          // NOTE: We no longer seed with global recent insights here.
+          // Instead, each play gets context-based seeding (insights from same show window)
+          // This is done per-play in processPlay() below.
 
           // Fetch plays from FAISS API
           const batchResponse = yield* faissClient.getPlaysBatch(playIds).pipe(
@@ -557,7 +533,39 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                 // across the session so the agent can see what it produced for previous plays.
                 // This enables coherence and prevents repetition across plays.
 
-                // Pre-seed session with existing insights for THIS play from database
+                // 1. Fetch CONTEXT insights from same show window (±3 hours)
+                // This gives the agent awareness of what's been discussed on the show
+                const contextInsights = yield* faissClient
+                  .getInsightsForContext(play.id, 3, 15)
+                  .pipe(
+                    Effect.map((response) =>
+                      response.insights.map((record) =>
+                        insightRecordToSummary(record, {
+                          artist: "show-context", // Mark as context, not current play
+                          song: "show-context",
+                        })
+                      )
+                    ),
+                    // Fall back to empty if endpoint not available (needs FAISS API update)
+                    Effect.catchAll((error) => {
+                      return Effect.logDebug(
+                        `Context insights not available for play ${play.id}: ${error.message}`
+                      ).pipe(Effect.map(() => [] as InsightSummary[]));
+                    }),
+                    Effect.withSpan("MusicAgent.fetchContextInsights")
+                  );
+
+                if (contextInsights.length > 0) {
+                  yield* insightSession.seedWithExistingInsights(contextInsights);
+                  yield* Effect.logDebug(
+                    `Pre-seeded session with ${contextInsights.length} context insights from same show window`
+                  );
+                  yield* Effect.annotateCurrentSpan({
+                    context_insight_count: contextInsights.length,
+                  });
+                }
+
+                // 2. Fetch existing insights for THIS SPECIFIC play from database
                 // This allows the agent to see its previous work and decide if new insights add value
                 const existingInsights = yield* faissClient
                   .getInsightsForPlay(play.id)

@@ -93,10 +93,21 @@ export class PromptBuildError extends Data.TaggedError("PromptBuildError")<{
 
 /**
  * Convert BuiltPrompt to @effect/ai Prompt format
+ *
+ * Uses Anthropic's prompt caching for the system message to reduce costs
+ * (~90% savings on repeated prompts within 5 minute TTL).
  */
 export const builtPromptToAiPrompt = (prompt: BuiltPrompt): Prompt.Prompt =>
   Prompt.make([
-    { role: "system", content: prompt.systemPrompt },
+    {
+      role: "system",
+      content: prompt.systemPrompt,
+      options: {
+        anthropic: {
+          cacheControl: { type: "ephemeral" },
+        },
+      },
+    },
     { role: "user", content: prompt.userMessage },
   ]);
 

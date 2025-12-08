@@ -25,11 +25,19 @@ export * from "./system-prompt.js";
  *
  * This wraps the canonical buildSystemPrompt from system-prompt.ts
  * (which returns a string) into a Prompt.Prompt object.
+ *
+ * Uses Anthropic's prompt caching for the system message to reduce costs
+ * (~90% savings on repeated prompts within 5 minute TTL).
  */
 export const buildSystemPrompt = (ctx: PromptContext): Prompt.Prompt =>
   Prompt.make([
     {
       role: "system",
       content: buildSystemPromptString(ctx),
+      options: {
+        anthropic: {
+          cacheControl: { type: "ephemeral" },
+        },
+      },
     },
   ]);

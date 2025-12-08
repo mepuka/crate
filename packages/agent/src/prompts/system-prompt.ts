@@ -213,9 +213,9 @@ export const MBID_INSTRUCTION = `## MusicBrainz IDs (MBIDs)
 
 MBIDs are your ground truth for entity identity. They enable precise searches and cross-system linking.
 
-### Entity Types Explained
+### Supported Entity Types for resolve_mbid
 
-MusicBrainz uses different entity types for different concepts:
+The \`resolve_mbid\` tool works with ONLY these 6 entity types:
 
 | Entity Type | What It Represents | Example Use |
 |-------------|-------------------|-------------|
@@ -224,12 +224,20 @@ MusicBrainz uses different entity types for different concepts:
 | **release** | A specific edition/pressing | "Fleet Foxes (2008 US CD)" |
 | **release_group** | All editions of an album | "Fleet Foxes" (the album, any edition) |
 | **label** | A record label | "Sub Pop Records" |
+| **place** | A venue or studio | "The Showbox", "Abbey Road Studios" |
 
-**When to use each:**
-- Use **artist_mbid** to find all plays by an artist across all releases
-- Use **recording_mbid** to find all plays of a specific song (same audio)
-- Use **release_mbid** to filter to plays of a specific album edition
-- Use **release_group_mbid** for all versions of an album (any pressing/remaster)
+**⚠️ NOT Supported by resolve_mbid:**
+- **area** - Geographic regions (cities, countries) - use graph tools instead
+- **event** - Concerts, festivals - extract from DJ comment, don't resolve
+- **work** - Compositions - resolve via recording's relationships instead
+
+**When to use each supported type:**
+- Use **artist** to find all plays by an artist across all releases
+- Use **recording** to find all plays of a specific song (same audio)
+- Use **release** to filter to plays of a specific album edition
+- Use **release_group** for all versions of an album (any pressing/remaster)
+- Use **label** for label info only (cannot filter search_plays by label)
+- Use **place** for venues/studios mentioned by DJ
 
 ### MBID Resolution Workflow
 
@@ -243,9 +251,24 @@ Follow this decision tree for every play:
 - Found results → Use the artist_mbid, recording_mbid from search results
 - No results → Continue to step 3
 
-**Step 3: Is this entity mentioned in DJ comment (not the main artist)?**
-- Yes → Call resolve_mbid to look up the mentioned entity
-- No → Continue to step 4
+**Step 3: Need to resolve an entity mentioned in DJ comment?**
+
+⚠️ **BEFORE calling resolve_mbid, check:**
+1. Is the entity type supported? (artist, recording, release, release_group, label, place)
+2. Will you actually USE the MBID in search_plays or explore_graph?
+
+**Valid reasons to call resolve_mbid:**
+- ✅ DJ mentions a featured artist → resolve to get MBID → then explore_graph("collaborators")
+- ✅ DJ mentions a label → resolve to get label MBID → then explore_graph("labelmates")
+- ✅ DJ mentions an album → resolve to get release_group MBID → then search_plays
+- ✅ DJ mentions a venue/studio → resolve to get place MBID → for context
+
+**Invalid reasons to call resolve_mbid:**
+- ❌ Entity is an area/city → NOT supported, skip
+- ❌ Entity is an event/festival → NOT supported, extract details from DJ comment instead
+- ❌ Just curious → Only resolve if you'll actually use the MBID afterward
+
+**If the entity type is not supported, skip resolve_mbid entirely.**
 
 **Step 4: No MBID available**
 - Use \`null\` for MBID fields
@@ -759,6 +782,23 @@ Get neighbors for an entity from the local cache (no API call).
 | Walk further hops, get neighbors | explore_graph |
 | Find path between two entities | find_graph_path |
 | Query cache without API call | query_cached_neighbors |
+
+### DJ Comment Pattern → Tool Chain
+
+When you see these patterns in DJ comments, use the corresponding tool chain:
+
+| DJ Comment Pattern | Tool Chain | entity_type |
+|-------------------|------------|-------------|
+| Mentions artist by name | semantic_search → search_plays | N/A |
+| "feat. [name]", "with [name]" | resolve_mbid(name) → explore_graph("collaborators") | artist |
+| "on [Label]", "signed to" | resolve_mbid(label) → explore_graph("labelmates") | label |
+| "cover of", "originally by" | resolve_mbid(original) → graph_connections("covers") | recording |
+| "at [Venue]", "recorded at" | resolve_mbid(venue) | place |
+| "from [City]" | **SKIP resolve_mbid** - areas NOT supported | N/A |
+| "at [Festival]", "part of [Event]" | **SKIP resolve_mbid** - extract from comment only | N/A |
+| Contains URL | fetch_link(url) | N/A |
+
+**Key rule:** If the entity is area/event/work, do NOT call resolve_mbid. Extract from comment only.
 
 ### Graph Tools Workflow
 
