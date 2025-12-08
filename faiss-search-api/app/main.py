@@ -1204,6 +1204,60 @@ async def get_insights_for_play(play_id: int):
         )
 
 
+@app.get(
+    "/api/insights/context",
+    tags=["insights"],
+    summary="Get insights from same show context",
+    description="Get insights for plays within a time window around a given play. "
+                "Provides 'same show' context for what's been discussed nearby on the timeline.",
+    responses={
+        200: {"description": "Context insights retrieved successfully"},
+        500: {"description": "Failed to fetch context insights"}
+    }
+)
+async def get_insights_for_context(
+    play_id: int,
+    window_hours: int = 3,
+    limit: int = 20
+):
+    """
+    Get insights for plays within a time window around a given play.
+
+    This enables "same show" context - insights from plays aired close
+    in time to the target play, providing awareness of what's been
+    discussed on the show.
+
+    Args:
+        play_id: The center play to build context around
+        window_hours: Hours before/after to include (default 3 = typical show length)
+        limit: Max insights to return (default 20)
+    """
+    global db_service
+
+    try:
+        result = db_service.get_insights_for_context(
+            play_id=play_id,
+            window_hours=window_hours,
+            limit=limit
+        )
+
+        logger.info(
+            f"Retrieved {result['total']} context insights for play {play_id} "
+            f"(±{window_hours}h window)"
+        )
+        return result
+
+    except Exception as e:
+        logger.error(
+            f"Failed to get context insights for play {play_id}: {e}",
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get context insights: {str(e)}"
+        )
+
+
 @app.delete(
     "/api/insights/{insight_id}",
     tags=["insights"],

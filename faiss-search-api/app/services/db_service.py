@@ -1096,6 +1096,100 @@ class DatabaseService:
         self.conn.commit()
         return cursor.rowcount > 0
 
+    def get_insights_for_context(
+        self,
+        play_id: int,
+        window_hours: int = 3,
+        limit: int = 20,
+        include_deleted: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Get insights for plays within a time window around a given play.
+
+        This enables "same show" context - insights from plays aired close
+        in time to the target play, providing awareness of what's been
+        discussed on the show.
+
+        Args:
+            play_id: The center play to build context around
+            window_hours: Hours before/after to include (default 3 = typical show length)
+            limit: Max insights to return
+            include_deleted: Whether to include soft-deleted insights
+
+        Returns:
+            Dict with 'insights' list, 'total' count, and 'window_info'
+        """
+        cursor = self.conn.cursor()
+
+        # First, get the target play's airdate
+        cursor.execute("SELECT airdate FROM fact_plays WHERE id = ?", (play_id,))
+        row = cursor.fetchone()
+        if not row:
+            return {'insights': [], 'total': 0, 'window_info': {'error': 'Play not found'}}
+
+        center_airdate = row[0]
+
+        # Calculate time window (SQLite datetime arithmetic)
+        # strftime with modifiers: '-N hours' / '+N hours'
+        query = """
+            SELECT
+                i.id, i.insight_type, i.play_id, i.confidence, i.source_type,
+                i.source_recording_mbid, i.source_release_mbid,
+                i.referenced_artist_mbid, i.referenced_recording_mbid,
+                i.referenced_release_mbid, i.referenced_label_mbid,
+                i.data, i.summary, i.created_at, i.updated_at, i.eval_context,
+                fp.airdate as play_airdate
+            FROM insights i
+            JOIN fact_plays fp ON i.play_id = fp.id
+            WHERE fp.airdate >= datetime(?, '-' || ? || ' hours')
+              AND fp.airdate <= datetime(?, '+' || ? || ' hours')
+              AND i.play_id != ?
+        """
+        params = [center_airdate, window_hours, center_airdate, window_hours, play_id]
+
+        if not include_deleted:
+            query += " AND i.deleted_at IS NULL"
+
+        query += " ORDER BY fp.airdate DESC, i.created_at DESC LIMIT ?"
+        params.append(limit)
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        insights = []
+        for row in rows:
+            data = json.loads(row[11]) if isinstance(row[11], str) else row[11]
+            eval_context = json.loads(row[15]) if row[15] and isinstance(row[15], str) else row[15]
+            insights.append({
+                'id': row[0],
+                'insight_type': row[1],
+                'play_id': row[2],
+                'confidence': row[3],
+                'source_type': row[4],
+                'source_recording_mbid': row[5],
+                'source_release_mbid': row[6],
+                'referenced_artist_mbid': row[7],
+                'referenced_recording_mbid': row[8],
+                'referenced_release_mbid': row[9],
+                'referenced_label_mbid': row[10],
+                'data': data,
+                'summary': row[12],
+                'created_at': row[13],
+                'updated_at': row[14],
+                'eval_context': eval_context,
+                'play_airdate': row[16],
+            })
+
+        return {
+            'insights': insights,
+            'total': len(insights),
+            'window_info': {
+                'center_play_id': play_id,
+                'center_airdate': center_airdate,
+                'window_hours': window_hours,
+            }
+        }
+
     # =========================================================================
     # Graph Query Methods
     # =========================================================================
