@@ -54,7 +54,7 @@ export class SemanticSearchError extends Data.TaggedError("SemanticSearchError")
  */
 export class MbidResolveError extends Data.TaggedError("MbidResolveError")<{
   readonly message: string
-  readonly entityType?: "artist" | "recording" | "release" | "release_group" | "label" | undefined
+  readonly entityType?: "artist" | "recording" | "release" | "release_group" | "label" | "place" | undefined
   readonly query?: string
   readonly mbid?: string
   readonly cause?: unknown

@@ -7,16 +7,21 @@
  * @module
  */
 
-import { Context, Effect, Layer, Schema, Ref, Duration } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "@effect/platform"
-import { MusicBrainzConfig } from "../config.js"
-import { MbidResolveError } from "./errors.js"
+import { Context, Effect, Layer, Schema, Ref, Duration } from "effect";
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientRequest,
+  HttpClientResponse,
+} from "@effect/platform";
+import { MusicBrainzConfig } from "../config.js";
+import { MbidResolveError } from "./errors.js";
 import type {
   MbEntityType,
   MbEntityResult,
   ResolveMbidParams,
-  ResolveMbidResponse
-} from "../tools/schemas.js"
+  ResolveMbidResponse,
+} from "../tools/schemas.js";
 
 // =============================================================================
 // Service Interface
@@ -26,17 +31,17 @@ import type {
  * Details returned from MBID lookup
  */
 export interface MbEntityDetails {
-  readonly mbid: string
-  readonly name: string
-  readonly type: MbEntityType
-  readonly disambiguation: string | undefined
-  readonly country: string | undefined
-  readonly area: string | undefined
-  readonly sortName: string | undefined
-  readonly beginDate: string | undefined
-  readonly endDate: string | undefined
-  readonly artistCredit: string | undefined
-  readonly firstReleaseDate: string | undefined
+  readonly mbid: string;
+  readonly name: string;
+  readonly type: MbEntityType;
+  readonly disambiguation: string | undefined;
+  readonly country: string | undefined;
+  readonly area: string | undefined;
+  readonly sortName: string | undefined;
+  readonly beginDate: string | undefined;
+  readonly endDate: string | undefined;
+  readonly artistCredit: string | undefined;
+  readonly firstReleaseDate: string | undefined;
 }
 
 /**
@@ -51,7 +56,7 @@ export interface MbidResolverServiceInterface {
    */
   readonly resolve: (
     params: ResolveMbidParams
-  ) => Effect.Effect<ResolveMbidResponse, MbidResolveError>
+  ) => Effect.Effect<ResolveMbidResponse, MbidResolveError>;
 
   /**
    * Look up a specific entity by MBID
@@ -63,7 +68,7 @@ export interface MbidResolverServiceInterface {
   readonly lookup: (
     mbid: string,
     entityType: MbEntityType
-  ) => Effect.Effect<MbEntityDetails, MbidResolveError>
+  ) => Effect.Effect<MbEntityDetails, MbidResolveError>;
 }
 
 // =============================================================================
@@ -92,11 +97,13 @@ const MbArtistSearchResult = Schema.Struct({
   score: Schema.Number,
   country: Schema.optional(Schema.String),
   "sort-name": Schema.optional(Schema.String),
-  "life-span": Schema.optional(Schema.Struct({
-    begin: Schema.optional(Schema.String),
-    end: Schema.optional(Schema.String)
-  }))
-})
+  "life-span": Schema.optional(
+    Schema.Struct({
+      begin: Schema.optional(Schema.String),
+      end: Schema.optional(Schema.String),
+    })
+  ),
+});
 
 /**
  * Recording search result from MusicBrainz
@@ -106,14 +113,18 @@ const MbRecordingSearchResult = Schema.Struct({
   title: Schema.String,
   disambiguation: Schema.optional(Schema.String),
   score: Schema.Number,
-  "artist-credit": Schema.optional(Schema.Array(Schema.Struct({
-    artist: Schema.Struct({
-      id: Schema.String,
-      name: Schema.String
-    })
-  }))),
-  "first-release-date": Schema.optional(Schema.String)
-})
+  "artist-credit": Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        artist: Schema.Struct({
+          id: Schema.String,
+          name: Schema.String,
+        }),
+      })
+    )
+  ),
+  "first-release-date": Schema.optional(Schema.String),
+});
 
 /**
  * Release search result from MusicBrainz
@@ -125,13 +136,17 @@ const MbReleaseSearchResult = Schema.Struct({
   score: Schema.Number,
   country: Schema.optional(Schema.String),
   date: Schema.optional(Schema.String),
-  "artist-credit": Schema.optional(Schema.Array(Schema.Struct({
-    artist: Schema.Struct({
-      id: Schema.String,
-      name: Schema.String
-    })
-  })))
-})
+  "artist-credit": Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        artist: Schema.Struct({
+          id: Schema.String,
+          name: Schema.String,
+        }),
+      })
+    )
+  ),
+});
 
 /**
  * Release group search result from MusicBrainz
@@ -143,13 +158,17 @@ const MbReleaseGroupSearchResult = Schema.Struct({
   score: Schema.Number,
   "primary-type": Schema.optional(Schema.String),
   "first-release-date": Schema.optional(Schema.String),
-  "artist-credit": Schema.optional(Schema.Array(Schema.Struct({
-    artist: Schema.Struct({
-      id: Schema.String,
-      name: Schema.String
-    })
-  })))
-})
+  "artist-credit": Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        artist: Schema.Struct({
+          id: Schema.String,
+          name: Schema.String,
+        }),
+      })
+    )
+  ),
+});
 
 /**
  * Label search result from MusicBrainz
@@ -160,43 +179,80 @@ const MbLabelSearchResult = Schema.Struct({
   disambiguation: Schema.optional(Schema.String),
   score: Schema.Number,
   country: Schema.optional(Schema.String),
-  "label-code": Schema.optional(Schema.Number)
-})
+  "label-code": Schema.optional(Schema.Number),
+});
+
+/**
+ * Place search result from MusicBrainz (venues, studios, etc.)
+ */
+const MbPlaceSearchResult = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  disambiguation: Schema.optional(Schema.String),
+  score: Schema.Number,
+  type: Schema.optional(Schema.String),
+  address: Schema.optional(Schema.String),
+  area: Schema.optional(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+    })
+  ),
+  coordinates: Schema.optional(
+    Schema.Struct({
+      latitude: Schema.Number,
+      longitude: Schema.Number,
+    })
+  ),
+  "life-span": Schema.optional(
+    Schema.Struct({
+      begin: Schema.optional(Schema.String),
+      end: Schema.optional(Schema.String),
+    })
+  ),
+});
 
 /**
  * Artist search response
  */
 const MbArtistSearchResponse = Schema.Struct({
-  artists: Schema.Array(MbArtistSearchResult)
-})
+  artists: Schema.Array(MbArtistSearchResult),
+});
 
 /**
  * Recording search response
  */
 const MbRecordingSearchResponse = Schema.Struct({
-  recordings: Schema.Array(MbRecordingSearchResult)
-})
+  recordings: Schema.Array(MbRecordingSearchResult),
+});
 
 /**
  * Release search response
  */
 const MbReleaseSearchResponse = Schema.Struct({
-  releases: Schema.Array(MbReleaseSearchResult)
-})
+  releases: Schema.Array(MbReleaseSearchResult),
+});
 
 /**
  * Release group search response
  */
 const MbReleaseGroupSearchResponse = Schema.Struct({
-  "release-groups": Schema.Array(MbReleaseGroupSearchResult)
-})
+  "release-groups": Schema.Array(MbReleaseGroupSearchResult),
+});
 
 /**
  * Label search response
  */
 const MbLabelSearchResponse = Schema.Struct({
-  labels: Schema.Array(MbLabelSearchResult)
-})
+  labels: Schema.Array(MbLabelSearchResult),
+});
+
+/**
+ * Place search response
+ */
+const MbPlaceSearchResponse = Schema.Struct({
+  places: Schema.Array(MbPlaceSearchResult),
+});
 
 // =============================================================================
 // Helper Functions
@@ -208,9 +264,9 @@ const MbLabelSearchResponse = Schema.Struct({
 const buildArtistCredit = (
   artistCredit: ReadonlyArray<{ artist: { name: string } }> | undefined
 ): string | undefined => {
-  if (!artistCredit || artistCredit.length === 0) return undefined
-  return artistCredit.map((ac) => ac.artist.name).join(", ")
-}
+  if (!artistCredit || artistCredit.length === 0) return undefined;
+  return artistCredit.map((ac) => ac.artist.name).join(", ");
+};
 
 /**
  * Build search query with optional artist hint
@@ -221,16 +277,21 @@ const buildSearchQuery = (
   artistHint?: string
 ): string => {
   // URL encode the query
-  const encodedQuery = encodeURIComponent(query)
+  const encodedQuery = encodeURIComponent(query);
 
   // For recordings/releases, add artist hint if provided
-  if (artistHint && (entityType === "recording" || entityType === "release" || entityType === "release_group")) {
-    const encodedArtist = encodeURIComponent(artistHint)
-    return `${encodedQuery} AND artist:${encodedArtist}`
+  if (
+    artistHint &&
+    (entityType === "recording" ||
+      entityType === "release" ||
+      entityType === "release_group")
+  ) {
+    const encodedArtist = encodeURIComponent(artistHint);
+    return `${encodedQuery} AND artist:${encodedArtist}`;
   }
 
-  return encodedQuery
-}
+  return encodedQuery;
+};
 
 // =============================================================================
 // Service Implementation
@@ -240,34 +301,36 @@ const buildSearchQuery = (
  * Create the MbidResolverService implementation
  */
 const makeMbidResolverService = Effect.gen(function* () {
-  const config = yield* MusicBrainzConfig
+  const config = yield* MusicBrainzConfig;
 
   // Track last request time for rate limiting
-  const lastRequestTime = yield* Ref.make(0)
+  const lastRequestTime = yield* Ref.make(0);
 
   // Configure HTTP client with base URL and required headers
   const client = (yield* HttpClient.HttpClient).pipe(
     HttpClient.mapRequest(HttpClientRequest.prependUrl(config.baseUrl)),
     HttpClient.mapRequest(HttpClientRequest.acceptJson),
-    HttpClient.mapRequest(HttpClientRequest.setHeader("User-Agent", config.userAgent))
-  )
+    HttpClient.mapRequest(
+      HttpClientRequest.setHeader("User-Agent", config.userAgent)
+    )
+  );
 
   /**
    * Apply rate limiting - wait if needed to respect MusicBrainz rate limits
    */
   const applyRateLimit = Effect.gen(function* () {
-    const now = Date.now()
-    const last = yield* Ref.get(lastRequestTime)
-    const elapsed = now - last
-    const delayMs = Duration.toMillis(config.rateLimitDelay)
+    const now = Date.now();
+    const last = yield* Ref.get(lastRequestTime);
+    const elapsed = now - last;
+    const delayMs = Duration.toMillis(config.rateLimitDelay);
 
     if (elapsed < delayMs && last > 0) {
-      const waitMs = delayMs - elapsed
-      yield* Effect.sleep(Duration.millis(waitMs))
+      const waitMs = delayMs - elapsed;
+      yield* Effect.sleep(Duration.millis(waitMs));
     }
 
-    yield* Ref.set(lastRequestTime, Date.now())
-  })
+    yield* Ref.set(lastRequestTime, Date.now());
+  });
 
   /**
    * Parse artist search results into MbEntityResult array
@@ -281,8 +344,8 @@ const makeMbidResolverService = Effect.gen(function* () {
       type: "artist" as const,
       disambiguation: artist.disambiguation,
       score: artist.score,
-      country: artist.country
-    }))
+      country: artist.country,
+    }));
 
   /**
    * Parse recording search results into MbEntityResult array
@@ -297,8 +360,8 @@ const makeMbidResolverService = Effect.gen(function* () {
       disambiguation: recording.disambiguation,
       score: recording.score,
       artist_credit: buildArtistCredit(recording["artist-credit"]),
-      release_date: recording["first-release-date"]
-    }))
+      release_date: recording["first-release-date"],
+    }));
 
   /**
    * Parse release search results into MbEntityResult array
@@ -314,8 +377,8 @@ const makeMbidResolverService = Effect.gen(function* () {
       score: release.score,
       artist_credit: buildArtistCredit(release["artist-credit"]),
       release_date: release.date,
-      country: release.country
-    }))
+      country: release.country,
+    }));
 
   /**
    * Parse release group search results into MbEntityResult array
@@ -330,8 +393,8 @@ const makeMbidResolverService = Effect.gen(function* () {
       disambiguation: rg.disambiguation,
       score: rg.score,
       artist_credit: buildArtistCredit(rg["artist-credit"]),
-      release_date: rg["first-release-date"]
-    }))
+      release_date: rg["first-release-date"],
+    }));
 
   /**
    * Parse label search results into MbEntityResult array
@@ -345,8 +408,23 @@ const makeMbidResolverService = Effect.gen(function* () {
       type: "label" as const,
       disambiguation: label.disambiguation,
       score: label.score,
-      country: label.country
-    }))
+      country: label.country,
+    }));
+
+  /**
+   * Parse place search results into MbEntityResult array
+   */
+  const parsePlaceResults = (
+    response: typeof MbPlaceSearchResponse.Type
+  ): ReadonlyArray<MbEntityResult> =>
+    response.places.map((place) => ({
+      mbid: place.id,
+      name: place.name,
+      type: "place" as const,
+      disambiguation: place.disambiguation ?? place.type,
+      score: place.score,
+      country: place.area?.name,
+    }));
 
   /**
    * Search for entities matching a query
@@ -355,70 +433,88 @@ const makeMbidResolverService = Effect.gen(function* () {
     params: ResolveMbidParams
   ): Effect.Effect<ResolveMbidResponse, MbidResolveError> =>
     Effect.gen(function* () {
-      yield* applyRateLimit
+      yield* applyRateLimit;
 
       const searchQuery = buildSearchQuery(
         params.query,
         params.entity_type,
         params.artist_hint
-      )
+      );
 
       // Build endpoint based on entity type
-      const endpoint = `/${params.entity_type}/?query=${searchQuery}&fmt=json&limit=10`
+      const endpoint = `/${params.entity_type}/?query=${searchQuery}&fmt=json&limit=10`;
 
       const response = yield* client.get(endpoint).pipe(
         Effect.timeout(Duration.seconds(30)),
-        Effect.mapError((error) =>
-          new MbidResolveError({
-            message: `MusicBrainz search failed: ${error}`,
-            entityType: params.entity_type,
-            query: params.query,
-            cause: error
-          })
+        Effect.mapError(
+          (error) =>
+            new MbidResolveError({
+              message: `MusicBrainz search failed: ${error}`,
+              entityType: params.entity_type,
+              query: params.query,
+              cause: error,
+            })
         )
-      )
+      );
 
       // Parse response based on entity type
       const results = yield* Effect.gen(function* () {
         switch (params.entity_type) {
           case "artist": {
-            const data = yield* HttpClientResponse.schemaBodyJson(MbArtistSearchResponse)(response)
-            return parseArtistResults(data)
+            const data = yield* HttpClientResponse.schemaBodyJson(
+              MbArtistSearchResponse
+            )(response);
+            return parseArtistResults(data);
           }
           case "recording": {
-            const data = yield* HttpClientResponse.schemaBodyJson(MbRecordingSearchResponse)(response)
-            return parseRecordingResults(data)
+            const data = yield* HttpClientResponse.schemaBodyJson(
+              MbRecordingSearchResponse
+            )(response);
+            return parseRecordingResults(data);
           }
           case "release": {
-            const data = yield* HttpClientResponse.schemaBodyJson(MbReleaseSearchResponse)(response)
-            return parseReleaseResults(data)
+            const data = yield* HttpClientResponse.schemaBodyJson(
+              MbReleaseSearchResponse
+            )(response);
+            return parseReleaseResults(data);
           }
           case "release_group": {
-            const data = yield* HttpClientResponse.schemaBodyJson(MbReleaseGroupSearchResponse)(response)
-            return parseReleaseGroupResults(data)
+            const data = yield* HttpClientResponse.schemaBodyJson(
+              MbReleaseGroupSearchResponse
+            )(response);
+            return parseReleaseGroupResults(data);
           }
           case "label": {
-            const data = yield* HttpClientResponse.schemaBodyJson(MbLabelSearchResponse)(response)
-            return parseLabelResults(data)
+            const data = yield* HttpClientResponse.schemaBodyJson(
+              MbLabelSearchResponse
+            )(response);
+            return parseLabelResults(data);
+          }
+          case "place": {
+            const data = yield* HttpClientResponse.schemaBodyJson(
+              MbPlaceSearchResponse
+            )(response);
+            return parsePlaceResults(data);
           }
         }
       }).pipe(
-        Effect.mapError((error) =>
-          new MbidResolveError({
-            message: `Failed to parse MusicBrainz response: ${error}`,
-            entityType: params.entity_type,
-            query: params.query,
-            cause: error
-          })
+        Effect.mapError(
+          (error) =>
+            new MbidResolveError({
+              message: `Failed to parse MusicBrainz response: ${error}`,
+              entityType: params.entity_type,
+              query: params.query,
+              cause: error,
+            })
         )
-      )
+      );
 
       return {
         results: results as MbEntityResult[],
         query: params.query,
-        entity_type: params.entity_type
-      }
-    })
+        entity_type: params.entity_type,
+      };
+    });
 
   /**
    * Look up a specific entity by MBID
@@ -428,25 +524,26 @@ const makeMbidResolverService = Effect.gen(function* () {
     entityType: MbEntityType
   ): Effect.Effect<MbEntityDetails, MbidResolveError> =>
     Effect.gen(function* () {
-      yield* applyRateLimit
+      yield* applyRateLimit;
 
-      const endpoint = `/${entityType}/${mbid}?fmt=json`
+      const endpoint = `/${entityType}/${mbid}?fmt=json`;
 
       const response = yield* client.get(endpoint).pipe(
         Effect.timeout(Duration.seconds(30)),
-        Effect.mapError((error) =>
-          new MbidResolveError({
-            message: `MusicBrainz lookup failed: ${error}`,
-            entityType: entityType,
-            mbid,
-            cause: error
-          })
+        Effect.mapError(
+          (error) =>
+            new MbidResolveError({
+              message: `MusicBrainz lookup failed: ${error}`,
+              entityType: entityType,
+              mbid,
+              cause: error,
+            })
         )
-      )
+      );
 
       // Parse response based on entity type
       // Note: MusicBrainz API returns null for missing optional fields, so we use NullishOr
-      const NullishString = Schema.NullishOr(Schema.String)
+      const NullishString = Schema.NullishOr(Schema.String);
 
       const details = yield* Effect.gen(function* () {
         switch (entityType) {
@@ -458,13 +555,15 @@ const makeMbidResolverService = Effect.gen(function* () {
                 disambiguation: NullishString,
                 country: NullishString,
                 "sort-name": NullishString,
-                "life-span": Schema.optional(Schema.Struct({
-                  begin: NullishString,
-                  end: NullishString,
-                  ended: Schema.optional(Schema.Boolean)
-                }))
+                "life-span": Schema.optional(
+                  Schema.Struct({
+                    begin: NullishString,
+                    end: NullishString,
+                    ended: Schema.optional(Schema.Boolean),
+                  })
+                ),
               })
-            )(response)
+            )(response);
             return {
               mbid: data.id,
               name: data.name,
@@ -476,8 +575,8 @@ const makeMbidResolverService = Effect.gen(function* () {
               beginDate: data["life-span"]?.begin ?? undefined,
               endDate: data["life-span"]?.end ?? undefined,
               artistCredit: undefined,
-              firstReleaseDate: undefined
-            } satisfies MbEntityDetails
+              firstReleaseDate: undefined,
+            } satisfies MbEntityDetails;
           }
           case "recording": {
             const data = yield* HttpClientResponse.schemaBodyJson(
@@ -486,14 +585,18 @@ const makeMbidResolverService = Effect.gen(function* () {
                 title: Schema.String,
                 disambiguation: NullishString,
                 "first-release-date": NullishString,
-                "artist-credit": Schema.optional(Schema.Array(Schema.Struct({
-                  artist: Schema.Struct({
-                    id: Schema.String,
-                    name: Schema.String
-                  })
-                })))
+                "artist-credit": Schema.optional(
+                  Schema.Array(
+                    Schema.Struct({
+                      artist: Schema.Struct({
+                        id: Schema.String,
+                        name: Schema.String,
+                      }),
+                    })
+                  )
+                ),
               })
-            )(response)
+            )(response);
             return {
               mbid: data.id,
               name: data.title,
@@ -505,8 +608,8 @@ const makeMbidResolverService = Effect.gen(function* () {
               beginDate: undefined,
               endDate: undefined,
               artistCredit: buildArtistCredit(data["artist-credit"]),
-              firstReleaseDate: data["first-release-date"] ?? undefined
-            } satisfies MbEntityDetails
+              firstReleaseDate: data["first-release-date"] ?? undefined,
+            } satisfies MbEntityDetails;
           }
           case "release": {
             const data = yield* HttpClientResponse.schemaBodyJson(
@@ -516,14 +619,18 @@ const makeMbidResolverService = Effect.gen(function* () {
                 disambiguation: NullishString,
                 country: NullishString,
                 date: NullishString,
-                "artist-credit": Schema.optional(Schema.Array(Schema.Struct({
-                  artist: Schema.Struct({
-                    id: Schema.String,
-                    name: Schema.String
-                  })
-                })))
+                "artist-credit": Schema.optional(
+                  Schema.Array(
+                    Schema.Struct({
+                      artist: Schema.Struct({
+                        id: Schema.String,
+                        name: Schema.String,
+                      }),
+                    })
+                  )
+                ),
               })
-            )(response)
+            )(response);
             return {
               mbid: data.id,
               name: data.title,
@@ -535,8 +642,8 @@ const makeMbidResolverService = Effect.gen(function* () {
               beginDate: undefined,
               endDate: undefined,
               artistCredit: buildArtistCredit(data["artist-credit"]),
-              firstReleaseDate: data.date ?? undefined
-            } satisfies MbEntityDetails
+              firstReleaseDate: data.date ?? undefined,
+            } satisfies MbEntityDetails;
           }
           case "release_group": {
             const data = yield* HttpClientResponse.schemaBodyJson(
@@ -545,14 +652,18 @@ const makeMbidResolverService = Effect.gen(function* () {
                 title: Schema.String,
                 disambiguation: NullishString,
                 "first-release-date": NullishString,
-                "artist-credit": Schema.optional(Schema.Array(Schema.Struct({
-                  artist: Schema.Struct({
-                    id: Schema.String,
-                    name: Schema.String
-                  })
-                })))
+                "artist-credit": Schema.optional(
+                  Schema.Array(
+                    Schema.Struct({
+                      artist: Schema.Struct({
+                        id: Schema.String,
+                        name: Schema.String,
+                      }),
+                    })
+                  )
+                ),
               })
-            )(response)
+            )(response);
             return {
               mbid: data.id,
               name: data.title,
@@ -564,8 +675,8 @@ const makeMbidResolverService = Effect.gen(function* () {
               beginDate: undefined,
               endDate: undefined,
               artistCredit: buildArtistCredit(data["artist-credit"]),
-              firstReleaseDate: data["first-release-date"] ?? undefined
-            } satisfies MbEntityDetails
+              firstReleaseDate: data["first-release-date"] ?? undefined,
+            } satisfies MbEntityDetails;
           }
           case "label": {
             const data = yield* HttpClientResponse.schemaBodyJson(
@@ -573,9 +684,9 @@ const makeMbidResolverService = Effect.gen(function* () {
                 id: Schema.String,
                 name: Schema.String,
                 disambiguation: NullishString,
-                country: NullishString
+                country: NullishString,
               })
-            )(response)
+            )(response);
             return {
               mbid: data.id,
               name: data.name,
@@ -587,29 +698,66 @@ const makeMbidResolverService = Effect.gen(function* () {
               beginDate: undefined,
               endDate: undefined,
               artistCredit: undefined,
-              firstReleaseDate: undefined
-            } satisfies MbEntityDetails
+              firstReleaseDate: undefined,
+            } satisfies MbEntityDetails;
+          }
+          case "place": {
+            const data = yield* HttpClientResponse.schemaBodyJson(
+              Schema.Struct({
+                id: Schema.String,
+                name: Schema.String,
+                disambiguation: NullishString,
+                type: NullishString,
+                address: NullishString,
+                area: Schema.optional(
+                  Schema.Struct({
+                    id: Schema.String,
+                    name: Schema.String,
+                  })
+                ),
+                "life-span": Schema.optional(
+                  Schema.Struct({
+                    begin: NullishString,
+                    end: NullishString,
+                  })
+                ),
+              })
+            )(response);
+            return {
+              mbid: data.id,
+              name: data.name,
+              type: "place" as const,
+              disambiguation: data.disambiguation ?? data.type ?? undefined,
+              country: undefined,
+              area: data.area?.name ?? data.address ?? undefined,
+              sortName: undefined,
+              beginDate: data["life-span"]?.begin ?? undefined,
+              endDate: data["life-span"]?.end ?? undefined,
+              artistCredit: undefined,
+              firstReleaseDate: undefined,
+            } satisfies MbEntityDetails;
           }
         }
       }).pipe(
-        Effect.mapError((error) =>
-          new MbidResolveError({
-            message: `Failed to parse MusicBrainz lookup response: ${error}`,
-            entityType: entityType,
-            mbid,
-            cause: error
-          })
+        Effect.mapError(
+          (error) =>
+            new MbidResolveError({
+              message: `Failed to parse MusicBrainz lookup response: ${error}`,
+              entityType: entityType,
+              mbid,
+              cause: error,
+            })
         )
-      )
+      );
 
-      return details
-    })
+      return details;
+    });
 
   return {
     resolve,
-    lookup
-  } satisfies MbidResolverServiceInterface
-})
+    lookup,
+  } satisfies MbidResolverServiceInterface;
+});
 
 // =============================================================================
 // Layers
@@ -623,7 +771,7 @@ export const MbidResolverServiceLive: Layer.Layer<
   MbidResolverService,
   never,
   MusicBrainzConfig | HttpClient.HttpClient
-> = Layer.effect(MbidResolverService, makeMbidResolverService)
+> = Layer.effect(MbidResolverService, makeMbidResolverService);
 
 /**
  * Fully composed layer with all dependencies
@@ -632,14 +780,13 @@ export const MbidResolverServiceLive: Layer.Layer<
 export const MbidResolverServiceFull = MbidResolverServiceLive.pipe(
   Layer.provide(MusicBrainzConfig.Default),
   Layer.provide(FetchHttpClient.layer)
-)
+);
 
 /**
  * Test layer with mock implementation
  */
-export const MbidResolverServiceTest: Layer.Layer<MbidResolverService> = Layer.succeed(
-  MbidResolverService,
-  {
+export const MbidResolverServiceTest: Layer.Layer<MbidResolverService> =
+  Layer.succeed(MbidResolverService, {
     resolve: (params) =>
       Effect.succeed({
         results: [
@@ -648,11 +795,11 @@ export const MbidResolverServiceTest: Layer.Layer<MbidResolverService> = Layer.s
             name: params.query,
             type: params.entity_type,
             score: 100,
-            disambiguation: "Mock result"
-          }
+            disambiguation: "Mock result",
+          },
         ],
         query: params.query,
-        entity_type: params.entity_type
+        entity_type: params.entity_type,
       }),
     lookup: (mbid, entityType) =>
       Effect.succeed({
@@ -666,10 +813,9 @@ export const MbidResolverServiceTest: Layer.Layer<MbidResolverService> = Layer.s
         beginDate: undefined,
         endDate: undefined,
         artistCredit: undefined,
-        firstReleaseDate: undefined
-      } satisfies MbEntityDetails)
-  } satisfies MbidResolverServiceInterface
-)
+        firstReleaseDate: undefined,
+      } satisfies MbEntityDetails),
+  } satisfies MbidResolverServiceInterface);
 
 /**
  * Create a test layer with custom mock data
@@ -683,19 +829,19 @@ export const makeMbidResolverServiceTestWithData = (
       Effect.succeed({
         results: (searchResults[params.query] ?? []) as MbEntityResult[],
         query: params.query,
-        entity_type: params.entity_type
+        entity_type: params.entity_type,
       }),
     lookup: (mbid, entityType) => {
-      const result = lookupResults[mbid]
+      const result = lookupResults[mbid];
       if (result) {
-        return Effect.succeed(result)
+        return Effect.succeed(result);
       }
       return Effect.fail(
         new MbidResolveError({
           message: `MBID not found: ${mbid}`,
           mbid,
-          entityType: entityType
+          entityType: entityType,
         })
-      )
-    }
-  } satisfies MbidResolverServiceInterface)
+      );
+    },
+  } satisfies MbidResolverServiceInterface);

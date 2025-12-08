@@ -129,6 +129,7 @@ const makeSearchPlaysService = Effect.gen(function* () {
       release: "release_mbid",
       release_group: "release_group_mbid",
       label: "artist_mbid", // Labels use artist_mbid endpoint (fallback)
+      place: "artist_mbid", // Places aren't directly searchable in plays, fallback
     };
 
     const paramName = paramMap[entityType];

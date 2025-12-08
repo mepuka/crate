@@ -202,15 +202,22 @@ export const CrateToolsTest = HandlersLive.pipe(
 // =============================================================================
 
 /**
+ * Default model for the MusicAgent.
+ * Using Haiku for faster responses and lower cost.
+ */
+const DEFAULT_MODEL = "claude-haiku-4-5" as const;
+
+/**
  * Anthropic LanguageModel layer
  *
- * Creates a fully-provided Anthropic Claude model layer.
+ * Creates a fully-provided Anthropic Claude model layer with Tokenizer.
  * Requires AnthropicConfig to be provided for the API key.
  *
  * Uses:
- * - claude-sonnet-4-5 model
+ * - claude-haiku-4-5 model (configurable via DEFAULT_MODEL)
  * - FetchHttpClient for HTTP requests
  * - AnthropicConfig for API key configuration
+ * - Tokenizer for pre-flight token counting
  */
 export const AnthropicModelLayer = Layer.unwrapEffect(
   Effect.gen(function* () {
@@ -226,9 +233,9 @@ export const AnthropicModelLayer = Layer.unwrapEffect(
       transformClient: HttpClient.retryTransient({ times: 3 }),
     }).pipe(Layer.provide(FetchHttpClient.layer));
 
-    // Create model layer and provide the client
-    // AnthropicLanguageModel.model returns an AiModel.Model which is both a Layer and Effect
-    return AnthropicLanguageModel.model("claude-sonnet-4-5").pipe(
+    // Create model layer with tokenizer and provide the client
+    // modelWithTokenizer provides both LanguageModel and Tokenizer services
+    return AnthropicLanguageModel.modelWithTokenizer(DEFAULT_MODEL).pipe(
       Layer.provide(clientLayer)
     );
   })
