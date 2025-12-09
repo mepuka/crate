@@ -96,10 +96,13 @@ async def lifespan(app: FastAPI):
             search_service.initialize()
             logger.info("Search service initialized")
 
-            # Skip hybrid search - disabled to reduce memory usage
-            # BM25 indexing on 2.2M documents exceeds 4GB droplet RAM
-            logger.info("Hybrid search disabled (memory constraints)")
-            hybrid_search_service = None
+            # Initialize hybrid search with FTS5 (zero RAM overhead)
+            # FTS5 runs in SQLite - no memory cost vs rank_bm25 Python library
+            hybrid_search_service = HybridSearchService(
+                db_service=db_service,
+                search_service=search_service
+            )
+            logger.info(f"Hybrid search initialized (FTS5: {hybrid_search_service.fts5_available})")
 
         except FileNotFoundError as e:
             logger.warning(f"Search service disabled - missing embedding files: {e}")

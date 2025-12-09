@@ -836,6 +836,68 @@ class DatabaseService:
         return cursor.fetchone()[0]
 
     # =========================================================================
+    # FTS5 Full-Text Search Methods
+    # =========================================================================
+
+    def fts5_search(
+        self,
+        query: str,
+        limit: int = 100,
+        columns: Optional[List[str]] = None
+    ) -> List[Tuple[int, float]]:
+        """
+        Search plays using FTS5 full-text search.
+
+        Args:
+            query: Search query (FTS5 syntax supported)
+            limit: Maximum results to return
+            columns: Specific columns to search (default: all)
+                     Options: artist, song, album, comment
+
+        Returns:
+            List of (play_id, bm25_score) tuples, sorted by relevance.
+            Note: BM25 scores are negative (more negative = better match).
+        """
+        cursor = self.conn.cursor()
+
+        # Escape query for FTS5 (handle special characters)
+        # FTS5 treats quotes specially, so we escape them
+        safe_query = query.replace('"', '""')
+
+        # Build column filter if specified
+        if columns:
+            # Use column filter syntax: {col1 col2}: query
+            col_prefix = f"{{{' '.join(columns)}}}: "
+            fts_query = f'{col_prefix}"{safe_query}"'
+        else:
+            # Search all columns
+            fts_query = f'"{safe_query}"'
+
+        try:
+            cursor.execute("""
+                SELECT rowid, bm25(plays_fts) as score
+                FROM plays_fts
+                WHERE plays_fts MATCH ?
+                ORDER BY score
+                LIMIT ?
+            """, (fts_query, limit))
+
+            return [(row[0], row[1]) for row in cursor.fetchall()]
+        except sqlite3.OperationalError as e:
+            logger.warning(f"FTS5 search failed for query '{query}': {e}")
+            return []
+
+    def check_fts5_available(self) -> bool:
+        """Check if FTS5 table exists and is populated."""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("SELECT COUNT(*) FROM plays_fts")
+            count = cursor.fetchone()[0]
+            return count > 0
+        except sqlite3.OperationalError:
+            return False
+
+    # =========================================================================
     # Insights Methods (typed insight storage)
     # =========================================================================
 
