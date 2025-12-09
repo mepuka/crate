@@ -56,6 +56,63 @@ export class MusicAgentError extends Data.TaggedError("MusicAgentError")<{
 // =============================================================================
 
 /**
+ * Extract result count from tool results for eval context.
+ * Handles various result shapes from different tools.
+ */
+const extractResultCount = (
+  toolName: string,
+  result: unknown
+): number | undefined => {
+  if (!result || typeof result !== "object") return undefined;
+  const r = result as Record<string, unknown>;
+
+  // Most search tools return { results: [...], total: N }
+  if ("results" in r && Array.isArray(r.results)) return r.results.length;
+  if ("total" in r && typeof r.total === "number") return r.total;
+
+  // Graph tools return { connections: [...] } or { neighbors: [...] }
+  if ("connections" in r && Array.isArray(r.connections))
+    return r.connections.length;
+  if ("neighbors" in r && Array.isArray(r.neighbors)) return r.neighbors.length;
+
+  // resolve_mbid returns { matches: [...] }
+  if ("matches" in r && Array.isArray(r.matches)) return r.matches.length;
+
+  return undefined;
+};
+
+/**
+ * Summarize a tool result for eval context.
+ * Truncates to avoid storing massive payloads.
+ */
+const summarizeToolResult = (
+  toolName: string,
+  result: unknown,
+  isFailure: boolean
+): string => {
+  if (isFailure) {
+    return `Error: ${String(result).slice(0, 200)}`;
+  }
+
+  // For search tools, just report the count
+  const count = extractResultCount(toolName, result);
+  if (count !== undefined) {
+    return `${count} results`;
+  }
+
+  // For other tools, truncate the JSON
+  try {
+    const json = JSON.stringify(result);
+    if (json.length > 300) {
+      return json.slice(0, 297) + "...";
+    }
+    return json;
+  } catch {
+    return String(result).slice(0, 300);
+  }
+};
+
+/**
  * Convert an InsightRecord (from database) to InsightSummary for session pre-seeding
  *
  * InsightRecord comes from GET /api/insights/plays/{play_id} endpoint.
@@ -365,14 +422,36 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   const iterationEndTime = yield* Clock.currentTimeMillis;
                   const toolCallCount = response.toolCalls.length;
 
-                  // Record tool calls for eval context
+                  // Record tool calls for eval context with params and results
                   const newToolCalls: ToolCallRecord[] = response.toolCalls.map(
-                    (tc) => ({
-                      iteration: state.iteration,
-                      tool_name: tc.name,
-                      timestamp: new Date().toISOString(),
-                      duration_ms: Number(iterationEndTime - iterationStartTime),
-                    })
+                    (tc) => {
+                      // Find matching result by tool call ID
+                      const result = response.toolResults.find(
+                        (tr) => tr.id === tc.id
+                      );
+
+                      return {
+                        iteration: state.iteration,
+                        tool_name: tc.name,
+                        timestamp: new Date().toISOString(),
+                        duration_ms: Number(iterationEndTime - iterationStartTime),
+                        // Capture parameters (already available on tc.params)
+                        parameters: tc.params,
+                        // Summarize result
+                        result_summary: result
+                          ? summarizeToolResult(
+                              tc.name,
+                              result.result,
+                              result.isFailure
+                            )
+                          : undefined,
+                        // Extract count for search tools
+                        result_count:
+                          result && !result.isFailure
+                            ? extractResultCount(tc.name, result.result)
+                            : undefined,
+                      };
+                    }
                   );
 
                   yield* Effect.annotateCurrentSpan({
@@ -720,12 +799,8 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   research_duration_ms: researchMeta.researchDurationMs,
                   had_existing_insights: existingInsights.length > 0,
                   existing_insight_count: existingInsights.length,
-                  tool_calls: researchMeta.toolCalls.map(tc => ({
-                    iteration: tc.iteration,
-                    tool_name: tc.tool_name,
-                    timestamp: tc.timestamp,
-                    duration_ms: tc.duration_ms,
-                  })),
+                  // Pass through full tool call records including params/results
+                  tool_calls: researchMeta.toolCalls,
                 };
 
                 // Annotate span with insight count and types
