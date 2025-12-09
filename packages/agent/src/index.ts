@@ -39,6 +39,22 @@ export {
 } from "./config.js"
 
 // =============================================================================
+// Link Types Configuration
+// =============================================================================
+export {
+  LINK_TYPES,
+  classifyUrl,
+  getLinkType,
+  getLinkCategory,
+  shouldFetchUrl,
+  isUrlShortener,
+  getLinkTypesByCategory,
+  getHighRelevanceLinkTypes,
+  type LinkCategory,
+  type LinkTypeConfig
+} from "./link-types.js"
+
+// =============================================================================
 // Error Types
 // =============================================================================
 export {

@@ -16,6 +16,7 @@ import {
 } from "@effect/platform";
 import { JinaConfig } from "../config.js";
 import { LinkFetchError } from "./errors.js";
+import { getLinkType } from "../link-types.js";
 import type {
   FetchLinkParams,
   FetchLinkResponse,
@@ -134,19 +135,8 @@ const extractLinksFromMarkdown = (
     const text = match[1];
     const url = match[2];
 
-    // Classify link type based on URL
-    let type: string | undefined;
-    if (url.includes("musicbrainz.org")) {
-      type = "musicbrainz";
-    } else if (url.includes("wikipedia.org")) {
-      type = "wikipedia";
-    } else if (url.includes("bandcamp.com")) {
-      type = "bandcamp";
-    } else if (url.includes("discogs.com")) {
-      type = "discogs";
-    } else if (url.includes("allmusic.com")) {
-      type = "allmusic";
-    }
+    // Classify link type using centralized config
+    const type = getLinkType(url);
 
     links.push({
       url,
