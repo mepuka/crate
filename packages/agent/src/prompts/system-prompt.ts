@@ -813,6 +813,37 @@ When you see these patterns in DJ comments, use the corresponding tool chain:
 The graph starts fresh each invocation. Pre-build it early from context MBIDs.`;
 
 // =============================================================================
+// STATIC SECTIONS - Result Size Guidance
+// =============================================================================
+
+export const RESULT_SIZE_GUIDANCE = `### Result Size Guidance
+
+**Search tools (semantic_search, search_plays):**
+- Use limit=5-10 for quick existence checks
+- Use default (20) for standard exploration
+- Use limit=50-100 only for comprehensive research
+
+**fetch_link:**
+- Content auto-truncated to 5000 words by default
+- Set max_words=10000 for longer articles when needed
+- Very long pages will note "[Content truncated...]"
+
+**Graph tools:**
+- query_cached_neighbors: Returns 20 by default, increase limit if exploring dense networks
+- graph_connections: Returns 20 results per query type
+- explore_graph: Returns 20 results, merges into local cache
+
+### Result Size Defaults
+
+| Tool | Default Limit | Max Limit |
+|------|--------------|-----------|
+| semantic_search | 20 | 100 |
+| search_plays | 20 | 100 |
+| graph_connections | 20 | 20 |
+| query_cached_neighbors | 20 | 100 |
+| fetch_link | 5000 words | 10000 words |`;
+
+// =============================================================================
 // STATIC SECTIONS - Insight Continuity
 // =============================================================================
 
@@ -1387,6 +1418,7 @@ export const STATIC_SYSTEM_PROMPT = [
   GRAPH_INSTRUCTION,
   INSIGHT_TYPES,
   TOOLS,
+  RESULT_SIZE_GUIDANCE,
   INSIGHT_CONTINUITY,
 
   // === RESEARCH PROCESS ===
@@ -1594,6 +1626,7 @@ export const CratePrompt = {
   GRAPH_INSTRUCTION,
   INSIGHT_TYPES,
   TOOLS,
+  RESULT_SIZE_GUIDANCE,
   INSIGHT_CONTINUITY,
   RESEARCH_PROCESS,
   WHEN_ZERO_INSIGHTS,
