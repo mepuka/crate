@@ -1,0 +1,4 @@
+# Use a tsconfig without paths to force Bun to use compiled JS
+# This works around a Bun transpiler bug with Effect Schema
+[run]
+tsconfig = "tsconfig.bun.json"

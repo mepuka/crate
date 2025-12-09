@@ -1,0 +1,6 @@
+# Bun configuration for the monorepo
+# Disable tsconfig paths to force use of compiled JS from dist/
+# This works around a Bun transpiler bug with Effect Schema
+[run]
+# Don't use tsconfig paths - use package.json exports instead
+tsconfig = ""
