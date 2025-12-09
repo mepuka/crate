@@ -8,7 +8,6 @@ import { writeFile } from "fs/promises"
 import { fileURLToPath } from "url"
 import { dirname, join } from "path"
 
-const JINA_API_KEY = "jina_cde70067d7bb4b49b0030176afd106c8nLFGYMTN2EKgxJpOHVT_doLtqujS"
 
 // DJ slugs extracted from djs.md
 const DJ_SLUGS = [
