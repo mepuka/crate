@@ -554,8 +554,15 @@ const makeExploreGraphHandler =
             // Map service error to success with empty results for tool robustness
             Effect.catchAll((error) =>
               Effect.gen(function* () {
-                yield* Effect.logWarning(`explore_graph tool error: ${error.message}`);
-                yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
+                // Log full error details including cause for debugging
+                const cause = "cause" in error ? error.cause : undefined;
+                const causeStr = cause ? ` (cause: ${cause instanceof Error ? cause.message : String(cause)})` : "";
+                yield* Effect.logWarning(`explore_graph tool error: ${error.message}${causeStr}`);
+                yield* Effect.annotateCurrentSpan({
+                  error: error.message,
+                  error_type: error._tag ?? "UnknownError",
+                  error_cause: causeStr || undefined
+                });
                 return {
                   newNodes: 0,
                   newEdges: 0,

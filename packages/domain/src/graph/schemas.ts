@@ -324,18 +324,22 @@ export type GraphConnectionsRequest = typeof GraphConnectionsRequest.Type
 /**
  * A single connection node in the graph response
  */
+// Helper for nullable fields that works around Bun transpiler bug with NullOr/NullishOr
+const NullableString = Schema.Union(Schema.String, Schema.Null, Schema.Undefined)
+const NullableStringArray = Schema.Union(Schema.Array(Schema.String), Schema.Null, Schema.Undefined)
+
 export const ConnectionNode = Schema.Struct({
   mbid: Schema.String,
   name: Schema.String,
   node_type: Schema.Literal("artist", "band", "label", "recording", "work", "area", "place"),
   relationship_type: Schema.String,
-  // These fields are nullable in the Python / FastAPI models, so we accept nulls
-  // to keep the shared contract aligned across languages.
-  attributes: Schema.NullOr(Schema.Array(Schema.String)),
-  begin_date: Schema.NullOr(Schema.String),
-  end_date: Schema.NullOr(Schema.String),
-  via_mbid: Schema.NullOr(Schema.String),
-  via_name: Schema.NullOr(Schema.String)
+  // These fields are nullable in the Python / FastAPI models.
+  // Using explicit Union to work around Bun transpiler bug with NullOr/NullishOr
+  attributes: NullableStringArray,
+  begin_date: NullableString,
+  end_date: NullableString,
+  via_mbid: NullableString,
+  via_name: NullableString
 })
 export type ConnectionNode = typeof ConnectionNode.Type
 

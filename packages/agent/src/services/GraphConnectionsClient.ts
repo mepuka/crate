@@ -10,10 +10,11 @@ import {
   HttpBody,
   FetchHttpClient,
 } from "@effect/platform";
+// Import directly from graph subpath to work around Bun barrel export bug
 import {
   GraphConnectionsRequest,
   GraphConnectionsResponse,
-} from "@crate/domain";
+} from "@crate/domain/graph/schemas.js";
 import { makeJsonClient } from "./http-utils.js";
 import { FaissConfig } from "../config.js";
 import { GraphApiError } from "./errors.js";
@@ -74,11 +75,30 @@ export class GraphConnectionsClient extends Effect.Service<GraphConnectionsClien
                   ),
               })
             ),
-            Effect.mapError((error) =>
+            Effect.tapError((error: unknown) =>
+              Effect.gen(function* () {
+                // For ParseError, try to extract more details
+                const err = error as { _tag?: string; message?: string; issue?: unknown };
+                const errorTag = err._tag ?? "Unknown";
+                let details = error instanceof Error ? error.message : String(error);
+
+                // Effect Schema ParseError has .issue with details
+                if (err.issue) {
+                  try {
+                    details = JSON.stringify(err.issue, null, 2).slice(0, 2000);
+                  } catch {
+                    // ignore stringify errors
+                  }
+                }
+
+                yield* Effect.logDebug(`GraphConnectionsClient error [${errorTag}]: ${details}`);
+              })
+            ),
+            Effect.mapError((error: unknown) =>
               error instanceof GraphApiError
                 ? error
                 : new GraphApiError({
-                    message: "Graph connections request failed",
+                    message: `Graph connections request failed: ${(error as { _tag?: string })._tag ?? "Unknown"}`,
                     query: JSON.stringify({
                       query_type: params.query_type,
                       mbids: params.mbids,

@@ -232,17 +232,18 @@ export const toCompactPlayResult = (
 
 /**
  * Domain connection node (from graph API)
+ * Note: Using null | undefined to support both Python API (null) and Bun transpiler quirks (undefined)
  */
 interface DomainConnectionNode {
   readonly mbid: string
   readonly name: string
   readonly node_type: "artist" | "band" | "label" | "recording" | "work" | "area" | "place"
   readonly relationship_type: string
-  readonly attributes: readonly string[] | null
-  readonly begin_date: string | null
-  readonly end_date: string | null
-  readonly via_mbid: string | null
-  readonly via_name: string | null
+  readonly attributes: readonly string[] | null | undefined
+  readonly begin_date: string | null | undefined
+  readonly end_date: string | null | undefined
+  readonly via_mbid: string | null | undefined
+  readonly via_name: string | null | undefined
 }
 
 /**
@@ -275,20 +276,20 @@ export const toCompactConnection = (
     relationship_type: node.relationship_type,
   }
 
-  // Only include non-null optional fields
-  if (node.attributes !== null && node.attributes.length > 0) {
+  // Only include non-nullish optional fields
+  if (node.attributes != null && node.attributes.length > 0) {
     (compact as { attributes: string[] }).attributes = [...node.attributes]
   }
-  if (node.begin_date !== null) {
+  if (node.begin_date != null) {
     (compact as { begin_date: string }).begin_date = node.begin_date
   }
-  if (node.end_date !== null) {
+  if (node.end_date != null) {
     (compact as { end_date: string }).end_date = node.end_date
   }
-  if (node.via_mbid !== null) {
+  if (node.via_mbid != null) {
     (compact as { via_mbid: string }).via_mbid = node.via_mbid
   }
-  if (node.via_name !== null) {
+  if (node.via_name != null) {
     (compact as { via_name: string }).via_name = node.via_name
   }
 

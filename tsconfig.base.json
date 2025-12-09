@@ -52,8 +52,8 @@
       }
     ],
     "paths": {
-      "@crate/domain": ["./packages/domain/src/index.ts"],
-      "@crate/domain/*": ["./packages/domain/src/*"],
+      "@crate/domain": ["./packages/domain/dist/index.d.ts"],
+      "@crate/domain/*": ["./packages/domain/dist/*"],
       "@crate/agent": ["./packages/agent/src/index.ts"],
       "@crate/agent/*": ["./packages/agent/src/*"],
       "@crate/agent/test/*": ["./packages/agent/test/*"],
