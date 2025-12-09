@@ -51,6 +51,20 @@ import {
 } from "../services/index.js";
 
 // =============================================================================
+// Utility Functions
+// =============================================================================
+
+/**
+ * Truncate text to a maximum number of words
+ * Used by fetch_link to prevent unbounded content from bloating context
+ */
+function truncateToWords(text: string, maxWords: number): string {
+  const words = text.split(/\s+/);
+  if (words.length <= maxWords) return text;
+  return words.slice(0, maxWords).join(" ") + "\n\n[Content truncated...]";
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -298,7 +312,7 @@ const makeFetchLinkHandler =
           url: params.url,
         });
 
-        const response = yield* service.fetch(params).pipe(
+        const rawResponse = yield* service.fetch(params).pipe(
           // Map service error to success with error content for tool robustness
           Effect.catchAll((error) =>
             Effect.gen(function* () {
@@ -315,15 +329,26 @@ const makeFetchLinkHandler =
           )
         );
 
+        // Apply word truncation to prevent context bloat
+        const maxWords = Math.min(params.max_words ?? 5000, 10000);
+        const truncatedContent = truncateToWords(rawResponse.content, maxWords);
+        const truncatedWordCount = truncatedContent.split(/\s+/).length;
+
         yield* Effect.annotateCurrentSpan({
-          word_count: response.word_count,
-          link_count: response.links.length,
+          word_count: truncatedWordCount,
+          original_word_count: rawResponse.word_count,
+          link_count: rawResponse.links.length,
+          truncated: rawResponse.word_count > maxWords,
         });
         yield* Effect.logDebug(
-          `fetch_link returned ${response.word_count} words`
+          `fetch_link returned ${truncatedWordCount} words (original: ${rawResponse.word_count})`
         );
 
-        return response satisfies FetchLinkResponse;
+        return {
+          ...rawResponse,
+          content: truncatedContent,
+          word_count: truncatedWordCount,
+        } satisfies FetchLinkResponse;
       }),
       Effect.withSpan("Tool.fetch_link")
     );
@@ -549,17 +574,20 @@ const makeQueryCachedNeighborsHandler =
       Effect.gen(function* () {
         yield* Effect.logDebug("Executing query_cached_neighbors tool");
         const includeEdges = params.include_edges ?? true;
+        // Apply limit with default of 20, max of 100
+        const limit = Math.min(params.limit ?? 20, 100);
 
         yield* Effect.annotateCurrentSpan({
           tool: "query_cached_neighbors",
           mbid: params.mbid,
           include_edges: includeEdges,
+          limit,
         });
 
         if (includeEdges) {
           // Use outgoingEdges for full relationship context
           const edges = yield* service.outgoingEdges(params.mbid);
-          const neighbors = edges.map((e) => ({
+          const allNeighbors = edges.map((e) => ({
             mbid: e.node.mbid,
             name: e.node.name,
             node_type: e.node.nodeType,
@@ -571,7 +599,14 @@ const makeQueryCachedNeighborsHandler =
             via_name: e.edge.viaName,
           }));
 
-          yield* Effect.annotateCurrentSpan("neighbor_count", neighbors.length);
+          // Apply limit
+          const neighbors = allNeighbors.slice(0, limit);
+
+          yield* Effect.annotateCurrentSpan({
+            neighbor_count: neighbors.length,
+            total_available: allNeighbors.length,
+            limited: allNeighbors.length > limit,
+          });
 
           return {
             mbid: params.mbid,
@@ -581,13 +616,20 @@ const makeQueryCachedNeighborsHandler =
         } else {
           // Use neighbors for basic node info only
           const nodes = yield* service.neighbors(params.mbid);
-          const neighbors = nodes.map((n) => ({
+          const allNeighbors = nodes.map((n) => ({
             mbid: n.mbid,
             name: n.name,
             node_type: n.nodeType,
           }));
 
-          yield* Effect.annotateCurrentSpan("neighbor_count", neighbors.length);
+          // Apply limit
+          const neighbors = allNeighbors.slice(0, limit);
+
+          yield* Effect.annotateCurrentSpan({
+            neighbor_count: neighbors.length,
+            total_available: allNeighbors.length,
+            limited: allNeighbors.length > limit,
+          });
 
           return {
             mbid: params.mbid,

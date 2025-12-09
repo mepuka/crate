@@ -253,6 +253,10 @@ export const FetchLinkParams = Schema.Struct({
   /** Whether to extract and return links from the page (default false) */
   extract_links: Schema.optional(Schema.Boolean).annotations({
     description: "Whether to extract and return links from the page (default false)"
+  }),
+  /** Maximum words to return from content (default 5000, max 10000) */
+  max_words: Schema.optional(Schema.Number).annotations({
+    description: "Maximum words to return (default 5000, max 10000). Long pages truncated with '[Content truncated...]'"
   })
 })
 export type FetchLinkParams = typeof FetchLinkParams.Type
@@ -490,6 +494,9 @@ export const QueryCachedNeighborsParams = Schema.Struct({
   }),
   include_edges: Schema.optional(Schema.Boolean).annotations({
     description: "Whether to include full edge data with relationship context (default true)"
+  }),
+  limit: Schema.optional(Schema.Number).annotations({
+    description: "Maximum neighbors to return (1-100, default 20)"
   })
 })
 export type QueryCachedNeighborsParams = typeof QueryCachedNeighborsParams.Type

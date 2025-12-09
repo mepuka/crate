@@ -132,6 +132,8 @@ Use this tool when:
 Good sources: Wikipedia, Bandcamp, Discogs, Pitchfork, music publications.
 
 Set extract_links=true to also get links from the page for further research.
+Content is truncated to 5000 words by default to manage context size.
+Use max_words parameter (up to 10000) for longer articles when necessary.
 Returns cleaned markdown text content suitable for analysis.`,
   parameters: FetchLinkParams.fields,
   success: FetchLinkResponse,
@@ -230,6 +232,7 @@ Use this for fast traversal AFTER the graph has been expanded:
 - Show known collaborators without re-fetching
 - Navigate the graph efficiently
 
+Returns up to 20 neighbors by default. Use limit parameter to increase (max 100).
 Returns full relationship context by default (include_edges=true).
 Returns empty array if MBID not in cache - use explore_graph first.`,
   parameters: QueryCachedNeighborsParams.fields,
