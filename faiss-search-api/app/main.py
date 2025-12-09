@@ -356,8 +356,10 @@ async def search(
     try:
         start_time = time.time()
 
-        # FAISS search (get top 1000)
-        faiss_indices, distances = search_svc.search(request.query, k=1000)
+        # FAISS search - fetch only what's needed for pagination
+        # Add buffer of 100 to handle potential filtering
+        internal_k = min(1000, request.offset + request.limit + 100)
+        faiss_indices, distances = search_svc.search(request.query, k=internal_k)
 
         # Map to play IDs
         play_ids = search_svc.get_play_ids(faiss_indices)
@@ -793,6 +795,13 @@ async def get_plays_batch(
             raise HTTPException(
                 status_code=400,
                 detail="No play IDs provided"
+            )
+
+        # Enforce maximum batch size for safety
+        if len(ids) > 500:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Maximum 500 IDs allowed, got {len(ids)}"
             )
 
         # Fetch plays from database
