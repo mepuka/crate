@@ -48,9 +48,10 @@ FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
-# Install only runtime dependencies (curl for healthcheck)
+# Install only runtime dependencies (curl for healthcheck, sqlite3 for debugging)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    sqlite3 \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /root/.cache
 
