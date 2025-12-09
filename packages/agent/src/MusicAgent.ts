@@ -18,6 +18,7 @@ import type * as Kexp from "@crate/domain/kexp/schemas";
 // EnrichmentRequest and EnrichmentItem no longer used - using postInsights directly
 import { FaissClient } from "./FaissClient.js";
 import type { InsightRecord, EvalContext, ToolCallRecord } from "@crate/domain/faiss/schemas";
+import { TokenUsage, calculateCost } from "@crate/domain/faiss/enrichment.js";
 import {
   PromptBuilderService,
   PromptBuilderServiceFull,
@@ -297,6 +298,17 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
     // =============================================================================
 
     /**
+     * Aggregated token usage across API calls
+     */
+    type AggregatedTokenUsage = {
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      cacheReadTokens: number;
+      cacheCreationTokens: number;
+    };
+
+    /**
      * Agent state for research iteration (uses generateText)
      */
     type ResearchState<Tools extends Record<string, Tool.Any>> = {
@@ -304,6 +316,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
       readonly iteration: number;
       readonly response: LanguageModel.GenerateTextResponse<Tools> | null;
       readonly toolCalls: readonly ToolCallRecord[];
+      readonly tokenUsage: AggregatedTokenUsage;
     };
 
     /**
@@ -317,6 +330,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
         readonly totalToolCalls: number;
         readonly researchDurationMs: number;
         readonly toolCalls: readonly ToolCallRecord[];
+        readonly tokenUsage: AggregatedTokenUsage;
       };
     }
 
@@ -357,12 +371,21 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
         // =============================================================================
         yield* Effect.logDebug("Starting research phase");
 
+        const initialTokenUsage: AggregatedTokenUsage = {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        };
+
         const finalState = yield* Effect.iterate(
           {
             chat,
             iteration: 0,
             response: null,
             toolCalls: [] as readonly ToolCallRecord[],
+            tokenUsage: initialTokenUsage,
           } as ResearchState<Tools>,
           {
             // Continue while:
@@ -470,11 +493,22 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                     );
                   }
 
+                  // Accumulate token usage from this response
+                  const usage = response.usage;
+                  const updatedTokenUsage: AggregatedTokenUsage = {
+                    inputTokens: state.tokenUsage.inputTokens + (usage.inputTokens ?? 0),
+                    outputTokens: state.tokenUsage.outputTokens + (usage.outputTokens ?? 0),
+                    totalTokens: state.tokenUsage.totalTokens + (usage.totalTokens ?? 0),
+                    cacheReadTokens: state.tokenUsage.cacheReadTokens + (usage.cachedInputTokens ?? 0),
+                    cacheCreationTokens: state.tokenUsage.cacheCreationTokens, // Not available in standard response
+                  };
+
                   return {
                     chat,
                     iteration: state.iteration + 1,
                     response,
                     toolCalls: [...state.toolCalls, ...newToolCalls],
+                    tokenUsage: updatedTokenUsage,
                   } as ResearchState<Tools>;
                 }),
                 Effect.withSpan("MusicAgent.researchIteration", {
@@ -496,6 +530,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
           totalToolCalls: finalState.toolCalls.length,
           researchDurationMs,
           toolCalls: finalState.toolCalls,
+          tokenUsage: finalState.tokenUsage,
         };
 
         // =============================================================================
@@ -535,18 +570,37 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             ? (response.value as any).insights
             : [];
 
+        // Add output phase token usage to the total
+        const outputUsage = response.usage;
+        const totalTokenUsage: AggregatedTokenUsage = {
+          inputTokens: researchMeta.tokenUsage.inputTokens + (outputUsage.inputTokens ?? 0),
+          outputTokens: researchMeta.tokenUsage.outputTokens + (outputUsage.outputTokens ?? 0),
+          totalTokens: researchMeta.tokenUsage.totalTokens + (outputUsage.totalTokens ?? 0),
+          cacheReadTokens: researchMeta.tokenUsage.cacheReadTokens + (outputUsage.cachedInputTokens ?? 0),
+          cacheCreationTokens: researchMeta.tokenUsage.cacheCreationTokens,
+        };
+
+        // Update researchMeta with final token usage
+        const finalResearchMeta = {
+          ...researchMeta,
+          tokenUsage: totalTokenUsage,
+        };
+
         yield* Effect.logInfo(
           `Agent completed with ${rawInsights.length} insights`
         );
         yield* Effect.annotateCurrentSpan({
           phase: "complete",
           insight_count: rawInsights.length,
-          iteration_count: researchMeta.iterationCount,
-          total_tool_calls: researchMeta.totalToolCalls,
-          research_duration_ms: researchMeta.researchDurationMs,
+          iteration_count: finalResearchMeta.iterationCount,
+          total_tool_calls: finalResearchMeta.totalToolCalls,
+          research_duration_ms: finalResearchMeta.researchDurationMs,
+          input_tokens: totalTokenUsage.inputTokens,
+          output_tokens: totalTokenUsage.outputTokens,
+          cache_read_tokens: totalTokenUsage.cacheReadTokens,
         });
 
-        return { response, researchMeta };
+        return { response, researchMeta: finalResearchMeta };
       }).pipe(Effect.withSpan("MusicAgent.runAgentLoop"));
 
     /**
@@ -790,6 +844,19 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                 // Get session ID for eval context
                 const sessionId = yield* insightSession.getSessionId();
 
+                // Build token usage for eval context
+                const tokenUsage = new TokenUsage({
+                  input_tokens: researchMeta.tokenUsage.inputTokens,
+                  output_tokens: researchMeta.tokenUsage.outputTokens,
+                  total_tokens: researchMeta.tokenUsage.totalTokens,
+                  cache_read_tokens: researchMeta.tokenUsage.cacheReadTokens,
+                  cache_creation_tokens: researchMeta.tokenUsage.cacheCreationTokens,
+                });
+
+                // Calculate estimated cost (using haiku pricing as default)
+                const modelName = "claude-haiku-4-5";
+                const estimatedCost = calculateCost(tokenUsage, modelName);
+
                 // Build eval context from research metadata
                 const evalContext: EvalContext = {
                   session_id: sessionId,
@@ -797,10 +864,14 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   tools_called: [...researchMeta.toolsCalled],
                   total_tool_calls: researchMeta.totalToolCalls,
                   research_duration_ms: researchMeta.researchDurationMs,
+                  model: modelName,
                   had_existing_insights: existingInsights.length > 0,
                   existing_insight_count: existingInsights.length,
                   // Pass through full tool call records including params/results
                   tool_calls: researchMeta.toolCalls,
+                  // Token usage and cost
+                  token_usage: tokenUsage,
+                  estimated_cost_usd: estimatedCost,
                 };
 
                 // Annotate span with insight count and types
