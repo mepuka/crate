@@ -207,9 +207,19 @@ const makeLinkFetcherService = Effect.gen(function* () {
 
   // Configure HTTP client for Jina API
   // Jina expects: GET https://r.jina.ai/{url}
+  // See: https://github.com/jina-ai/reader for header options
   const client = (yield* HttpClient.HttpClient).pipe(
     HttpClient.mapRequest(HttpClientRequest.prependUrl(config.baseUrl)),
     HttpClient.mapRequest(HttpClientRequest.acceptJson),
+    // Optimization headers to reduce content size
+    HttpClient.mapRequest(
+      HttpClientRequest.setHeaders({
+        // Remove images - we only need text content for LLM analysis
+        "x-no-images": "true",
+        // Remove common noise elements (nav, footer, ads, sidebars)
+        "x-remove-selector": "nav, footer, aside, .advertisement, .ad, [class*='ad-'], .sidebar, .comments",
+      })
+    ),
     // Add API key if available
     HttpClient.mapRequest((request) => {
       if (config.apiKey) {
