@@ -9,6 +9,7 @@ export {
   ApiError,
   SearchPlaysError,
   SemanticSearchError,
+  HybridSearchError,
   MbidResolveError,
   LinkFetchError,
   ValidationError,
@@ -63,7 +64,7 @@ export {
   type SearchTimelineParams,
 } from "./SearchPlaysService.js"
 
-// SemanticSearchService
+// SemanticSearchService (also provides hybrid search)
 export {
   SemanticSearchService,
   SemanticSearchServiceLive,
@@ -71,6 +72,7 @@ export {
   SemanticSearchServiceTest,
   type SemanticSearchServiceInterface,
   type SemanticSearchParams,
+  type HybridSearchParams,
 } from "./SemanticSearchService.js"
 
 // InsightSessionService

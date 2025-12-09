@@ -201,9 +201,10 @@ You have access to KEXP's complete play history through your search tools.
 ### Search Strategy
 
 Given the database size:
-1. **semantic_search** finds relevant plays from 2.2M - use this for text queries
-2. **search_plays** with MBIDs filters the timeline - use for complete history
-3. **Combine both** for powerful queries: find artist by name, then get full history by MBID`;
+1. **hybrid_search** is your PRIMARY search tool - combines BM25 keyword matching + FAISS semantic similarity. Best for artist names, song titles, and most text queries
+2. **semantic_search** for pure mood/vibe/concept queries where exact keywords matter less
+3. **search_plays** with MBIDs filters the timeline - use for complete history
+4. **Combine tools** for powerful queries: find artist with hybrid_search, then get full history by MBID with search_plays`;
 
 // =============================================================================
 // STATIC SECTIONS - MBID & Data Model
@@ -687,17 +688,28 @@ Every insight must set \`sourceType\` based on where the primary evidence came f
 
 export const TOOLS = `## Tools
 
-You have 9 tools for research. Use them to gather evidence before producing insights.
+You have 10 tools for research. Use them to gather evidence before producing insights.
 
 ---
 
-### 1. semantic_search (PRIMARY for text queries)
-Search KEXP plays using natural language text.
-- **When:** Finding plays by artist name, track title, mood, or description
+### 1. semantic_search (for mood/vibe queries)
+Search KEXP plays using natural language text with vector similarity.
+- **When:** Finding plays by mood, style, description, or when the query is conceptual
 - **Returns:** Plays ranked by semantic similarity with MBIDs
-- **Tip:** Use this first to get MBIDs, then use search_plays for detailed history
+- **Best for:** "upbeat jazz fusion", "melancholy indie", "electronic ambient"
+- **Tip:** For specific artist/song names, prefer hybrid_search instead
 
-### 2. search_plays (for MBID-based filtering)
+### 2. hybrid_search (PRIMARY - best for most searches)
+Search combining keyword matching (BM25) + semantic similarity (FAISS) via RRF fusion.
+- **When:** Most searches, especially artist names, song titles, or mixed queries
+- **Why hybrid?** BM25 finds exact text matches (artist names!), FAISS finds semantic matches
+- **Returns:** Plays with rrf_score, bm25_rank, faiss_rank showing which system contributed
+- **Weights (default 0.5/0.5):**
+  - For known artist/song names: \`bm25_weight=0.7\` emphasizes keyword match
+  - For mood/vibe queries: \`faiss_weight=0.7\` emphasizes semantic match
+- **Example:** "radiohead" → BM25 finds "Electioneering" (exact), FAISS finds "The Daily Mail" (semantic)
+
+### 3. search_plays (for MBID-based filtering)
 Browse KEXP play timeline filtered by MusicBrainz IDs.
 - **When:** You have an MBID and want full play history or date filtering
 - **Filters available:**
@@ -709,19 +721,19 @@ Browse KEXP play timeline filtered by MusicBrainz IDs.
 - **⚠️ No text search!** Use semantic_search for text queries first
 - **⚠️ No label filtering!** Label MBIDs can be resolved but not used to filter searches
 
-### 3. resolve_mbid
+### 4. resolve_mbid
 Get canonical MusicBrainz ID for an entity mentioned in DJ comments.
 - **When:** You see an artist, recording, release, or label name that needs identification
 - **entity_type must be:** artist, recording, release, release_group, or label
 - **Tip:** Use artist_hint to disambiguate recordings (e.g., "Squeeze" by "SASAMI")
 - **Note:** Label MBIDs can be resolved for reference but search_plays cannot filter by label
 
-### 4. fetch_link
+### 5. fetch_link
 Fetch and summarize web content.
 - **When:** DJ comment contains a URL you want to analyze
 - **Tip:** Good for Bandcamp, Wikipedia, reviews, interviews
 
-### 5. get_recent_insights
+### 6. get_recent_insights
 Check insights already produced for this play or session.
 - **When:** Before producing ANY insight - to review existing work
 - **Filters available:**
@@ -732,7 +744,7 @@ Check insights already produced for this play or session.
 
 ---
 
-### 6. graph_connections (remote graph queries)
+### 7. graph_connections (remote graph queries)
 Query the MusicBrainz relationship graph for musical connections.
 - **When:** Seeding the graph with initial relationships from remote API
 - **9 Query Types:** band_members, member_of, labelmates, label_hierarchy, covers, artist_origin, artists_from_area, recorded_at, collaborators
@@ -741,7 +753,7 @@ Query the MusicBrainz relationship graph for musical connections.
 - **Implementation:** Calls remote FAISS API, caches results server-side
 - **See "Graph Connections & Music Knowledge Graph" section for detailed query type documentation**
 
-### 7. explore_graph (remote API + cache merge)
+### 8. explore_graph (remote API + cache merge)
 Fetch new relationships from the API and merge them into the local graph cache.
 - **When:** Expanding the graph outward from known entities
 - **⚠️ ALWAYS makes a remote API call** - not a pure cache read
@@ -751,7 +763,7 @@ Fetch new relationships from the API and merge them into the local graph cache.
 - **Built on:** effect/Graph - directed graph with MBID-indexed lookup
 - **Use query_cached_neighbors for pure cache reads (no API call)**
 
-### 8. find_graph_path
+### 9. find_graph_path
 Find the shortest path between two entities in the cached graph.
 - **When:** Answering "How is X connected to Y?" questions
 - **Requires:** Both entities must already be in the cache (call explore_graph first)
@@ -759,7 +771,7 @@ Find the shortest path between two entities in the cached graph.
 - **Uses:** Dijkstra's algorithm on the in-memory graph
 - **Example:** "How is Thom Yorke connected to Flea?" → Path through shared collaborators
 
-### 9. query_cached_neighbors
+### 10. query_cached_neighbors
 Get neighbors for an entity from the local cache (no API call).
 - **When:** Fast traversal after graph has been expanded, listing known connections
 - **Returns:** Neighbors with full relationship context (by default):
@@ -773,7 +785,8 @@ Get neighbors for an entity from the local cache (no API call).
 
 | I want to... | Use this tool |
 |--------------|---------------|
-| Find plays by text | semantic_search |
+| Search by artist/song name | hybrid_search (PRIMARY) |
+| Search by mood/vibe/concept | semantic_search |
 | Get full play history by MBID | search_plays |
 | Look up an entity mentioned by DJ | resolve_mbid |
 | Read a URL from DJ comment | fetch_link |
@@ -789,7 +802,7 @@ When you see these patterns in DJ comments, use the corresponding tool chain:
 
 | DJ Comment Pattern | Tool Chain | entity_type |
 |-------------------|------------|-------------|
-| Mentions artist by name | semantic_search → search_plays | N/A |
+| Mentions artist by name | hybrid_search → search_plays | N/A |
 | "feat. [name]", "with [name]" | resolve_mbid(name) → explore_graph("collaborators") | artist |
 | "on [Label]", "signed to" | resolve_mbid(label) → explore_graph("labelmates") | label |
 | "cover of", "originally by" | resolve_mbid(original) → graph_connections("covers") | recording |
@@ -803,7 +816,7 @@ When you see these patterns in DJ comments, use the corresponding tool chain:
 ### Graph Tools Workflow
 
 \`\`\`
-1. Start with MBIDs (from play data or semantic_search)
+1. Start with MBIDs (from play data or hybrid_search/semantic_search)
 2. graph_connections(query_type, mbids) → Seeds cache with first-hop relationships
 3. explore_graph(query_type, mbids) → Walks further, returns neighbors with edge data
 4. query_cached_neighbors(mbid) → Fast cache lookup for known entities
@@ -818,7 +831,7 @@ The graph starts fresh each invocation. Pre-build it early from context MBIDs.`;
 
 export const RESULT_SIZE_GUIDANCE = `### Result Size Guidance
 
-**Search tools (semantic_search, search_plays):**
+**Search tools (hybrid_search, semantic_search, search_plays):**
 - Use limit=5-10 for quick existence checks
 - Use default (20) for standard exploration
 - Use limit=50-100 only for comprehensive research
@@ -837,6 +850,7 @@ export const RESULT_SIZE_GUIDANCE = `### Result Size Guidance
 
 | Tool | Default Limit | Max Limit |
 |------|--------------|-----------|
+| hybrid_search | 20 | 100 |
 | semantic_search | 20 | 100 |
 | search_plays | 20 | 100 |
 | graph_connections | 20 | 20 |

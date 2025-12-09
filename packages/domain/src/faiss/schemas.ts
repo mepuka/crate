@@ -108,11 +108,79 @@ export class PlayCountResponse extends Schema.Class<PlayCountResponse>("PlayCoun
   query_time_ms: Schema.Number
 }) {}
 
+/**
+ * HybridPlayResult schema - matches FastAPI backend HybridPlayResult model.
+ *
+ * Similar to PlayResult but with RRF ranking info instead of similarity score.
+ */
+export class HybridPlayResult extends Schema.Class<HybridPlayResult>("HybridPlayResult")({
+  // Core fields
+  id: Schema.Number,
+  artist: Schema.String,
+  song: Schema.String,
+  rrf_score: Schema.Number,
+
+  // Ranking info
+  bm25_rank: Schema.NullOr(Schema.Number),
+  faiss_rank: Schema.NullOr(Schema.Number),
+  faiss_score: Schema.NullOr(Schema.Number),
+
+  // Metadata
+  album: StringOrNull,
+  airdate: Schema.DateFromString,
+  release_date: Schema.NullOr(SafeDateFromString),
+  labels: Schema.Array(Schema.String),
+  rotation_status: Schema.NullOr(Schema.String),
+  is_local: Schema.Boolean,
+  is_live: Schema.Boolean,
+  is_request: Schema.Boolean,
+  comment: Schema.NullOr(Schema.String),
+  show: Schema.Number,
+
+  // Album artwork
+  image_uri: StringOrNull,
+  thumbnail_uri: StringOrNull,
+
+  // MusicBrainz IDs
+  artist_mbid: Schema.Array(Schema.String),
+  recording_mbid: Schema.NullOr(Schema.String),
+  release_mbid: Schema.NullOr(Schema.String),
+  release_group_mbid: Schema.NullOr(Schema.String)
+}) {}
+
+/**
+ * HybridSearchResponse schema - matches FastAPI backend HybridSearchResponse model.
+ *
+ * Response for hybrid search endpoint (FTS5 + FAISS with RRF).
+ */
+export class HybridSearchResponse extends Schema.Class<HybridSearchResponse>("HybridSearchResponse")({
+  results: Schema.Array(HybridPlayResult),
+  total: Schema.Number,
+  query_time_ms: Schema.Number,
+  query: Schema.String,
+  bm25_weight: Schema.Number,
+  faiss_weight: Schema.Number
+}) {}
+
+/**
+ * HybridSearchParams - request parameters for hybrid search
+ */
+export class HybridSearchParams extends Schema.Class<HybridSearchParams>("HybridSearchParams")({
+  query: Schema.String,
+  limit: Schema.optionalWith(Schema.Number, { default: () => 20 }),
+  bm25_weight: Schema.optionalWith(Schema.Number, { default: () => 0.5 }),
+  faiss_weight: Schema.optionalWith(Schema.Number, { default: () => 0.5 }),
+  use_expansion: Schema.optionalWith(Schema.Boolean, { default: () => false })
+}) {}
+
 // Export type aliases for the schema classes
 export type Play = typeof PlayResult.Type
 export type Timeline = typeof TimelineResponse.Type
 export type SearchResult = typeof SearchResponse.Type
 export type PlayCount = typeof PlayCountResponse.Type
+export type HybridPlay = typeof HybridPlayResult.Type
+export type HybridSearch = typeof HybridSearchResponse.Type
+export type HybridSearchInput = typeof HybridSearchParams.Type
 
 // Export parameter schemas
 export * from "./params.js"

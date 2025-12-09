@@ -9,9 +9,9 @@
 
 import { Context, Effect, Layer } from "effect"
 import { HttpBody, HttpClient, HttpClientResponse, FetchHttpClient } from "@effect/platform"
-import { SearchResponse } from "@crate/domain/faiss/schemas"
+import { SearchResponse, HybridSearchResponse } from "@crate/domain/faiss/schemas"
 import { FaissConfig } from "../config.js"
-import { SemanticSearchError } from "./errors.js"
+import { SemanticSearchError, HybridSearchError } from "./errors.js"
 import { makeJsonClient } from "./http-utils.js"
 
 // =============================================================================
@@ -31,6 +31,22 @@ export interface SemanticSearchParams {
 }
 
 /**
+ * Parameters for hybrid search (FTS5 + FAISS with RRF)
+ */
+export interface HybridSearchParams {
+  /** Natural language query */
+  readonly query: string
+  /** Maximum number of results (1-100, default 20) */
+  readonly limit?: number
+  /** BM25 weight for keyword matching (0-1, default 0.5) */
+  readonly bm25_weight?: number
+  /** FAISS weight for semantic matching (0-1, default 0.5) */
+  readonly faiss_weight?: number
+  /** Use query expansion (default false) */
+  readonly use_expansion?: boolean
+}
+
+/**
  * SemanticSearchService interface
  */
 export interface SemanticSearchServiceInterface {
@@ -43,6 +59,16 @@ export interface SemanticSearchServiceInterface {
   readonly search: (
     params: SemanticSearchParams
   ) => Effect.Effect<typeof SearchResponse.Type, SemanticSearchError>
+
+  /**
+   * Perform hybrid search using FTS5 keyword matching + FAISS semantic similarity
+   *
+   * @param params - Search parameters including query, weights, and optional limit
+   * @returns Search results ranked by RRF fusion score
+   */
+  readonly hybridSearch: (
+    params: HybridSearchParams
+  ) => Effect.Effect<typeof HybridSearchResponse.Type, HybridSearchError>
 }
 
 // =============================================================================
@@ -92,8 +118,35 @@ const makeSemanticSearchService = Effect.gen(function* () {
     )
   }
 
+  const hybridSearch = (
+    params: HybridSearchParams
+  ): Effect.Effect<typeof HybridSearchResponse.Type, HybridSearchError> => {
+    // Build request body
+    const body = {
+      query: params.query,
+      limit: params.limit ?? 20,
+      bm25_weight: params.bm25_weight ?? 0.5,
+      faiss_weight: params.faiss_weight ?? 0.5,
+      use_expansion: params.use_expansion ?? false
+    }
+
+    return client.post("/api/search/hybrid", {
+      body: HttpBody.unsafeJson(body)
+    }).pipe(
+      Effect.flatMap(HttpClientResponse.schemaBodyJson(HybridSearchResponse)),
+      Effect.mapError((error) =>
+        new HybridSearchError({
+          message: "Hybrid search failed",
+          query: params.query,
+          cause: error
+        })
+      )
+    )
+  }
+
   return {
-    search
+    search,
+    hybridSearch
   } satisfies SemanticSearchServiceInterface
 })
 
@@ -134,6 +187,15 @@ export const SemanticSearchServiceTest: Layer.Layer<SemanticSearchService> = Lay
         total: 0,
         query_time_ms: 0,
         query: params.query
+      }),
+    hybridSearch: (params) =>
+      Effect.succeed({
+        results: [],
+        total: 0,
+        query_time_ms: 0,
+        query: params.query,
+        bm25_weight: params.bm25_weight ?? 0.5,
+        faiss_weight: params.faiss_weight ?? 0.5
       })
   } satisfies SemanticSearchServiceInterface
 )

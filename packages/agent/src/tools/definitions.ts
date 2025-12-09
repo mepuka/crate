@@ -13,6 +13,8 @@ import {
   SearchPlaysResponse,
   SemanticSearchParams,
   SemanticSearchResponse,
+  HybridSearchParams,
+  HybridSearchResponse,
   ResolveMbidParams,
   ResolveMbidResponse,
   FetchLinkParams,
@@ -83,6 +85,37 @@ Supports pagination with offset parameter for browsing large result sets.
 On API error, returns empty results with _error field describing the failure.`,
   parameters: SemanticSearchParams.fields,
   success: SemanticSearchResponse,
+  failureMode: "return",
+});
+
+/**
+ * Hybrid search combining keywords and semantic similarity
+ *
+ * Uses FTS5 (BM25) for exact matching and FAISS for semantic similarity,
+ * merged via Reciprocal Rank Fusion (RRF).
+ */
+export const HybridSearchTool = Tool.make("hybrid_search", {
+  description: `Search KEXP plays using BOTH keyword matching AND semantic similarity.
+
+**RECOMMENDED for most searches** - combines the best of both approaches:
+- Exact matches: Artist names, song titles, DJ comments → BM25 excels
+- Conceptual queries: Mood, style, related concepts → FAISS excels
+- Combined: "Fleet Foxes" finds exact artist + semantically similar folk artists
+
+**When to use each:**
+- hybrid_search (default): Best for most queries, especially artist/song names
+- semantic_search: Pure conceptual queries like "upbeat summer vibes"
+
+**Weights (0-1):**
+- bm25_weight=0.7, faiss_weight=0.3 for known artist/song names
+- bm25_weight=0.3, faiss_weight=0.7 for mood/style queries
+- Default 0.5/0.5 is a good balance
+
+Returns results ranked by Reciprocal Rank Fusion (RRF) score.
+Includes bm25_rank and faiss_rank to show which system contributed.
+On API error, returns empty results with _error field describing the failure.`,
+  parameters: HybridSearchParams.fields,
+  success: HybridSearchResponse,
   failureMode: "return",
 });
 
@@ -252,6 +285,7 @@ Returns empty array if MBID not in cache - use explore_graph first.`,
 export const CrateToolkit = Toolkit.make(
   SearchPlaysTool,
   SemanticSearchTool,
+  HybridSearchTool,
   ResolveMbidTool,
   FetchLinkTool,
   GetRecentInsightsTool,
@@ -271,6 +305,7 @@ export type CrateToolkit = typeof CrateToolkit;
  */
 export type SearchPlaysToolType = typeof SearchPlaysTool;
 export type SemanticSearchToolType = typeof SemanticSearchTool;
+export type HybridSearchToolType = typeof HybridSearchTool;
 export type ResolveMbidToolType = typeof ResolveMbidTool;
 export type FetchLinkToolType = typeof FetchLinkTool;
 export type GetRecentInsightsToolType = typeof GetRecentInsightsTool;

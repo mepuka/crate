@@ -26,6 +26,8 @@ import {
   TimelineParams,
   TimelineResponse as TimelineResponseSchema,
   EvalContext,
+  HybridSearchParams,
+  HybridSearchResponse as HybridSearchResponseSchema,
 } from "@crate/domain/faiss/schemas";
 import type { Insight } from "./prompts/insights.js";
 
@@ -33,6 +35,7 @@ import type { Insight } from "./prompts/insights.js";
 export type PlayResult = typeof PlayResultSchema.Type;
 export type SearchResponse = typeof SearchResponseSchema.Type;
 export type TimelineResponse = typeof TimelineResponseSchema.Type;
+export type HybridSearchResponse = typeof HybridSearchResponseSchema.Type;
 
 /**
  * Tagged error for FAISS API failures
@@ -84,6 +87,27 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
               (error) =>
                 new FaissApiError({
                   message: "Search failed",
+                  cause: error,
+                })
+            )
+          ),
+
+      /**
+       * Perform hybrid search (FTS5 + FAISS with RRF)
+       */
+      hybridSearch: (request: typeof HybridSearchParams.Type) =>
+        client
+          .post("/api/search/hybrid", {
+            body: HttpBody.unsafeJson(request),
+          })
+          .pipe(
+            Effect.flatMap(
+              HttpClientResponse.schemaBodyJson(HybridSearchResponseSchema)
+            ),
+            Effect.mapError(
+              (error) =>
+                new FaissApiError({
+                  message: "Hybrid search failed",
                   cause: error,
                 })
             )

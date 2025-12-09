@@ -186,6 +186,73 @@ export const SemanticSearchResponse = Schema.Struct({
 export type SemanticSearchResponse = typeof SemanticSearchResponse.Type
 
 // =============================================================================
+// HybridSearch Tool Schemas
+// =============================================================================
+
+/**
+ * Parameters for hybrid search (FTS5 + FAISS with RRF)
+ *
+ * Combines BM25 keyword matching with FAISS semantic similarity.
+ */
+export const HybridSearchParams = Schema.Struct({
+  /** Search query - works for exact names AND semantic concepts */
+  query: Schema.String.annotations({
+    description: "Search query - works for exact names AND semantic concepts"
+  }),
+  /** Maximum results (default 20, max 100) */
+  limit: Schema.optional(Schema.Number).annotations({
+    description: "Maximum results to return (default 20, max 100)"
+  }),
+  /** BM25 weight 0-1 for keyword matching (default 0.5) */
+  bm25_weight: Schema.optional(Schema.Number).annotations({
+    description: "Weight for keyword/exact matching (0-1, default 0.5). Use 0.7 for known artist/song names."
+  }),
+  /** FAISS weight 0-1 for semantic similarity (default 0.5) */
+  faiss_weight: Schema.optional(Schema.Number).annotations({
+    description: "Weight for semantic similarity (0-1, default 0.5). Use 0.7 for mood/style queries."
+  })
+})
+export type HybridSearchParams = typeof HybridSearchParams.Type
+
+/**
+ * Hybrid search result with ranking info
+ */
+export const HybridPlayResult = Schema.Struct({
+  id: Schema.Number,
+  artist: Schema.String,
+  song: Schema.String,
+  rrf_score: Schema.Number,
+  bm25_rank: Schema.NullOr(Schema.Number),
+  faiss_rank: Schema.NullOr(Schema.Number),
+  faiss_score: Schema.NullOr(Schema.Number),
+  album: Schema.NullOr(Schema.String),
+  airdate: Schema.String,
+  labels: Schema.Array(Schema.String),
+  rotation_status: Schema.NullOr(Schema.String),
+  comment: Schema.NullOr(Schema.String),
+  artist_mbid: Schema.Array(Schema.String),
+  recording_mbid: Schema.NullOr(Schema.String),
+  release_mbid: Schema.NullOr(Schema.String),
+  release_group_mbid: Schema.NullOr(Schema.String)
+})
+export type HybridPlayResult = typeof HybridPlayResult.Type
+
+/**
+ * Response from hybrid search
+ */
+export const HybridSearchResponse = Schema.Struct({
+  results: Schema.Array(HybridPlayResult),
+  total: Schema.Number,
+  query_time_ms: Schema.Number,
+  query: Schema.String,
+  bm25_weight: Schema.Number,
+  faiss_weight: Schema.Number,
+  /** Error message if the API call failed (empty results returned on error) */
+  _error: Schema.optional(Schema.String)
+})
+export type HybridSearchResponse = typeof HybridSearchResponse.Type
+
+// =============================================================================
 // ResolveMbid Tool Schemas
 // =============================================================================
 

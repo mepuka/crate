@@ -45,6 +45,15 @@ export class SemanticSearchError extends Data.TaggedError("SemanticSearchError")
   readonly cause?: unknown
 }> {}
 
+/**
+ * Error from hybrid search operations (FTS5 + FAISS)
+ */
+export class HybridSearchError extends Data.TaggedError("HybridSearchError")<{
+  readonly message: string
+  readonly query?: string
+  readonly cause?: unknown
+}> {}
+
 // =============================================================================
 // Resolution Errors
 // =============================================================================
@@ -120,6 +129,7 @@ export type ToolError =
   | ApiError
   | SearchPlaysError
   | SemanticSearchError
+  | HybridSearchError
   | MbidResolveError
   | LinkFetchError
   | ValidationError
@@ -133,6 +143,7 @@ const toolErrorTags = new Set([
   "ApiError",
   "SearchPlaysError",
   "SemanticSearchError",
+  "HybridSearchError",
   "MbidResolveError",
   "LinkFetchError",
   "ValidationError",

@@ -15,6 +15,8 @@ import type {
   SearchPlaysResponse,
   SemanticSearchParams,
   SemanticSearchResponse,
+  HybridSearchParams,
+  HybridSearchResponse,
   ResolveMbidParams,
   ResolveMbidResponse,
   FetchLinkParams,
@@ -244,6 +246,82 @@ const makeSemanticSearchHandler =
         } satisfies SemanticSearchResponse;
       }),
       Effect.withSpan("Tool.semantic_search")
+    );
+
+/**
+ * Create handler for hybrid_search tool
+ *
+ * Wires to SemanticSearchService.hybridSearch() and transforms response
+ * to match the tool's expected output schema.
+ */
+const makeHybridSearchHandler =
+  (service: SemanticSearchServiceInterface) =>
+  (params: HybridSearchParams): Effect.Effect<HybridSearchResponse> =>
+    pipe(
+      Effect.gen(function* () {
+        yield* Effect.logDebug("Executing hybrid_search tool");
+        yield* Effect.annotateCurrentSpan({
+          tool: "hybrid_search",
+          query: params.query,
+          limit: params.limit ?? 20,
+          bm25_weight: params.bm25_weight ?? 0.5,
+          faiss_weight: params.faiss_weight ?? 0.5,
+        });
+
+        const response = yield* service
+          .hybridSearch({
+            query: params.query,
+            ...(params.limit !== undefined ? { limit: params.limit } : {}),
+            ...(params.bm25_weight !== undefined ? { bm25_weight: params.bm25_weight } : {}),
+            ...(params.faiss_weight !== undefined ? { faiss_weight: params.faiss_weight } : {}),
+          })
+          .pipe(
+            // Map service error to success with empty results for tool robustness
+            Effect.catchAll((error) =>
+              Effect.gen(function* () {
+                yield* Effect.logWarning(`hybrid_search tool error: ${error.message}`);
+                yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
+                return {
+                  results: [],
+                  total: 0,
+                  query_time_ms: 0,
+                  query: params.query,
+                  bm25_weight: params.bm25_weight ?? 0.5,
+                  faiss_weight: params.faiss_weight ?? 0.5,
+                  _error: error.message,
+                };
+              })
+            )
+          );
+
+        // Transform results: Date -> ISO string for airdate, arrays to mutable
+        const results = response.results.map((play) => ({
+          ...play,
+          airdate: play.airdate instanceof Date ? play.airdate.toISOString() : String(play.airdate),
+          labels: [...play.labels],
+          artist_mbid: [...play.artist_mbid],
+        }));
+
+        yield* Effect.annotateCurrentSpan({
+          result_count: results.length,
+          query_time_ms: response.query_time_ms,
+        });
+        yield* Effect.logDebug(
+          `hybrid_search returned ${results.length} results`
+        );
+
+        // Propagate _error if present from error handling
+        return {
+          results,
+          total: response.total,
+          query_time_ms: response.query_time_ms,
+          query: response.query,
+          bm25_weight: response.bm25_weight,
+          faiss_weight: response.faiss_weight,
+          ...("_error" in response && response._error ? { _error: response._error } : {}),
+        } satisfies HybridSearchResponse;
+      }),
+      Effect.withSpan("Tool.hybrid_search")
     );
 
 /**
@@ -669,6 +747,7 @@ export const makeCrateToolHandlers: Effect.Effect<
   return CrateToolkit.of({
     search_plays: makeSearchPlaysHandler(searchPlaysService),
     semantic_search: makeSemanticSearchHandler(semanticSearchService),
+    hybrid_search: makeHybridSearchHandler(semanticSearchService),
     resolve_mbid: makeResolveMbidHandler(mbidResolverService),
     fetch_link: makeFetchLinkHandler(linkFetcherService),
     get_recent_insights: makeGetRecentInsightsHandler(insightSessionService),
@@ -718,6 +797,7 @@ export const CrateToolHandlersLayer = CrateToolkit.toLayer(
 export {
   makeSearchPlaysHandler,
   makeSemanticSearchHandler,
+  makeHybridSearchHandler,
   makeResolveMbidHandler,
   makeFetchLinkHandler,
   makeGetRecentInsightsHandler,
