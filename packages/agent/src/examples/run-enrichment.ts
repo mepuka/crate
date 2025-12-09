@@ -3,7 +3,7 @@
  * Run agent enrichment flow against prod API
  *
  * Usage:
- *   FAISS_API_URL=https://cratemusic.duckdns.org bun src/examples/run-enrichment.ts
+ *   bun run --env-file=.env src/examples/run-enrichment.ts
  *
  * Prerequisites:
  *   - ANTHROPIC_API_KEY environment variable set
@@ -23,7 +23,7 @@ const playIdsArg = process.argv[2];
 const jumpArg = process.env.JUMP ? parseFloat(process.env.JUMP) : undefined;
 
 // Limit for timeline
-const limitArg = parseInt(process.env.LIMIT || "3", 10);
+const limitArg = parseInt(process.env.LIMIT || "1", 10);
 
 // Enable debug logging with DEBUG=1 env var
 const isDebug = process.env.DEBUG === "1";
