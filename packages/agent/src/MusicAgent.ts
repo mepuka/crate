@@ -23,6 +23,7 @@ import {
   PromptBuilderService,
   PromptBuilderServiceFull,
   InsightSessionService,
+  faissPlayToKexpPlay,
 } from "./services/index.js";
 import { CrateToolkit } from "./tools/definitions.js";
 import { CrateToolsLive, AnthropicModelLive } from "./layers.js";
@@ -644,7 +645,14 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             Effect.withSpan("MusicAgent.fetchPlays")
           );
 
-          const plays = batchResponse.plays as unknown as Kexp.KexpTrackPlay[];
+          // Convert FAISS API plays to KEXP format
+          // FAISS API uses different field names for MBIDs (artist_mbid vs artist_ids)
+          // so we need to map them properly using faissPlayToKexpPlay
+          const plays = batchResponse.plays.map((p) =>
+            faissPlayToKexpPlay(
+              p as import("@crate/domain/faiss/schemas").Play
+            )
+          );
           yield* Effect.logDebug(`Fetched ${plays.length} plays from API`);
 
           /**

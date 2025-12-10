@@ -151,6 +151,55 @@ const kexpPlayToPlayContext = (play: Kexp.KexpTrackPlay): PlayContext => ({
 });
 
 /**
+ * Convert FAISS API PlayResult to KEXP KexpTrackPlay format
+ *
+ * The FAISS API uses different field names for MBIDs:
+ * - FAISS: artist_mbid, recording_mbid, release_mbid, release_group_mbid
+ * - KEXP: artist_ids, recording_id, release_id, release_group_id
+ *
+ * This converter bridges the gap so plays fetched from FAISS API
+ * can be used with the existing prompt builder infrastructure.
+ */
+export const faissPlayToKexpPlay = (
+  play: import("@crate/domain/faiss/schemas").Play
+): Kexp.KexpTrackPlay => ({
+  // Core fields
+  id: play.id,
+  uri: "", // Not in FAISS response
+  play_type: "trackplay" as const,
+  artist: play.artist,
+  song: play.song,
+  album: play.album,
+  airdate: play.airdate.toISOString(),
+  show: play.show,
+  show_uri: "",
+  image_uri: play.image_uri,
+  thumbnail_uri: play.thumbnail_uri,
+  track_id: null, // Not in FAISS response
+  location: 0, // Default value
+  location_name: "KEXP", // Default value
+
+  // Labels
+  labels: play.labels,
+  label_ids: [], // FAISS doesn't return label MBIDs
+
+  // MBID mapping: FAISS uses _mbid suffix, KEXP uses _id suffix
+  artist_ids: play.artist_mbid, // FAISS: artist_mbid -> KEXP: artist_ids
+  recording_id: play.recording_mbid, // FAISS: recording_mbid -> KEXP: recording_id
+  release_id: play.release_mbid, // FAISS: release_mbid -> KEXP: release_id
+  release_group_id: play.release_group_mbid, // FAISS: release_group_mbid -> KEXP: release_group_id
+
+  // Metadata
+  release_date: play.release_date?.toISOString() ?? null,
+  // Map rotation status from FAISS string to KEXP literal union or null
+  rotation_status: (play.rotation_status as Kexp.RotationStatus | null) ?? null,
+  is_local: play.is_local,
+  is_live: play.is_live,
+  is_request: play.is_request,
+  comment: play.comment,
+});
+
+/**
  * Convert KEXP API show to our ShowContext format
  */
 const kexpShowToShowContext = (show: Kexp.KexpShow): ShowContext => ({

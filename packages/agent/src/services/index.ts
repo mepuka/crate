@@ -43,6 +43,7 @@ export {
   type MbId,
   PromptBuildError,
   builtPromptToAiPrompt,
+  faissPlayToKexpPlay,
 } from "./PromptBuilderService.js"
 
 // Re-export prompt context types
