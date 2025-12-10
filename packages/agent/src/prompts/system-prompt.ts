@@ -1347,25 +1347,40 @@ export function formatPlayData(play: PlayContext): string {
     lines.push(`**Status:** ${flags.join(" | ")}`);
   }
 
-  // MBIDs
+  // MBIDs - check what's available
+  const hasArtistMbids = play.artistMbids && play.artistMbids.length > 0;
+  const hasRecordingMbid = !!play.recordingMbid;
+  const hasReleaseMbid = !!play.releaseMbid;
+  const hasReleaseGroupMbid = !!play.releaseGroupMbid;
+  const hasAnyMbid = hasArtistMbids || hasRecordingMbid || hasReleaseMbid || hasReleaseGroupMbid;
+
   lines.push(``);
   lines.push(`### Entity IDs (Pre-resolved)`);
 
-  if (play.artistMbids && play.artistMbids.length > 0) {
-    lines.push(`- Artist MBID(s): ${play.artistMbids.join(", ")}`);
-  }
-  if (play.recordingMbid) {
-    lines.push(`- Recording MBID: ${play.recordingMbid}`);
-  }
-  if (play.releaseMbid) {
-    lines.push(`- Release MBID: ${play.releaseMbid}`);
-  }
-  if (play.releaseGroupMbid) {
-    lines.push(`- Release Group MBID: ${play.releaseGroupMbid}`);
+  if (hasAnyMbid) {
+    if (hasArtistMbids) {
+      lines.push(`- Artist MBID(s): ${play.artistMbids!.join(", ")}`);
+    }
+    if (hasRecordingMbid) {
+      lines.push(`- Recording MBID: ${play.recordingMbid}`);
+    }
+    if (hasReleaseMbid) {
+      lines.push(`- Release MBID: ${play.releaseMbid}`);
+    }
+    if (hasReleaseGroupMbid) {
+      lines.push(`- Release Group MBID: ${play.releaseGroupMbid}`);
+    }
+  } else {
+    lines.push(``);
+    lines.push(`**⚠️ No pre-resolved MBIDs available for this play.**`);
+    lines.push(`You will need to use \`hybrid_search\` or \`semantic_search\` to find this artist/track,`);
+    lines.push(`then use \`resolve_mbid\` if you need canonical entity IDs for graph exploration.`);
   }
 
   // DJ Comment - PRIMARY SOURCE
-  if (play.comment) {
+  const hasComment = !!play.comment;
+
+  if (hasComment) {
     lines.push(``);
     lines.push(`### DJ Comment`);
     lines.push(``);
@@ -1381,7 +1396,18 @@ export function formatPlayData(play: PlayContext): string {
     lines.push(`- Discovery signals ("debut", "first time", "brand new")`);
   } else {
     lines.push(``);
+    lines.push(`### DJ Comment`);
+    lines.push(``);
     lines.push(`*No DJ comment for this play.*`);
+  }
+
+  // Special note when we have very limited context
+  if (!hasAnyMbid && !hasComment) {
+    lines.push(``);
+    lines.push(`---`);
+    lines.push(`**Note:** This play has no pre-resolved MBIDs and no DJ comment.`);
+    lines.push(`Focus on using search tools to establish artist identity and play history.`);
+    lines.push(`PlayHistoryInsight (debut detection, play count) may still be possible via search.`);
   }
 
   return lines.join("\n");
