@@ -46,13 +46,6 @@ export class EnrichmentResponse extends Schema.Class<EnrichmentResponse>("Enrich
   count: Schema.Number
 }) {}
 
-/**
- * Batch plays response (for fetching multiple plays)
- */
-export class BatchPlaysResponse extends Schema.Class<BatchPlaysResponse>("BatchPlaysResponse")({
-  plays: Schema.Array(Schema.Unknown) // Will be PlayResult, but avoid circular dep
-}) {}
-
 // =============================================================================
 // Typed Insights API Schemas
 // =============================================================================

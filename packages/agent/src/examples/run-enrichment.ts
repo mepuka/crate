@@ -45,7 +45,8 @@ const program = Effect.gen(function* () {
     yield* Console.log(`Using provided play IDs: ${playIds.join(", ")}`);
   } else {
     // Fetch plays from timeline
-    const jumpInfo = jumpArg !== undefined ? ` @ ${(jumpArg * 100).toFixed(0)}%` : "";
+    const jumpInfo =
+      jumpArg !== undefined ? ` @ ${(jumpArg * 100).toFixed(0)}%` : "";
     yield* Console.log(
       `Fetching ${limitArg} plays from timeline${jumpInfo}...`
     );
@@ -54,9 +55,7 @@ const program = Effect.gen(function* () {
       ...(jumpArg !== undefined ? { percentage: jumpArg } : {}),
     });
     playIds = timeline.results.map((play) => play.id);
-    yield* Console.log(
-      `Got ${playIds.length} plays: ${playIds.join(", ")}`
-    );
+    yield* Console.log(`Got ${playIds.length} plays: ${playIds.join(", ")}`);
 
     // Show what we're about to enrich
     for (const play of timeline.results) {

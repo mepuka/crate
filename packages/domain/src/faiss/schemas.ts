@@ -182,6 +182,16 @@ export type HybridPlay = typeof HybridPlayResult.Type
 export type HybridSearch = typeof HybridSearchResponse.Type
 export type HybridSearchInput = typeof HybridSearchParams.Type
 
+/**
+ * Batch plays response (for fetching multiple plays)
+ *
+ * Properly types the plays array using PlayResult schema so that
+ * date fields are correctly transformed (DateFromString -> Date).
+ */
+export class BatchPlaysResponse extends Schema.Class<BatchPlaysResponse>("BatchPlaysResponse")({
+  plays: Schema.Array(PlayResult)
+}) {}
+
 // Export parameter schemas
 export * from "./params.js"
 
