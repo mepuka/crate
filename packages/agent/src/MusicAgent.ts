@@ -17,7 +17,11 @@ import { LanguageModel, Chat, Prompt, Tool, Toolkit } from "@effect/ai";
 import type * as Kexp from "@crate/domain/kexp/schemas";
 // EnrichmentRequest and EnrichmentItem no longer used - using postInsights directly
 import { FaissClient } from "./FaissClient.js";
-import type { InsightRecord, EvalContext, ToolCallRecord } from "@crate/domain/faiss/schemas";
+import type {
+  InsightRecord,
+  EvalContext,
+  ToolCallRecord,
+} from "@crate/domain/faiss/schemas";
 import { TokenUsage, calculateCost } from "@crate/domain/faiss/enrichment.js";
 import {
   PromptBuilderService,
@@ -324,7 +328,10 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
      * Result from running the agent loop, including research metadata for eval
      */
     interface AgentLoopResult<Tools extends Record<string, Tool.Any>> {
-      readonly response: LanguageModel.GenerateObjectResponse<Tools, InsightsResponseEncoded>;
+      readonly response: LanguageModel.GenerateObjectResponse<
+        Tools,
+        InsightsResponseEncoded
+      >;
       readonly researchMeta: {
         readonly iterationCount: number;
         readonly toolsCalled: readonly string[];
@@ -458,7 +465,9 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                         iteration: state.iteration,
                         tool_name: tc.name,
                         timestamp: new Date().toISOString(),
-                        duration_ms: Number(iterationEndTime - iterationStartTime),
+                        duration_ms: Number(
+                          iterationEndTime - iterationStartTime
+                        ),
                         // Capture parameters (already available on tc.params)
                         parameters: tc.params,
                         // Summarize result
@@ -497,10 +506,15 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   // Accumulate token usage from this response
                   const usage = response.usage;
                   const updatedTokenUsage: AggregatedTokenUsage = {
-                    inputTokens: state.tokenUsage.inputTokens + (usage.inputTokens ?? 0),
-                    outputTokens: state.tokenUsage.outputTokens + (usage.outputTokens ?? 0),
-                    totalTokens: state.tokenUsage.totalTokens + (usage.totalTokens ?? 0),
-                    cacheReadTokens: state.tokenUsage.cacheReadTokens + (usage.cachedInputTokens ?? 0),
+                    inputTokens:
+                      state.tokenUsage.inputTokens + (usage.inputTokens ?? 0),
+                    outputTokens:
+                      state.tokenUsage.outputTokens + (usage.outputTokens ?? 0),
+                    totalTokens:
+                      state.tokenUsage.totalTokens + (usage.totalTokens ?? 0),
+                    cacheReadTokens:
+                      state.tokenUsage.cacheReadTokens +
+                      (usage.cachedInputTokens ?? 0),
                     cacheCreationTokens: state.tokenUsage.cacheCreationTokens, // Not available in standard response
                   };
 
@@ -524,7 +538,9 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
         const researchDurationMs = Number(researchEndTime - researchStartTime);
 
         // Build research metadata for eval context
-        const toolsCalled = [...new Set(finalState.toolCalls.map((tc) => tc.tool_name))];
+        const toolsCalled = [
+          ...new Set(finalState.toolCalls.map((tc) => tc.tool_name)),
+        ];
         const researchMeta = {
           iterationCount: finalState.iteration,
           toolsCalled,
@@ -574,10 +590,18 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
         // Add output phase token usage to the total
         const outputUsage = response.usage;
         const totalTokenUsage: AggregatedTokenUsage = {
-          inputTokens: researchMeta.tokenUsage.inputTokens + (outputUsage.inputTokens ?? 0),
-          outputTokens: researchMeta.tokenUsage.outputTokens + (outputUsage.outputTokens ?? 0),
-          totalTokens: researchMeta.tokenUsage.totalTokens + (outputUsage.totalTokens ?? 0),
-          cacheReadTokens: researchMeta.tokenUsage.cacheReadTokens + (outputUsage.cachedInputTokens ?? 0),
+          inputTokens:
+            researchMeta.tokenUsage.inputTokens +
+            (outputUsage.inputTokens ?? 0),
+          outputTokens:
+            researchMeta.tokenUsage.outputTokens +
+            (outputUsage.outputTokens ?? 0),
+          totalTokens:
+            researchMeta.tokenUsage.totalTokens +
+            (outputUsage.totalTokens ?? 0),
+          cacheReadTokens:
+            researchMeta.tokenUsage.cacheReadTokens +
+            (outputUsage.cachedInputTokens ?? 0),
           cacheCreationTokens: researchMeta.tokenUsage.cacheCreationTokens,
         };
 
@@ -649,9 +673,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
           // FAISS API uses different field names for MBIDs (artist_mbid vs artist_ids)
           // so we need to map them properly using faissPlayToKexpPlay
           const plays = batchResponse.plays.map((p) =>
-            faissPlayToKexpPlay(
-              p as import("@crate/domain/faiss/schemas").Play
-            )
+            faissPlayToKexpPlay(p as import("@crate/domain/faiss/schemas").Play)
           );
           yield* Effect.logDebug(`Fetched ${plays.length} plays from API`);
 
@@ -697,7 +719,9 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   );
 
                 if (contextInsights.length > 0) {
-                  yield* insightSession.seedWithExistingInsights(contextInsights);
+                  yield* insightSession.seedWithExistingInsights(
+                    contextInsights
+                  );
                   yield* Effect.logDebug(
                     `Pre-seeded session with ${contextInsights.length} context insights from same show window`
                   );
@@ -821,7 +845,11 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                 // Chat automatically manages conversation history including tool calls and results
                 // Effect.iterate provides declarative stateful iteration
                 // LanguageModel is provided externally via MusicAgentLive layer
-                const { response, researchMeta } = yield* runAgentLoop(prompt, toolkit, 10).pipe(
+                const { response, researchMeta } = yield* runAgentLoop(
+                  prompt,
+                  toolkit,
+                  10
+                ).pipe(
                   Effect.mapError(
                     (error) =>
                       new MusicAgentError({
@@ -858,7 +886,8 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   output_tokens: researchMeta.tokenUsage.outputTokens,
                   total_tokens: researchMeta.tokenUsage.totalTokens,
                   cache_read_tokens: researchMeta.tokenUsage.cacheReadTokens,
-                  cache_creation_tokens: researchMeta.tokenUsage.cacheCreationTokens,
+                  cache_creation_tokens:
+                    researchMeta.tokenUsage.cacheCreationTokens,
                 });
 
                 // Calculate estimated cost (using haiku pricing as default)

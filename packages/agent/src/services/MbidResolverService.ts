@@ -269,6 +269,19 @@ const buildArtistCredit = (
 };
 
 /**
+ * Convert our entity type to MusicBrainz API endpoint format
+ *
+ * MusicBrainz API uses hyphenated names (e.g., "release-group")
+ * but our internal types use underscores (e.g., "release_group")
+ */
+const entityTypeToEndpoint = (entityType: MbEntityType): string => {
+  if (entityType === "release_group") {
+    return "release-group";
+  }
+  return entityType;
+};
+
+/**
  * Build search query with optional artist hint
  */
 const buildSearchQuery = (
@@ -442,7 +455,9 @@ const makeMbidResolverService = Effect.gen(function* () {
       );
 
       // Build endpoint based on entity type
-      const endpoint = `/${params.entity_type}/?query=${searchQuery}&fmt=json&limit=10`;
+      // Note: MusicBrainz uses hyphenated names (release-group) not underscores
+      const mbEntityType = entityTypeToEndpoint(params.entity_type);
+      const endpoint = `/${mbEntityType}/?query=${searchQuery}&fmt=json&limit=10`;
 
       const response = yield* client.get(endpoint).pipe(
         Effect.timeout(Duration.seconds(30)),
@@ -526,7 +541,9 @@ const makeMbidResolverService = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* applyRateLimit;
 
-      const endpoint = `/${entityType}/${mbid}?fmt=json`;
+      // Note: MusicBrainz uses hyphenated names (release-group) not underscores
+      const mbEntityType = entityTypeToEndpoint(entityType);
+      const endpoint = `/${mbEntityType}/${mbid}?fmt=json`;
 
       const response = yield* client.get(endpoint).pipe(
         Effect.timeout(Duration.seconds(30)),
