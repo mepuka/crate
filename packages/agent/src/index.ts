@@ -8,6 +8,7 @@ import { Layer } from "effect"
 import { FetchHttpClient } from "@effect/platform"
 import { FaissConfig, FaissClient } from "./FaissClient.js"
 import { MusicAgentWithAnthropicLive } from "./MusicAgent.js"
+import { PubSubConfig } from "./config.js"
 
 // =============================================================================
 // Legacy Services (FaissClient, MusicAgent)
@@ -31,11 +32,13 @@ export {
   MusicBrainzConfig,
   JinaConfig,
   AnthropicConfig,
+  PubSubConfig,
   AgentConfigLive,
   type FaissConfigShape,
   type MusicBrainzConfigShape,
   type JinaConfigShape,
-  type AnthropicConfigShape
+  type AnthropicConfigShape,
+  type PubSubConfigShape
 } from "./config.js"
 
 // =============================================================================
@@ -65,6 +68,8 @@ export {
   LinkFetchError,
   ValidationError,
   SessionError,
+  PubSubDecodeError,
+  PubSubAuthError,
   type ToolError,
   isToolError
 } from "./services/errors.js"
@@ -193,5 +198,6 @@ export const AgentAppLive = Layer.mergeAll(
   FaissConfig.Default,
   FetchHttpClient.layer,
   FaissClient.Default,
-  MusicAgentWithAnthropicLive
+  MusicAgentWithAnthropicLive,
+  PubSubConfig.Default
 )

@@ -11,8 +11,10 @@ import { createServer } from "node:http";
 import { router } from "./router.js";
 import { AgentAppLive } from "./index.js";
 
+const port = Number.parseInt(process.env.PORT ?? "8080", 10);
+
 // Create the NodeHttpServer layer first
-const ServerLive = NodeHttpServer.layer(() => createServer(), { port: 8080 });
+const ServerLive = NodeHttpServer.layer(() => createServer(), { port });
 
 // Create the HTTP server layer
 // Pattern: router.pipe(HttpServer.serve, HttpServer.withLogAddress, Layer.provideMerge(deps))

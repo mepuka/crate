@@ -23,6 +23,22 @@ export class ApiError extends Data.TaggedError("ApiError")<{
   readonly cause?: unknown
 }> {}
 
+/**
+ * Pub/Sub push payload failed validation or decoding
+ */
+export class PubSubDecodeError extends Data.TaggedError("PubSubDecodeError")<{
+  readonly message: string
+  readonly cause?: unknown
+}> {}
+
+/**
+ * Pub/Sub caller failed identity check
+ */
+export class PubSubAuthError extends Data.TaggedError("PubSubAuthError")<{
+  readonly message: string
+  readonly identity?: string
+}> {}
+
 // =============================================================================
 // Search Errors
 // =============================================================================

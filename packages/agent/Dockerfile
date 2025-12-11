@@ -42,8 +42,9 @@ COPY --from=builder /app/packages/agent ./packages/agent
 
 # Set environment
 ENV NODE_ENV=production
+ENV PORT=8080
 ENV FAISS_API_URL=http://localhost:8000
 
-# Run agent from packages/agent/build
+# Run agent from packages/agent/dist
 WORKDIR /app/packages/agent
-CMD ["node", "build/esm/src/server.js"]
+CMD ["node", "dist/src/server.js"]

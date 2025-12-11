@@ -134,6 +134,31 @@ export class AnthropicConfig extends Effect.Service<AnthropicConfig>()("Anthropi
 }) {}
 
 // =============================================================================
+// Pub/Sub Push Verification
+// =============================================================================
+
+/**
+ * Configuration for Pub/Sub push authentication
+ */
+export interface PubSubConfigShape {
+  readonly invokerEmail: string | null
+}
+
+/**
+ * Optional expected caller email for Pub/Sub push requests.
+ * If set, the /pubsub handler will reject requests whose
+ * X-Goog-Authenticated-Identity does not include this email.
+ */
+export class PubSubConfig extends Effect.Service<PubSubConfig>()("PubSubConfig", {
+  effect: Effect.gen(function* () {
+    const invokerEmail = yield* Config.option(Config.string("PUBSUB_INVOKER_EMAIL"))
+    return {
+      invokerEmail: Option.getOrNull(invokerEmail)
+    } satisfies PubSubConfigShape
+  })
+}) {}
+
+// =============================================================================
 // Combined Configuration Layer
 // =============================================================================
 
@@ -156,5 +181,6 @@ export const AgentConfigLive = Layer.mergeAll(
   FaissConfig.Default,
   MusicBrainzConfig.Default,
   JinaConfig.Default,
-  AnthropicConfig.Default
+  AnthropicConfig.Default,
+  PubSubConfig.Default
 )
