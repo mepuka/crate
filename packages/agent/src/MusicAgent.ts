@@ -692,9 +692,8 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   song: play.song ?? "Unknown",
                 });
 
-                // NOTE: We don't clear the session between plays - insights accumulate
-                // across the session so the agent can see what it produced for previous plays.
-                // This enables coherence and prevents repetition across plays.
+                // Reset per-play session to avoid leaking insights between plays
+                yield* insightSession.reset();
 
                 // 1. Fetch CONTEXT insights from same show window (±3 hours)
                 // This gives the agent awareness of what's been discussed on the show
@@ -965,49 +964,40 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             )
           );
 
-          // Flatten insights from all play results
-          const allInsights = playResults.flatMap((r) => r.insights);
+          // Post insights back to FAISS API per play with its own eval context
+          // This preserves accurate evaluation metadata for each play.
+          const postedCounts = yield* Effect.forEach(
+            playResults,
+            (result) =>
+              result.insights.length === 0
+                ? Effect.succeed(0)
+                : faissClient
+                    .postInsights(result.insights, result.evalContext)
+                    .pipe(
+                      Effect.mapError(
+                        (error) =>
+                          new MusicAgentError({
+                            message: "Failed to post insights",
+                            cause: error,
+                          })
+                      ),
+                      Effect.withSpan("MusicAgent.postInsights")
+                    )
+                    .pipe(Effect.map((res) => res.count)),
+            { concurrency: 1 }
+          );
 
-          // Collect eval contexts (one per play that produced insights)
-          // We'll use the first eval context for the batch since they share session
-          const evalContexts = playResults.map((r) => r.evalContext);
-
-          // Post insights back to FAISS API via /api/insights endpoint
-          // If no insights were produced, skip posting
-          if (allInsights.length === 0) {
-            yield* Effect.logInfo(
-              `No insights to post for ${plays.length} plays`
-            );
-            yield* Effect.annotateCurrentSpan("insights_posted", 0);
-            return { count: 0 };
-          }
-
-          // Use the first eval context as shared context for the batch
-          // All plays in a batch share the same session
-          const sharedEvalContext = evalContexts[0];
-
-          const insightsResponse = yield* faissClient
-            .postInsights(allInsights, sharedEvalContext)
-            .pipe(
-              Effect.mapError(
-                (error) =>
-                  new MusicAgentError({
-                    message: "Failed to post insights",
-                    cause: error,
-                  })
-              ),
-              Effect.withSpan("MusicAgent.postInsights")
-            );
+          const totalPosted = postedCounts.reduce((sum, count) => sum + count, 0);
 
           yield* Effect.logInfo(
-            `Enrichment complete: ${insightsResponse.count} insights posted from ${plays.length} plays`
+            `Enrichment complete: ${totalPosted} insights posted from ${plays.length} plays`
           );
           yield* Effect.annotateCurrentSpan({
-            insights_posted: insightsResponse.count,
+            insights_posted: totalPosted,
             plays_processed: plays.length,
           });
 
-          return { count: insightsResponse.count };
+          return { count: totalPosted };
         }),
         Effect.withSpan("MusicAgent.enrichPlays")
       );

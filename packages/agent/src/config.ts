@@ -28,6 +28,7 @@ import { Config, Duration, Effect, Layer, Option, Redacted } from "effect"
  */
 export interface FaissConfigShape {
   readonly baseUrl: string
+  readonly apiKey: string | null
   readonly timeout: Duration.Duration
 }
 
@@ -36,11 +37,16 @@ export interface FaissConfigShape {
  */
 export class FaissConfig extends Effect.Service<FaissConfig>()("FaissConfig", {
   effect: Effect.gen(function* () {
-    const { baseUrl, timeoutMs } = yield* Config.all({
+    const { baseUrl, timeoutMs, apiKey } = yield* Config.all({
       baseUrl: Config.string("FAISS_API_URL").pipe(Config.withDefault("http://localhost:8000")),
-      timeoutMs: Config.number("FAISS_TIMEOUT_MS").pipe(Config.withDefault(30000))
+      timeoutMs: Config.number("FAISS_TIMEOUT_MS").pipe(Config.withDefault(30000)),
+      apiKey: Config.option(Config.string("FAISS_API_KEY"))
     })
-    return { baseUrl, timeout: Duration.millis(timeoutMs) } satisfies FaissConfigShape
+    return {
+      baseUrl,
+      apiKey: Option.getOrElse(apiKey, () => null),
+      timeout: Duration.millis(timeoutMs)
+    } satisfies FaissConfigShape
   })
 }) {}
 

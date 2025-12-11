@@ -10,6 +10,9 @@ export * as Events from "./events/index.js"
 // NLP
 export * as Nlp from "./nlp/index.js"
 
+// Streaming links (Spotify, Apple Music, etc.)
+export * as Streaming from "./links/streaming.js"
+
 // Graph schemas (relations, edges, queries)
 export * as Graph from "./graph/schemas.js"
 

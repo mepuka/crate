@@ -13,10 +13,29 @@ export { HealthApi } from "./endpoints/health.js"
 export { SearchApi } from "./endpoints/search.js"
 export { TimelineApi } from "./endpoints/timeline.js"
 export { PlayApi } from "./endpoints/play.js"
+export { StreamingLinksApi } from "./endpoints/streaming-links.js"
 
 // Schemas - Play types (re-exported from @crate/domain for convenience)
 export { PlayResult, TimelineResponse, SearchResponse } from "@crate/domain/faiss/schemas"
 export type { Play, Timeline, SearchResult } from "@crate/domain/faiss/schemas"
+
+// Schemas - Streaming links
+export {
+  StreamingPlatform,
+  StreamingLinkKind,
+  StreamingLinkSource,
+  StreamingLink,
+  StreamingLinksRequest,
+  StreamingLinksResponse
+} from "@crate/domain/links/streaming"
+export type {
+  StreamingPlatform as StreamingPlatformType,
+  StreamingLinkKind as StreamingLinkKindType,
+  StreamingLinkSource as StreamingLinkSourceType,
+  StreamingLink as StreamingLinkType,
+  StreamingLinksRequest as StreamingLinksRequestType,
+  StreamingLinksResponse as StreamingLinksResponseType
+} from "@crate/domain/links/streaming"
 
 // Schemas - Health
 export { HealthResponse } from "./schemas/Health.js"

@@ -19,7 +19,7 @@ export type { GraphConnectionsRequest, GraphConnectionsResponse }
 export interface GraphConnectionsServiceInterface {
   readonly connections: (
     params: GraphConnectionsRequest
-  ) => Effect.Effect<GraphConnectionsResponse, GraphApiError>
+  ) => Effect.Effect<GraphConnectionsResponse, GraphApiError, never>
 }
 
 export class GraphConnectionsService extends Context.Tag("GraphConnectionsService")<
@@ -32,7 +32,7 @@ const makeGraphConnectionsService = Effect.gen(function* () {
 
   const connections = (
     params: GraphConnectionsRequest
-  ): Effect.Effect<GraphConnectionsResponse, GraphApiError> =>
+  ): Effect.Effect<GraphConnectionsResponse, GraphApiError, never> =>
     client.connections(params)
 
   return { connections } satisfies GraphConnectionsServiceInterface

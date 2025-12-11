@@ -33,6 +33,15 @@ export class TimelineClient extends AtomHttpApi.Tag<TimelineClient>()(
   }
 ) {}
 
+export class StreamingLinksClient extends AtomHttpApi.Tag<StreamingLinksClient>()(
+  "StreamingLinksClient",
+  {
+    api: KexpApi,
+    httpClient: FetchHttpClient.layer,
+    baseUrl: API_BASE_URL,
+  }
+) {}
+
 /**
  * TimelineKVS Service
  *
@@ -518,7 +527,8 @@ export const TimelineRuntime = Atom.runtime(
     FetchHttpClient.layer,
     TimelineKVS.Default,
     AlbumBarWorkerClient.Default,
-    TimelineClient.layer
+    TimelineClient.layer,
+    StreamingLinksClient.layer
   )
 );
 

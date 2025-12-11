@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 import httpx
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from contextlib import asynccontextmanager
 import time
 import logging
@@ -22,7 +22,8 @@ from .models import (
     SearchRequest, SearchResponse, HealthResponse, PlayResult, TimelineResponse,
     EnrichmentRequest, EnrichmentResponse, BatchPlaysResponse,
     EnrichmentData, GetEnrichmentsResponse, PlayCountResponse,
-    HybridSearchRequest, HybridSearchResponse, HybridPlayResult
+    HybridSearchRequest, HybridSearchResponse, HybridPlayResult,
+    StreamingLinksRequest, StreamingLinksResponse, StreamingLink
 )
 from .models.insights import (
     CreateInsightsRequest, InsightsResponse, GetInsightsResponse,
@@ -173,26 +174,25 @@ class CacheHeadersMiddleware(BaseHTTPMiddleware):
         # Get response from endpoint
         response: Response = await call_next(request)
 
-        # Determine cache duration based on path
-        cache_max_age = None
-        path = request.url.path
+        # Determine cache duration based on path (GET-only to avoid caching POST bodies)
+        if request.method == "GET":
+            cache_max_age = None
+            path = request.url.path
 
-        # Check exact matches first
-        if path in self.CACHE_DURATIONS:
-            cache_max_age = self.CACHE_DURATIONS[path]
-        # Check pattern matches (e.g., /api/plays/{id})
-        elif path.startswith("/api/plays/") and path != "/api/plays/timeline":
-            cache_max_age = self.CACHE_DURATIONS["/api/plays/"]
+            # Check exact matches first
+            if path in self.CACHE_DURATIONS:
+                cache_max_age = self.CACHE_DURATIONS[path]
+            # Check pattern matches (e.g., /api/plays/{id})
+            elif path.startswith("/api/plays/") and path != "/api/plays/timeline":
+                cache_max_age = self.CACHE_DURATIONS["/api/plays/"]
 
-        # Add Cache-Control header if we have a duration
-        if cache_max_age is not None:
-            # Use 'public' for GET requests (cacheable by browsers and CDNs)
-            # For POST requests, still add cache headers but browsers typically won't cache
-            cache_directive = f"public, max-age={cache_max_age}"
-            response.headers["Cache-Control"] = cache_directive
+            # Add Cache-Control header if we have a duration
+            if cache_max_age is not None:
+                cache_directive = f"public, max-age={cache_max_age}"
+                response.headers["Cache-Control"] = cache_directive
 
-            # Add Vary header to ensure proper caching with gzip
-            response.headers["Vary"] = "Accept-Encoding"
+                # Add Vary header to ensure proper caching with gzip
+                response.headers["Vary"] = "Accept-Encoding"
 
         # Add security headers to all responses
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -497,6 +497,119 @@ async def hybrid_search(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Hybrid search failed: {str(e)}"
         )
+
+
+def _choose_source(req: StreamingLinksRequest) -> Optional[str]:
+    if req.recording_mbid:
+        return "recording_mbid"
+    if req.release_group_mbid:
+        return "release_group_mbid"
+    if req.release_mbid:
+        return "release_mbid"
+    if req.artist_mbid:
+        return "artist_mbid"
+    return None
+
+
+@app.get(
+    "/api/streaming-links",
+    response_model=StreamingLinksResponse,
+    tags=["streaming"],
+    summary="Build streaming links from MBIDs",
+    description="Returns Spotify/Apple Music search links using play metadata resolved from MusicBrainz IDs."
+)
+async def streaming_links(
+    request: StreamingLinksRequest = Depends(),
+    db_svc: DatabaseService = Depends(get_db_service),
+) -> StreamingLinksResponse:
+    """Create platform search links based on MBIDs."""
+    source = _choose_source(request)
+    if source is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide at least one MBID (recording_mbid, release_group_mbid, release_mbid, artist_mbid)"
+        )
+
+    play = db_svc.get_first_play_by_mbids(
+        recording_mbid=request.recording_mbid,
+        release_group_mbid=request.release_group_mbid,
+        release_mbid=request.release_mbid,
+        artist_mbid=request.artist_mbid
+    )
+
+    if play is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No play found for {source}"
+        )
+
+    artist = play.get("artist") or ""
+    song = play.get("song") or ""
+    album = play.get("album") or ""
+
+    # Prefer song + artist; fallback to album or artist-only search
+    primary_term = f"{artist} {song}".strip() or f"{artist} {album}".strip() or artist or album
+    album_term = f"{artist} {album}".strip() if album else None
+
+    storefront = request.storefront or "us"
+
+    def spotify_search(term: str) -> str:
+        return f"https://open.spotify.com/search/{quote(term)}"
+
+    def apple_music_search(term: str) -> str:
+        return f"https://music.apple.com/{storefront}/search?term={quote(term)}"
+
+    links: list[StreamingLink] = []
+
+    if primary_term:
+        confidence = 0.8 if source == "recording_mbid" else 0.6
+        links.append(StreamingLink(
+            platform="spotify",
+            kind="track",
+            url=spotify_search(primary_term),
+            display=primary_term,
+            confidence=confidence,
+            source=source,  # type: ignore[arg-type]
+        ))
+        links.append(StreamingLink(
+            platform="apple_music",
+            kind="track",
+            url=apple_music_search(primary_term),
+            display=primary_term,
+            confidence=confidence,
+            source=source,  # type: ignore[arg-type]
+        ))
+
+    if album_term:
+        confidence = 0.5 if source in {"release_group_mbid", "release_mbid"} else 0.4
+        links.append(StreamingLink(
+            platform="spotify",
+            kind="album",
+            url=spotify_search(album_term),
+            display=album_term,
+            confidence=confidence,
+            source=source,  # type: ignore[arg-type]
+        ))
+        links.append(StreamingLink(
+            platform="apple_music",
+            kind="album",
+            url=apple_music_search(album_term),
+            display=album_term,
+            confidence=confidence,
+            source=source,  # type: ignore[arg-type]
+        ))
+
+    if not links:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unable to build streaming links from provided MBIDs"
+        )
+
+    return StreamingLinksResponse(
+        links=links,
+        resolved_from=source,  # type: ignore[arg-type]
+        resolved_ids=None,
+    )
 
 
 @app.get(

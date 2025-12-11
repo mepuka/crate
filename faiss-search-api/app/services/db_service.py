@@ -87,6 +87,75 @@ class DatabaseService:
 
         return results
 
+    def get_first_play_by_mbids(
+        self,
+        recording_mbid: Optional[str] = None,
+        release_group_mbid: Optional[str] = None,
+        release_mbid: Optional[str] = None,
+        artist_mbid: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a representative play for the given MBIDs, in priority order.
+
+        Preference: recording -> release_group -> release -> artist.
+        """
+        cursor = self.conn.cursor()
+
+        if recording_mbid:
+            cursor.execute(
+                "SELECT * FROM fact_plays WHERE recording_id = ? LIMIT 1",
+                (recording_mbid,),
+            )
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+
+        if release_group_mbid:
+            cursor.execute(
+                "SELECT * FROM fact_plays WHERE release_group_id = ? LIMIT 1",
+                (release_group_mbid,),
+            )
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+
+        if release_mbid:
+            cursor.execute(
+                "SELECT * FROM fact_plays WHERE release_id = ? LIMIT 1",
+                (release_mbid,),
+            )
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_dict(row)
+
+        if artist_mbid:
+            # Prefer join table when present for accuracy/performance
+            try:
+                cursor.execute(
+                    """
+                    SELECT fp.*
+                    FROM fact_plays fp
+                    INNER JOIN play_artists pa ON pa.play_id = fp.id
+                    WHERE pa.artist_mbid = ?
+                    LIMIT 1
+                    """,
+                    (artist_mbid,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return self._row_to_dict(row)
+            except sqlite3.OperationalError:
+                # Fallback to JSON search in artist_ids column
+                cursor.execute(
+                    "SELECT * FROM fact_plays WHERE artist_ids LIKE ? LIMIT 1",
+                    (f'%"{artist_mbid}"%',),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return self._row_to_dict(row)
+
+        return None
+
     def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """
         Convert SQLite row to dictionary with proper type conversion.

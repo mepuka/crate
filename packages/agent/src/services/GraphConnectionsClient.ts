@@ -34,8 +34,8 @@ export class GraphApiClientError extends Data.TaggedError(
 
 export interface GraphConnectionsClientInterface {
   readonly connections: (
-    params: GraphConnectionsRequest
-  ) => Effect.Effect<GraphConnectionsResponse, GraphApiError>;
+    params: GraphConnectionsRequestType
+  ) => Effect.Effect<GraphConnectionsResponseType, GraphApiError, never>;
 }
 
 export class GraphConnectionsClient extends Effect.Service<GraphConnectionsClient>()(
@@ -46,8 +46,8 @@ export class GraphConnectionsClient extends Effect.Service<GraphConnectionsClien
       const client = yield* makeJsonClient(config.baseUrl);
 
       const connections = (
-        params: GraphConnectionsRequest
-      ): Effect.Effect<GraphConnectionsResponse, GraphApiError> =>
+        params: GraphConnectionsRequestType
+      ): Effect.Effect<GraphConnectionsResponseType, GraphApiError, never> =>
         client
           .post("/api/graph/connections", {
             body: HttpBody.unsafeJson(params),

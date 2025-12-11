@@ -3,6 +3,7 @@ import { HealthApi } from "./endpoints/health.js"
 import { SearchApi } from "./endpoints/search.js"
 import { TimelineApi } from "./endpoints/timeline.js"
 import { PlayApi } from "./endpoints/play.js"
+import { StreamingLinksApi } from "./endpoints/streaming-links.js"
 
 /**
  * KEXP Radio Crate API
@@ -28,3 +29,4 @@ export const KexpApi = HttpApi.make("kexp-api")
   .add(SearchApi)
   .add(TimelineApi)
   .add(PlayApi)
+  .add(StreamingLinksApi)

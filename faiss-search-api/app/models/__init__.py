@@ -20,6 +20,11 @@ from .base import (
     HybridSearchResponse,
     HybridPlayResult,
 )
+from .streaming import (
+    StreamingLinksRequest,
+    StreamingLinksResponse,
+    StreamingLink,
+)
 
 # Re-export insight models
 from .insights import (
@@ -79,6 +84,9 @@ __all__ = [
     "HybridSearchRequest",
     "HybridSearchResponse",
     "HybridPlayResult",
+    "StreamingLinksRequest",
+    "StreamingLinksResponse",
+    "StreamingLink",
 
     # Entity refs
     "ArtistRef",

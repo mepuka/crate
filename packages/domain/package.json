@@ -32,6 +32,10 @@
       "import": "./dist/graph/*.js",
       "types": "./dist/graph/*.d.ts"
     },
+    "./links/*": {
+      "import": "./dist/links/*.js",
+      "types": "./dist/links/*.d.ts"
+    },
     "./kexp/*": {
       "import": "./dist/kexp/*.js",
       "types": "./dist/kexp/*.d.ts"

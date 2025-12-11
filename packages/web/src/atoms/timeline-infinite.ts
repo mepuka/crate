@@ -14,6 +14,7 @@
  */
 
 import { Atom, Result } from "@effect-atom/atom-react";
+import { AtomRef } from "@effect-atom/atom";
 import {
   TimelineRuntime,
   TimelineClient,
@@ -61,6 +62,7 @@ export interface TimelineInfiniteState {
   readonly status: "idle" | "loading-initial" | "loading-more" | "error";
   readonly error?: unknown;
   readonly hasMore: boolean;
+  readonly generation: number;
   readonly nextCursor?: string;
   readonly initialParams: TimelineParams;
   readonly initialMethod: TimelineNavigationMethod;
@@ -81,18 +83,63 @@ const initialInfiniteState: TimelineInfiniteState = {
   pages: [],
   status: "idle",
   hasMore: true,
+  generation: 0,
   initialParams: { limit: 50 },
   initialMethod: "cursor",
 };
 
+type RequestTrackerState = {
+  readonly generation: number;
+  readonly inFlight: ReadonlySet<string>;
+};
+
+/**
+ * Track request generations and in-flight cursors without module-level mutable state.
+ * AtomRef provides synchronous reads/writes while keeping the state observable/testable.
+ */
+const requestTrackerRef = AtomRef.make<RequestTrackerState>({
+  generation: 0,
+  inFlight: new Set<string>(),
+});
+
+const nextRequestGeneration = (): number =>
+  requestTrackerRef.update((state) => ({
+    ...state,
+    generation: state.generation + 1,
+  })).value.generation;
+
+const isCursorInFlight = (cursorKey: string): boolean =>
+  requestTrackerRef.value.inFlight.has(cursorKey);
+
+const addCursorInFlight = (cursorKey: string) =>
+  requestTrackerRef.update((state) => {
+    if (state.inFlight.has(cursorKey)) {
+      return state;
+    }
+    const inFlight = new Set(state.inFlight);
+    inFlight.add(cursorKey);
+    return { ...state, inFlight };
+  });
+
+const removeCursorInFlight = (cursorKey: string) =>
+  requestTrackerRef.update((state) => {
+    if (!state.inFlight.has(cursorKey)) {
+      return state;
+    }
+    const inFlight = new Set(state.inFlight);
+    inFlight.delete(cursorKey);
+    return { ...state, inFlight };
+  });
+
+const clearInFlight = () =>
+  requestTrackerRef.update((state) => ({
+    ...state,
+    inFlight: new Set<string>(),
+  }));
+
 /**
  * Request deduplication: Track in-flight cursors to prevent duplicate requests.
  * Uses a Set outside of atoms for synchronous access during effect execution.
- */
-const inFlightCursors = new Set<string>();
-
-/**
- * Generate a unique key for a cursor request (handles undefined cursor for initial)
  */
 const getCursorKey = (cursor: string | undefined): string =>
   cursor ?? "__initial__";
@@ -227,6 +274,7 @@ export const loadInitialTimelinePageAtom = TimelineRuntime.fn<void>()(
     Effect.gen(function* () {
       const config = get(timelineInitialConfigAtom);
       const filter = get(activeFilterAtom);
+      const generation = nextRequestGeneration();
 
       // Update state to loading-initial
       const loadingState: TimelineInfiniteState = {
@@ -235,11 +283,18 @@ export const loadInitialTimelinePageAtom = TimelineRuntime.fn<void>()(
         initialParams: config.params,
         initialMethod: config.method,
         activeFilter: filter,
+        generation,
       };
       get.set(timelineInfiniteStateAtom, loadingState);
 
       // Execute the load (will throw if error)
       const result = yield* loadInitialPageEffect(config);
+
+      // Drop stale responses if a newer generation started
+      const currentState = get(timelineInfiniteStateAtom);
+      if (currentState.generation !== generation) {
+        return;
+      }
 
       // Update state with successful page
       // Note: With exactOptionalPropertyTypes, we build the object conditionally
@@ -250,10 +305,14 @@ export const loadInitialTimelinePageAtom = TimelineRuntime.fn<void>()(
         initialParams: result.params,
         initialMethod: result.method,
         activeFilter: filter,
-        ...(result.response.next_cursor && { nextCursor: result.response.next_cursor }),
-        ...(result.response.total_count !== null && result.response.total_count !== undefined && {
-          totalCount: result.response.total_count
+        generation,
+        ...(result.response.next_cursor && {
+          nextCursor: result.response.next_cursor,
         }),
+        ...(result.response.total_count !== null &&
+          result.response.total_count !== undefined && {
+            totalCount: result.response.total_count,
+          }),
         ...(result.anchorPosition && { anchorPosition: result.anchorPosition }),
       };
       get.set(timelineInfiniteStateAtom, successState);
@@ -303,10 +362,11 @@ const loadNextPageEffect = (params: TimelineParams) =>
  * Only works after initial page is loaded.
  * Includes request deduplication to prevent race conditions.
  */
-export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) =>
-  Effect.gen(function* () {
-    const state = get(timelineInfiniteStateAtom);
+export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) => {
+  const state = get(timelineInfiniteStateAtom);
+  const generation = state.generation;
 
+  return Effect.gen(function* () {
     // Guard: don't load if already loading or no more pages
     if (state.status === "loading-more" || !state.hasMore) {
       yield* Effect.log(
@@ -320,7 +380,7 @@ export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) =>
     const cursorKey = getCursorKey(nextCursor);
 
     // Request deduplication: skip if this cursor is already in flight
-    if (inFlightCursors.has(cursorKey)) {
+    if (isCursorInFlight(cursorKey)) {
       yield* Effect.log(
         `Skipping load-more: cursor ${cursorKey} already in flight`
       );
@@ -328,17 +388,25 @@ export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) =>
     }
 
     // Mark cursor as in-flight
-    inFlightCursors.add(cursorKey);
+    addCursorInFlight(cursorKey);
 
     // Include MBID filters from initialParams for consistent filtering across pages
     const nextParams: TimelineParams = {
       limit: state.initialParams.limit,
       cursor: nextCursor,
       // Preserve filter params from initial load
-      ...(state.initialParams.artist_mbid && { artist_mbid: state.initialParams.artist_mbid }),
-      ...(state.initialParams.recording_mbid && { recording_mbid: state.initialParams.recording_mbid }),
-      ...(state.initialParams.release_mbid && { release_mbid: state.initialParams.release_mbid }),
-      ...(state.initialParams.release_group_mbid && { release_group_mbid: state.initialParams.release_group_mbid }),
+      ...(state.initialParams.artist_mbid && {
+        artist_mbid: state.initialParams.artist_mbid,
+      }),
+      ...(state.initialParams.recording_mbid && {
+        recording_mbid: state.initialParams.recording_mbid,
+      }),
+      ...(state.initialParams.release_mbid && {
+        release_mbid: state.initialParams.release_mbid,
+      }),
+      ...(state.initialParams.release_group_mbid && {
+        release_group_mbid: state.initialParams.release_group_mbid,
+      }),
     };
 
     // Set loading state
@@ -352,10 +420,13 @@ export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) =>
     const result = yield* loadNextPageEffect(nextParams);
 
     // Remove from in-flight tracking
-    inFlightCursors.delete(cursorKey);
+    removeCursorInFlight(cursorKey);
 
     // Append page to existing pages
     const currentState = get(timelineInfiniteStateAtom);
+    if (currentState.generation !== generation) {
+      return;
+    }
     const successState: TimelineInfiniteState = {
       ...currentState,
       pages: [
@@ -364,19 +435,25 @@ export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) =>
       ],
       status: "idle",
       hasMore: result.response.has_more,
-      ...(result.response.next_cursor && { nextCursor: result.response.next_cursor }),
+      generation,
+      ...(result.response.next_cursor && {
+        nextCursor: result.response.next_cursor,
+      }),
     };
     get.set(timelineInfiniteStateAtom, successState);
   }).pipe(
     Effect.catchAll((error) =>
       Effect.gen(function* () {
         // Clean up in-flight tracking on error
-        const state = get(timelineInfiniteStateAtom);
-        const cursorKey = getCursorKey(state.nextCursor ?? undefined);
-        inFlightCursors.delete(cursorKey);
+        const latestState = get(timelineInfiniteStateAtom);
+        const cursorKey = getCursorKey(latestState.nextCursor ?? undefined);
+        removeCursorInFlight(cursorKey);
 
         yield* Effect.logError(`Next page load failed: ${error}`);
         const currentState = get(timelineInfiniteStateAtom);
+        if (currentState.generation !== generation) {
+          return;
+        }
         const errorState: TimelineInfiniteState = {
           ...currentState,
           status: "error",
@@ -385,8 +462,8 @@ export const loadNextTimelinePageAtom = TimelineRuntime.fn<void>()((_, get) =>
         get.set(timelineInfiniteStateAtom, errorState);
       })
     )
-  )
-);
+  );
+});
 
 /**
  * Action atom: Reset infinite state.
@@ -398,9 +475,15 @@ export const resetTimelineInfiniteStateAtom = TimelineRuntime.fn<void>()(
       yield* Effect.log("Resetting infinite timeline state");
 
       // Clear in-flight tracking to prevent stale requests
-      inFlightCursors.clear();
+      clearInFlight();
 
-      const resetState: TimelineInfiniteState = { ...initialInfiniteState };
+      // Bump generation so any in-flight responses are considered stale
+      const generation = nextRequestGeneration();
+
+      const resetState: TimelineInfiniteState = {
+        ...initialInfiniteState,
+        generation,
+      };
       get.set(timelineInfiniteStateAtom, resetState);
     })
 );
@@ -492,7 +575,10 @@ export const timelineLoadingStateAtom = Atom.make((get) => {
 /**
  * Helper to compare filters for equality
  */
-const filtersEqual = (a: EntityFilter | null | undefined, b: EntityFilter | null | undefined): boolean => {
+const filtersEqual = (
+  a: EntityFilter | null | undefined,
+  b: EntityFilter | null | undefined
+): boolean => {
   if (a === b) return true;
   if (!a || !b) return false;
   return a.type === b.type && a.mbid === b.mbid;

@@ -5,7 +5,7 @@
  * Provides type-safe access to semantic search, timeline, and play endpoints.
  */
 
-import { Config, Data, Effect, Schema } from "effect";
+import { Data, Effect, Schema } from "effect";
 import {
   FetchHttpClient,
   HttpBody,
@@ -30,6 +30,8 @@ import {
   HybridSearchResponse as HybridSearchResponseSchema,
 } from "@crate/domain/faiss/schemas";
 import type { Insight } from "./prompts/insights.js";
+import { FaissConfig } from "./config.js";
+export { FaissConfig } from "./config.js";
 
 // Export type aliases for convenience
 export type PlayResult = typeof PlayResultSchema.Type;
@@ -46,18 +48,6 @@ export class FaissApiError extends Data.TaggedError("FaissApiError")<{
 }> {}
 
 /**
- * Configuration for FAISS API
- */
-export class FaissConfig extends Effect.Service<FaissConfig>()("FaissConfig", {
-  effect: Effect.gen(function* () {
-    const baseUrl = yield* Config.string("FAISS_API_URL").pipe(
-      Config.withDefault("http://localhost:8000")
-    );
-    return { baseUrl };
-  }),
-}) {}
-
-/**
  * FAISS API client service
  */
 export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
@@ -67,20 +57,39 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
     // Configure HTTP client with base URL and defaults
     const client = (yield* HttpClient.HttpClient).pipe(
       HttpClient.mapRequest(HttpClientRequest.prependUrl(config.baseUrl)),
-      HttpClient.mapRequest(HttpClientRequest.acceptJson)
+      HttpClient.mapRequest(HttpClientRequest.acceptJson),
+      HttpClient.mapRequest((req) =>
+        config.apiKey
+          ? HttpClientRequest.setHeader("X-API-Key", config.apiKey)(req)
+          : req
+      )
     );
+
+    const withTimeout = <A, E, R>(
+      effect: Effect.Effect<A, E, R>
+    ): Effect.Effect<A, E | FaissApiError, R> =>
+      effect.pipe(
+        Effect.timeoutFail({
+          duration: config.timeout,
+          onTimeout: () =>
+            new FaissApiError({
+              message: "FAISS request timed out",
+            }),
+        })
+      );
 
     return {
       /**
        * Perform semantic search for music tracks
        */
       search: (request: SearchParams) =>
-        client
-          .post("/api/search", {
-            body: HttpBody.unsafeJson(request),
-          })
-          .pipe(
-            Effect.flatMap(
+        withTimeout(
+          client
+            .post("/api/search", {
+              body: HttpBody.unsafeJson(request),
+            })
+            .pipe(
+              Effect.flatMap(
               HttpClientResponse.schemaBodyJson(SearchResponseSchema)
             ),
             Effect.mapError(
@@ -90,18 +99,20 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                   cause: error,
                 })
             )
-          ),
+          )
+        ),
 
       /**
        * Perform hybrid search (FTS5 + FAISS with RRF)
        */
       hybridSearch: (request: typeof HybridSearchParams.Type) =>
-        client
-          .post("/api/search/hybrid", {
-            body: HttpBody.unsafeJson(request),
-          })
-          .pipe(
-            Effect.flatMap(
+        withTimeout(
+          client
+            .post("/api/search/hybrid", {
+              body: HttpBody.unsafeJson(request),
+            })
+            .pipe(
+              Effect.flatMap(
               HttpClientResponse.schemaBodyJson(HybridSearchResponseSchema)
             ),
             Effect.mapError(
@@ -111,18 +122,20 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                   cause: error,
                 })
             )
-          ),
+          )
+        ),
 
       /**
        * Get timeline of plays with cursor-based pagination
        */
       timeline: (request: TimelineParams) =>
-        client
-          .get("/api/plays/timeline", {
-            urlParams: request,
-          })
-          .pipe(
-            Effect.flatMap(
+        withTimeout(
+          client
+            .get("/api/plays/timeline", {
+              urlParams: request,
+            })
+            .pipe(
+              Effect.flatMap(
               HttpClientResponse.schemaBodyJson(TimelineResponseSchema)
             ),
             Effect.mapError(
@@ -132,20 +145,23 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                   cause: error,
                 })
             )
-          ),
+          )
+        ),
 
       /**
        * Get a single play by ID
        */
       getPlay: (id: number) =>
-        client.get(`/api/plays/${id}`).pipe(
-          Effect.flatMap(HttpClientResponse.schemaBodyJson(PlayResultSchema)),
-          Effect.mapError(
-            (error) =>
-              new FaissApiError({
-                message: "Get play failed",
-                cause: error,
-              })
+        withTimeout(
+          client.get(`/api/plays/${id}`).pipe(
+            Effect.flatMap(HttpClientResponse.schemaBodyJson(PlayResultSchema)),
+            Effect.mapError(
+              (error) =>
+                new FaissApiError({
+                  message: "Get play failed",
+                  cause: error,
+                })
+            )
           )
         ),
 
@@ -153,20 +169,22 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
        * Health check
        */
       health: () =>
-        client.get("/api/health").pipe(
-          Effect.flatMap(
-            HttpClientResponse.schemaBodyJson(
-              Schema.Struct({
-                status: Schema.String,
-              })
+        withTimeout(
+          client.get("/api/health").pipe(
+            Effect.flatMap(
+              HttpClientResponse.schemaBodyJson(
+                Schema.Struct({
+                  status: Schema.String,
+                })
+              )
+            ),
+            Effect.mapError(
+              (error) =>
+                new FaissApiError({
+                  message: "Health check failed",
+                  cause: error,
+                })
             )
-          ),
-          Effect.mapError(
-            (error) =>
-              new FaissApiError({
-                message: "Health check failed",
-                cause: error,
-              })
           )
         ),
 
@@ -174,12 +192,13 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
        * Fetch multiple plays by IDs
        */
       getPlaysBatch: (playIds: number[]) =>
-        client
-          .get("/api/plays/batch", {
-            urlParams: { play_ids: playIds.join(",") },
-          })
-          .pipe(
-            Effect.flatMap(
+        withTimeout(
+          client
+            .get("/api/plays/batch", {
+              urlParams: { play_ids: playIds.join(",") },
+            })
+            .pipe(
+              Effect.flatMap(
               HttpClientResponse.schemaBodyJson(BatchPlaysResponse)
             ),
             Effect.mapError(
@@ -189,18 +208,20 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                   cause: error,
                 })
             )
-          ),
+          )
+        ),
 
       /**
        * POST enrichments back to FAISS API (legacy untyped endpoint)
        */
       postEnrichments: (request: EnrichmentRequest) =>
-        client
-          .post("/api/enrichments", {
-            body: HttpBody.unsafeJson(request),
-          })
-          .pipe(
-            Effect.flatMap(
+        withTimeout(
+          client
+            .post("/api/enrichments", {
+              body: HttpBody.unsafeJson(request),
+            })
+            .pipe(
+              Effect.flatMap(
               HttpClientResponse.schemaBodyJson(EnrichmentResponse)
             ),
             Effect.mapError(
@@ -210,7 +231,8 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                   cause: error,
                 })
             )
-          ),
+          )
+        ),
 
       /**
        * POST typed insights to FAISS API
@@ -225,12 +247,13 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
         insights: readonly Insight[],
         evalContext?: typeof EvalContext.Type
       ) =>
-        client
-          .post("/api/insights", {
-            body: HttpBody.unsafeJson({
-              insights,
-              ...(evalContext && { eval_context: evalContext }),
-            }),
+        withTimeout(
+          client
+            .post("/api/insights", {
+              body: HttpBody.unsafeJson({
+                insights,
+                ...(evalContext && { eval_context: evalContext }),
+              }),
           })
           .pipe(
             Effect.flatMap(HttpClientResponse.schemaBodyJson(InsightsResponse)),
@@ -241,7 +264,8 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                   cause: error,
                 })
             )
-          ),
+          )
+        ),
 
       /**
        * GET insights for a specific play
@@ -250,16 +274,18 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
        * Used to pre-seed session context so the agent can see its own past work.
        */
       getInsightsForPlay: (playId: number) =>
-        client.get(`/api/insights/plays/${playId}`).pipe(
-          Effect.flatMap(
-            HttpClientResponse.schemaBodyJson(PlayInsightsResponse)
-          ),
-          Effect.mapError(
-            (error) =>
-              new FaissApiError({
-                message: `Get insights for play ${playId} failed`,
-                cause: error,
-              })
+        withTimeout(
+          client.get(`/api/insights/plays/${playId}`).pipe(
+            Effect.flatMap(
+              HttpClientResponse.schemaBodyJson(PlayInsightsResponse)
+            ),
+            Effect.mapError(
+              (error) =>
+                new FaissApiError({
+                  message: `Get insights for play ${playId} failed`,
+                  cause: error,
+                })
+            )
           )
         ),
 
@@ -271,16 +297,18 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
        * see what it has been producing recently.
        */
       getRecentInsights: (limit: number = 20) =>
-        client.get(`/api/insights?limit=${limit}`).pipe(
-          Effect.flatMap(
-            HttpClientResponse.schemaBodyJson(GetInsightsResponse)
-          ),
-          Effect.mapError(
-            (error) =>
-              new FaissApiError({
-                message: `Get recent insights failed`,
-                cause: error,
-              })
+        withTimeout(
+          client.get(`/api/insights?limit=${limit}`).pipe(
+            Effect.flatMap(
+              HttpClientResponse.schemaBodyJson(GetInsightsResponse)
+            ),
+            Effect.mapError(
+              (error) =>
+                new FaissApiError({
+                  message: `Get recent insights failed`,
+                  cause: error,
+                })
+            )
           )
         ),
 
@@ -300,12 +328,13 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
         windowHours: number = 3,
         limit: number = 20
       ) =>
-        client
-          .get(`/api/insights/context`, {
-            urlParams: {
-              play_id: playId.toString(),
-              window_hours: windowHours.toString(),
-              limit: limit.toString(),
+        withTimeout(
+          client
+            .get(`/api/insights/context`, {
+              urlParams: {
+                play_id: playId.toString(),
+                window_hours: windowHours.toString(),
+                limit: limit.toString(),
             },
           })
           .pipe(
@@ -319,7 +348,8 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                   cause: error,
                 })
             )
-          ),
+          )
+        ),
     };
   }),
   dependencies: [FaissConfig.Default, FetchHttpClient.layer],

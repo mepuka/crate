@@ -61,6 +61,11 @@ export interface InsightSessionServiceInterface {
   readonly clear: () => Effect.Effect<void>
 
   /**
+   * Reset the session with a new session ID and empty insights
+   */
+  readonly reset: () => Effect.Effect<void>
+
+  /**
    * Get the current session ID
    */
   readonly getSessionId: () => Effect.Effect<string>
@@ -182,6 +187,8 @@ const makeInsightSessionService = Effect.gen(function* () {
       insights: []
     }))
 
+  const reset = (): Effect.Effect<void> => Ref.set(stateRef, initialState())
+
   const getSessionId = (): Effect.Effect<string> =>
     Ref.get(stateRef).pipe(Effect.map((state) => state.sessionId))
 
@@ -190,6 +197,7 @@ const makeInsightSessionService = Effect.gen(function* () {
     getRecentInsights,
     seedWithExistingInsights,
     clear,
+    reset,
     getSessionId
   } satisfies InsightSessionServiceInterface
 })
@@ -227,6 +235,7 @@ export const InsightSessionServiceTest: Layer.Layer<InsightSessionService> = Lay
       }),
     seedWithExistingInsights: (_insights) => Effect.void,
     clear: () => Effect.void,
+    reset: () => Effect.void,
     getSessionId: () => Effect.succeed("test_session")
   } satisfies InsightSessionServiceInterface
 )
@@ -268,5 +277,6 @@ export const makeInsightSessionServiceTestWithData = (
     },
     seedWithExistingInsights: (_insights) => Effect.void,
     clear: () => Effect.void,
+    reset: () => Effect.void,
     getSessionId: () => Effect.succeed("test_session")
   } satisfies InsightSessionServiceInterface)
