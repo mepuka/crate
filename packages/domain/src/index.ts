@@ -26,3 +26,6 @@ export {
 
 // CSV utilities (not exported by default to prevent bundling into workers)
 // Import directly from "@crate/domain/csv/parseLines" if needed
+
+// Insights ("Living Liner Notes")
+export * as Insights from "./insights.js"

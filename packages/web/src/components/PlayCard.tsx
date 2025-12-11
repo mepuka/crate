@@ -8,7 +8,8 @@ import { AlbumArt } from './AlbumArt'
 import { useAtom } from '@effect-atom/atom-react'
 import { selectedPlayIdAtom } from '@/atoms/play-details'
 import { Option } from 'effect'
-import { FeaturedLinkPreview } from './FeaturedLinkPreview'
+import { InsightPanel } from './insights/InsightPanel'
+import { InsightNotch } from './insights/InsightNotch'
 
 const playCardVariants = cva(
   [
@@ -119,6 +120,7 @@ export const PlayCard = memo(forwardRef<HTMLDivElement, PlayCardProps>(
         data-new-music={newMusicIndicator}
         role="article" // The main card is an article
       >
+        <InsightNotch playId={play.id} onClick={handleClick} />
         {/* Clickable overlay for entire card - z-index 0 to sit behind interactive children */}
         <div
           onClick={handleClick}
@@ -213,16 +215,9 @@ export const PlayCard = memo(forwardRef<HTMLDivElement, PlayCardProps>(
               </div>
             )}
 
-            {/* Comment - only in expanded */}
-            {play.comment && size === 'expanded' && (
-              <p className="mt-1 text-[11px] text-muted-foreground/70 italic line-clamp-2">
-                {play.comment}
-              </p>
-            )}
-
-            {/* Featured Link Preview - only in expanded */}
+            {/* Insight Panel (includes Comments & Links) - only in expanded */}
             {size === 'expanded' && (
-              <FeaturedLinkPreview playId={play.id} />
+              <InsightPanel playId={play.id} comment={play.comment} />
             )}
           </div>
         </div>

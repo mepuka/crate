@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatSemanticTime } from "@/lib/date-utils";
 import { AlbumArt } from "./AlbumArt";
 import { X } from "lucide-react";
-import { CommentWithLinks } from "./CommentWithLinks";
+import { InsightPanel } from "./insights/InsightPanel";
 import { LinksByCategory } from "./LinksByCategory";
 
 export function PlayDetailsPanel() {
@@ -207,13 +207,9 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                 </div>
               </div>
 
-              {/* DJ Comment - Below the header section */}
-              {!isNonTrackPlay && play.comment && (
-                <div
-                  className="text-base leading-relaxed text-foreground/90 italic border-l-2 border-primary/30 pl-4"
-                >
-                  <CommentWithLinks playId={play.id} comment={play.comment} variant="details" />
-                </div>
+              {/* Living Liner Notes (Insights & Comments) */}
+              {!isNonTrackPlay && (
+                  <InsightPanel playId={play.id} comment={play.comment} />
               )}
 
               {/* External Links */}
