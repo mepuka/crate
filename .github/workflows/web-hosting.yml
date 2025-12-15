@@ -1,0 +1,112 @@
+name: Deploy Web to Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/web/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/web-hosting.yml"
+  pull_request:
+    paths:
+      - "packages/web/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/web-hosting.yml"
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Configure production env
+        run: |
+          cp packages/web/env.production.sample packages/web/.env.production
+          if [ -n "${{ secrets.VITE_API_BASE_URL }}" ]; then
+            echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" >> packages/web/.env.production
+          fi
+
+      - name: Build web
+        run: pnpm --filter @crate/web build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: packages/web/dist
+
+  deploy-preview:
+    if: github.event_name == 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: packages/web/dist
+
+      - name: Auth with Google
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Install firebase-tools
+        run: npm install -g firebase-tools
+
+      - name: Deploy preview channel
+        run: |
+          firebase hosting:channel:deploy pr-${{ github.event.number }} \
+            --project ${{ secrets.FIREBASE_PROJECT_ID }} \
+            --expires 7d
+
+  deploy-live:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: packages/web/dist
+
+      - name: Auth with Google
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Install firebase-tools
+        run: npm install -g firebase-tools
+
+      - name: Deploy to live
+        run: |
+          firebase deploy --only hosting \
+            --project ${{ secrets.FIREBASE_PROJECT_ID }}
+
+
+

@@ -28,8 +28,8 @@ export const InsightNotch = memo(({ playId, className, onClick }: InsightNotchPr
       onClick={onClick}
       className={cn(
         "absolute right-0 top-0 bottom-0 w-1.5 cursor-pointer transition-all duration-300 ease-out z-20",
-        state === "digging" && "bg-primary/20 animate-pulse",
-        state === "ready" && "bg-gradient-to-b from-teal-400 to-blue-500 shadow-[0_0_8px_rgba(45,212,191,0.5)]",
+        state === "digging" && "animate-insight-digging",
+        state === "ready" && "bg-gradient-to-b from-accent/60 to-accent/40 shadow-[0_0_6px_rgba(45,212,191,0.3)]",
         className
       )}
       role="button"

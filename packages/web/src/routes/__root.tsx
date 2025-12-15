@@ -20,7 +20,7 @@ function RootComponent() {
       <main id="main-content" className="flex-1 relative z-0">
         <Outlet />
       </main>
-      <TanStackRouterDevtools />
+      {import.meta.env.DEV && <TanStackRouterDevtools />}
     </div>
   )
 }

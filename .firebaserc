@@ -1,0 +1,17 @@
+{
+  "projects": {
+    "default": "crate-web" // replace with your Firebase project id
+  },
+  "targets": {
+    "crate-web": {
+      "hosting": {
+        "crate-web": [
+          "crate-web"
+        ]
+      }
+    }
+  }
+}
+
+
+

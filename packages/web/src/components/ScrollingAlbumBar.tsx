@@ -380,12 +380,8 @@ export function ScrollingAlbumBar() {
         setIsLoadingComplete(false);
         setLoadProgress(0);
       },
-      onError: (error) => {
-        console.error("Failed to load album artwork:", error);
-      },
-      onDefect: (error) => {
-        console.error("Defect loading album artwork:", error);
-      },
+      onError: () => {},
+      onDefect: () => {},
       onSuccess: async (s) => {
         const artworks = s.value as readonly AlbumArtworkData[];
 
@@ -414,8 +410,10 @@ export function ScrollingAlbumBar() {
             // Store metadata and cache tile on success
             Effect.tap((bitmap) => Effect.sync(() => {
               artworkMetadata.current.set(index, artwork);
+              // artwork.airdate arrives as ISO string from worker (Schema.encode converts Date → string)
+              // Parse it back to Date for isNewMusic calculation
               isNewMusicFlags.current.set(index, isNewMusic({
-                airdate: artwork.airdate,
+                airdate: new Date(artwork.airdate as unknown as string),
                 comment: artwork.comment,
               } as Parameters<typeof isNewMusic>[0]));
 

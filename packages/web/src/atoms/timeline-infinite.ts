@@ -319,8 +319,7 @@ export const loadInitialTimelinePageAtom = TimelineRuntime.fn<void>()(
     }).pipe(
       Effect.catchAll((error) =>
         Effect.gen(function* () {
-          yield* Effect.logError(`Initial page load failed`);
-          console.error("Timeline load error:", error);
+          yield* Effect.logError(`Initial page load failed`, { error });
           const errorState: TimelineInfiniteState = {
             ...get(timelineInfiniteStateAtom),
             status: "error",

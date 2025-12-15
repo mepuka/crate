@@ -1,4 +1,11 @@
-import { createFileRoute } from '@tanstack/react-router'
+/**
+ * Test Components Route
+ *
+ * DEV ONLY: Showcases base UI components.
+ * Redirects to home in production builds.
+ */
+
+import { createFileRoute, Navigate } from '@tanstack/react-router'
 import { AlbumArt, DateDivider, LoadingSpinner } from '@/components'
 
 export const Route = createFileRoute('/test-components')({
@@ -6,6 +13,10 @@ export const Route = createFileRoute('/test-components')({
 })
 
 function TestComponentsPage() {
+  // Gate demo routes to development only
+  if (!import.meta.env.DEV) {
+    return <Navigate to="/" />;
+  }
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-8">
       <h1 className="text-3xl font-bold">Base UI Components Test</h1>

@@ -12,10 +12,15 @@ import {
   streamPlaysDataAtom,
   streamPlayCountAtom,
   streamStatusAtom,
+  type StreamStatus,
 } from "@/atoms/timeline-stream-atoms";
 import { StreamTestControls } from "@/components/StreamTestControls";
 import type { PlayResult } from "@crate/api";
 import { Option } from "effect";
+
+/** Type guard for error status */
+const isErrorStatus = (s: StreamStatus): s is StreamStatus & { status: "error"; error: unknown } =>
+  s.status === "error";
 
 function PlayCard({ play }: { play: PlayResult }) {
   return (
@@ -102,14 +107,8 @@ export function StreamTimelineDemo() {
       onWaiting: () => [],
       onSuccess: (s) =>
         Option.isSome(s.value) ? [s.value.value] : [],
-      onError: (e) => {
-        console.error("[StreamTimelineDemo] Error loading play:", e);
-        return [];
-      },
-      onDefect: (d) => {
-        console.error("[StreamTimelineDemo] Defect loading play:", d);
-        return [];
-      },
+      onError: () => [],
+      onDefect: () => [],
     })
   );
 
@@ -141,17 +140,14 @@ export function StreamTimelineDemo() {
             </div>
 
             {/* Error State */}
-            {/* @ts-ignore */}
-            {status.status === "error" && "error" in status && (
+            {isErrorStatus(status) && (
               <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-800">
                 <div className="font-semibold mb-2">Stream Error</div>
-                {/* @ts-ignore */}
                 <div className="text-sm">{String(status.error)}</div>
               </div>
             )}
 
             {/* Streaming indicator */}
-            {/* @ts-ignore */}
             {status.status === "loading" && plays.length > 0 && (
               <div className="mb-4 flex items-center gap-2 text-sm text-blue-600">
                 <div className="animate-pulse w-2 h-2 bg-blue-600 rounded-full"></div>
@@ -172,16 +168,13 @@ export function StreamTimelineDemo() {
             )}
 
             {/* Empty State */}
-            {/* @ts-ignore */}
-            {status.status !== "error" && plays.length === 0 && (
+            {!isErrorStatus(status) && plays.length === 0 && (
               <div className="text-center py-12">
                 <div className="text-gray-400 text-5xl mb-4">🎵</div>
                 <div className="text-gray-600 font-medium mb-2">
-                  {/* @ts-ignore */}
                   {status.status === "loading" ? "Waiting for plays..." : "No plays loaded"}
                 </div>
                 <div className="text-sm text-gray-500">
-                  {/* @ts-ignore */}
                   {status.status === "loading"
                     ? "Stream is starting..."
                     : "Select a stream mode and click \"Restart Stream\" to begin"}
