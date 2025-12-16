@@ -16,6 +16,7 @@ import {
 import { KexpApi, PlayResult } from "@crate/api";
 import { sortPlaysByAirdateThenId } from "./timeline-utils";
 import { AlbumBarWorkerClient } from "@/workers/album-bar-worker-client";
+import { ImageLoadService } from "@/services/image-load-service";
 
 // Combined runtime with configured HTTP client and Reactivity support
 
@@ -51,14 +52,8 @@ export class StreamingLinksClient extends AtomHttpApi.Tag<StreamingLinksClient>(
   }
 ) {}
 
-export class InsightsClient extends AtomHttpApi.Tag<InsightsClient>()(
-  "InsightsClient",
-  {
-    api: KexpApi,
-    httpClient: FetchHttpClient.layer,
-    baseUrl: API_BASE_URL,
-  }
-) {}
+// Note: Insights are fetched directly via HttpClient in atoms/insights.ts
+// since the insights endpoint is on the FAISS API, not the BFF (KexpApi)
 
 /**
  * TimelineKVS Service
@@ -586,7 +581,7 @@ export const TimelineRuntime = Atom.runtime(
     AlbumBarWorkerClient.Default,
     TimelineClient.layer,
     StreamingLinksClient.layer,
-    InsightsClient.layer
+    ImageLoadService.Default
   )
 );
 

@@ -1,10 +1,16 @@
-import { useEffect, useContext } from "react";
-import { useAtom, Result, RegistryContext, Registry } from "@effect-atom/atom-react";
-import { insightsAtom, fetchInsightsAction } from "@/atoms/insights";
-import { Effect } from "effect";
-import { FetchHttpClient } from "@effect/platform";
+/**
+ * InsightPanel Component
+ *
+ * Displays living liner notes (insights) for a play.
+ * Uses Effect Atom pattern - the insightsAtom automatically fetches
+ * when read via useAtomValue.
+ */
+
+import { useAtomValue, Result } from "@effect-atom/atom-react";
+import { insightsAtom } from "@/atoms/insights";
 import { InsightStream } from "./InsightStream";
 import { Loader2 } from "lucide-react";
+import { Insights } from "@crate/domain";
 
 interface InsightPanelProps {
   playId: number;
@@ -12,20 +18,8 @@ interface InsightPanelProps {
 }
 
 export const InsightPanel = ({ playId, comment }: InsightPanelProps) => {
-  const [result] = useAtom(insightsAtom(playId));
-  const registry = useContext(RegistryContext);
-
-  useEffect(() => {
-    // Manually run the fetch action, providing necessary services
-    // 1. AtomRegistry (from React Context)
-    // 2. HttpClient (from FetchHttpClient layer)
-    const program = fetchInsightsAction(playId).pipe(
-      Effect.provideService(Registry.AtomRegistry, registry),
-      Effect.provide(FetchHttpClient.layer)
-    );
-    
-    Effect.runPromise(program);
-  }, [playId, registry]);
+  // Reading the atom triggers the fetch automatically via TimelineRuntime.atom
+  const result = useAtomValue(insightsAtom(playId));
 
   return (
     <div className="mt-3 border-t border-border/40 pt-3">
@@ -34,26 +28,26 @@ export const InsightPanel = ({ playId, comment }: InsightPanelProps) => {
           Living Liner Notes
         </h4>
         {Result.isWaiting(result) && (
-             <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+          <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
         )}
       </div>
 
       {Result.matchWithWaiting(result, {
         onWaiting: () => (
-             <InsightStream 
-                insights={[]} 
-                comment={comment ?? null} 
-             />
+          <InsightStream insights={[]} comment={comment ?? null} />
         ),
         onSuccess: (success) => (
-            <InsightStream insights={success.value} comment={comment ?? null} />
+          <InsightStream
+            insights={success.value as Insights.Insight[]}
+            comment={comment ?? null}
+          />
         ),
         onError: () => (
-            <InsightStream insights={[]} comment={comment ?? null} />
+          <InsightStream insights={[]} comment={comment ?? null} />
         ),
         onDefect: () => (
-             <InsightStream insights={[]} comment={comment ?? null} />
-        )
+          <InsightStream insights={[]} comment={comment ?? null} />
+        ),
       })}
     </div>
   );

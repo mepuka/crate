@@ -13,7 +13,7 @@
 
 import { useAtomValue, useAtom, useAtomMount, Result } from '@effect-atom/atom-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { Option } from 'effect'
 import {
   loadInitialTimelinePageAtom,
@@ -33,6 +33,7 @@ import { TimelineErrorState } from './TimelineErrorState'
 import { TimelineItemWithMarker } from './TimelineItemWithMarker'
 import { FilterChip } from './FilterChip'
 import { cn } from '@/lib/utils'
+import { useTimelineKeyboardNav } from '@/hooks/useTimelineKeyboardNav'
 
 /**
  * Estimated height for timeline items.
@@ -72,6 +73,22 @@ export function VirtualizedTimeline() {
   // Transition state for filter changes
   const [isTransitioning, setIsTransitioning] = useState(false);
 
+  // Refs
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  // Keyboard navigation hook
+  const {
+    focusedPlayId,
+    focusCard,
+  } = useTimelineKeyboardNav({
+    containerRef: parentRef,
+    enabled: !loadingState.isLoadingInitial && playIds.length > 0,
+    onSelect: useCallback((playId: number) => {
+      // TODO: Open play detail panel when implemented
+      console.log('Selected play:', playId);
+    }, []),
+  });
+
   // Load initial page on mount
   useEffect(() => {
     loadInitial();
@@ -98,9 +115,6 @@ export function VirtualizedTimeline() {
       return () => clearTimeout(fadeOutTimer);
     }
   }, [filterNeedsReload, resetTimeline, loadInitial]);
-
-  // Refs
-  const parentRef = useRef<HTMLDivElement>(null);
 
   // Virtualizer setup
   const virtualizer = useVirtualizer({
@@ -268,11 +282,15 @@ export function VirtualizedTimeline() {
             ref={parentRef}
             className={cn(
               "relative z-10 h-full overflow-auto px-3 sm:px-4 py-2",
+              "scroll-snap-container", // Phase 1: Scroll-snap for better UX
               isTransitioning ? "timeline-transitioning" : "timeline-visible"
             )}
             style={{ contain: 'strict' }}
             role="list"
             aria-label={`Radio play timeline with ${playIds.length} plays`}
+            aria-live="polite"
+            aria-busy={loadingState.isLoadingMore}
+            tabIndex={0} // Make container focusable for keyboard nav
           >
               <div
                 style={{
@@ -289,13 +307,22 @@ export function VirtualizedTimeline() {
                     onDefect: () => undefined,
                     onSuccess: (s) => s.value.get(playId)
                   });
+                  const isFocused = focusedPlayId === playId;
 
                   return (
                     <div
                       key={virtualItem.key}
                       data-index={virtualItem.index}
+                      data-play-id={playId}
                       ref={virtualizer.measureElement}
                       role="listitem"
+                      tabIndex={isFocused ? 0 : -1}
+                      aria-selected={isFocused}
+                      className={cn(
+                        "timeline-item", // For scroll-snap
+                        "outline-none", // Focus handled by CSS
+                        isFocused && "ring-2 ring-primary ring-offset-2 ring-offset-background rounded-lg"
+                      )}
                       style={{
                         position: 'absolute',
                         top: 0,
@@ -303,6 +330,7 @@ export function VirtualizedTimeline() {
                         width: '100%',
                         transform: `translateY(${virtualItem.start}px)`,
                       }}
+                      onFocus={() => focusCard(playId)}
                     >
                       <TimelineItemWithMarker
                         playId={playId}

@@ -1133,6 +1133,202 @@
     opacity: 1;
     transition: opacity 0.15s ease-in;
   }
+
+  /* ========================================
+     SCROLL-SNAP SYSTEM - Phase 1 UX
+     Philosophy: Natural card alignment without jarring mandatory snapping
+     Uses proximity snapping for gentle alignment
+     ======================================== */
+
+  /* Scroll container with snap behavior */
+  .scroll-snap-container {
+    /* Proximity snap - gentle alignment when scrolling stops */
+    scroll-snap-type: y proximity;
+    scroll-padding-top: 8px;
+    scroll-padding-bottom: 8px;
+
+    /* Smooth scroll physics */
+    scroll-behavior: smooth;
+    overscroll-behavior-y: contain;
+
+    /* Touch optimization */
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+
+    /* Performance optimization */
+    will-change: scroll-position;
+  }
+
+  /* Individual timeline items snap to start */
+  .timeline-item {
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
+  }
+
+  /* Mobile adjustments - more padding for thumb navigation */
+  @media (max-width: 768px) {
+    .scroll-snap-container {
+      scroll-padding-top: 12px;
+      scroll-padding-bottom: 60px;
+    }
+  }
+
+  /* Respect reduced motion - disable snapping entirely */
+  @media (prefers-reduced-motion: reduce) {
+    .scroll-snap-container {
+      scroll-behavior: auto;
+      scroll-snap-type: none;
+    }
+  }
+
+  /* ========================================
+     WCAG 2.2 AA ACCESSIBILITY FIXES - Phase 1
+     Philosophy: Inclusive design without compromising aesthetics
+     ======================================== */
+
+  /* WCAG 2.5.5: Touch Target Size - 44x44px minimum */
+  .filter-chip-clear {
+    /* Increase from 20x20px to 44x44px touch target */
+    min-width: 44px;
+    min-height: 44px;
+    /* Visual size stays smaller via inner content */
+    width: 44px;
+    height: 44px;
+  }
+
+  .filter-chip-clear svg {
+    /* Keep icon visually smaller */
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Interactive elements minimum touch target */
+  .play-card {
+    min-height: 72px; /* Ensure minimum touch target height */
+  }
+
+  @media (max-width: 768px) {
+    .play-card {
+      min-height: 88px; /* Larger touch area on mobile */
+      padding: 10px 12px;
+    }
+  }
+
+  /* WCAG 1.4.3: Color Contrast - 4.5:1 minimum */
+  .timestamp {
+    /* Increase opacity from 0.55 to 0.65 for better contrast */
+    opacity: 0.65;
+  }
+
+  .artist-name {
+    /* Increase opacity from 0.75 to 0.80 for better contrast */
+    opacity: 0.80;
+  }
+
+  /* WCAG 2.4.7: Focus Visible - Clear focus indicators */
+  .play-card:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* Focus styles for timeline items */
+  [data-play-card]:focus-visible {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 2px;
+    z-index: 20;
+  }
+
+  /* Keyboard navigation focus indicator */
+  .timeline-item:focus-within {
+    z-index: 15;
+  }
+
+  /* WCAG 2.4.11: Focus Not Obscured - Ensure focused items are visible */
+  .scroll-snap-container:focus-within {
+    scroll-padding-top: 80px; /* Account for any fixed headers */
+  }
+
+  /* Screen reader only content */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* Skip link for keyboard navigation */
+  .skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    padding: 8px 16px;
+    z-index: 100;
+    transition: top 0.2s ease;
+  }
+
+  .skip-link:focus {
+    top: 0;
+  }
+
+  /* ARIA live region styling - only for dedicated live regions, not containers */
+  .sr-live-region {
+    /* Visually hidden but announced by screen readers */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* High contrast mode support */
+  @media (prefers-contrast: high) {
+    .play-card {
+      border: 2px solid hsl(var(--foreground));
+    }
+
+    .play-card:focus-visible {
+      outline-width: 3px;
+    }
+
+    .filter-chip {
+      border: 2px solid hsl(var(--foreground));
+    }
+
+    .artist-name {
+      opacity: 1;
+    }
+
+    .timestamp {
+      opacity: 0.85;
+    }
+  }
+
+  /* Forced colors mode (Windows High Contrast) */
+  @media (forced-colors: active) {
+    .play-card {
+      border: 1px solid CanvasText;
+    }
+
+    .play-card:focus-visible {
+      outline: 3px solid Highlight;
+    }
+
+    .album-art {
+      border: 1px solid CanvasText;
+    }
+  }
 }
 
 @layer utilities {

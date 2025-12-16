@@ -9,7 +9,10 @@ import { useAtom } from '@effect-atom/atom-react'
 import { selectedPlayIdAtom } from '@/atoms/play-details'
 import { Option } from 'effect'
 import { InsightPanel } from './insights/InsightPanel'
-import { InsightNotch } from './insights/InsightNotch'
+// import { InsightNotch } from './insights/InsightNotch'
+
+// Feature flag: Disable insights until FAISS API insights endpoint is deployed
+const INSIGHTS_ENABLED = false
 
 const playCardVariants = cva(
   [
@@ -120,7 +123,8 @@ export const PlayCard = memo(forwardRef<HTMLDivElement, PlayCardProps>(
         data-new-music={newMusicIndicator}
         role="article" // The main card is an article
       >
-        <InsightNotch playId={play.id} onClick={handleClick} />
+        {/* InsightNotch disabled until FAISS API insights endpoint is deployed */}
+        {/* {INSIGHTS_ENABLED && <InsightNotch playId={play.id} onClick={handleClick} />} */}
         {/* Clickable overlay for entire card - z-index 0 to sit behind interactive children */}
         <div
           onClick={handleClick}
@@ -216,7 +220,8 @@ export const PlayCard = memo(forwardRef<HTMLDivElement, PlayCardProps>(
             )}
 
             {/* Insight Panel (includes Comments & Links) - only in expanded */}
-            {size === 'expanded' && (
+            {/* Disabled until FAISS API insights endpoint is deployed */}
+            {INSIGHTS_ENABLED && size === 'expanded' && (
               <InsightPanel playId={play.id} comment={play.comment} />
             )}
           </div>
