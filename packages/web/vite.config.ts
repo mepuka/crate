@@ -18,6 +18,12 @@ export default defineConfig({
   worker: {
     format: "es",
     plugins: () => [react()],
+    rollupOptions: {
+      output: {
+        // Ensure worker files output as .js, not .ts
+        entryFileNames: "[name]-[hash].js",
+      },
+    },
   },
   server: {
     port: 5173,

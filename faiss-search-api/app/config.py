@@ -35,8 +35,9 @@ class Settings(BaseSettings):
     PORT: int = 8000
     LOG_LEVEL: str = "INFO"
 
-    # CORS
-    CORS_ORIGINS: str = "http://localhost:3000"
+    # CORS - comma-separated list of allowed origins
+    # Production: set CORS_ORIGINS env var to include your frontend domain
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,https://crate-music-web.web.app,https://crate-music-web.firebaseapp.com"
 
     @property
     def cors_origins_list(self) -> List[str]:

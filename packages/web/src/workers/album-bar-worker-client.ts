@@ -18,6 +18,9 @@ import {
   type AlbumArtworkData,
 } from "./album-bar-worker-protocol";
 
+// Import worker URL using Vite's ?worker&url suffix for proper bundling
+import AlbumBarWorkerUrl from "./album-bar-worker?worker&url";
+
 /**
  * AlbumBarWorkerClient
  *
@@ -95,12 +98,9 @@ export class AlbumBarWorkerClient extends Effect.Service<AlbumBarWorkerClient>()
     dependencies: [
       BrowserWorker.layer(
         () =>
-          new globalThis.Worker(
-            new URL("./album-bar-worker.ts", import.meta.url),
-            {
-              type: "module",
-            }
-          )
+          new globalThis.Worker(AlbumBarWorkerUrl, {
+            type: "module",
+          })
       ),
     ],
   }

@@ -25,6 +25,9 @@ import {
   type WorkerRequest,
 } from "./search-worker-protocol";
 
+// Import worker URL using Vite's ?worker&url suffix for proper bundling
+import SearchWorkerUrl from "./search-worker?worker&url";
+
 /**
  * SearchWorkerClient
  *
@@ -154,12 +157,9 @@ export class SearchWorkerClient extends Effect.Service<SearchWorkerClient>()(
     dependencies: [
       BrowserWorker.layer(
         () =>
-          new globalThis.Worker(
-            new URL("./search-worker.ts", import.meta.url),
-            {
-              type: "module",
-            }
-          )
+          new globalThis.Worker(SearchWorkerUrl, {
+            type: "module",
+          })
       ),
     ],
   }

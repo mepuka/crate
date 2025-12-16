@@ -2,7 +2,7 @@ name: Deploy Web to Firebase Hosting
 
 on:
   push:
-    branches: [main]
+    branches: [adjunct_new]
     paths:
       - "packages/web/**"
       - "firebase.json"

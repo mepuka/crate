@@ -7,3 +7,9 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+// Worker URL imports via Vite's ?worker&url suffix
+declare module "*?worker&url" {
+  const workerUrl: string;
+  export default workerUrl;
+}
