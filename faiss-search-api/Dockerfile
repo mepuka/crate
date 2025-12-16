@@ -48,10 +48,11 @@ FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
-# Install only runtime dependencies (curl for healthcheck, sqlite3 for debugging)
+# Install runtime dependencies (curl for healthcheck, sqlite3 for debugging, cron for scheduled jobs)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     sqlite3 \
+    cron \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /root/.cache
 
@@ -62,9 +63,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy application code (this layer changes most frequently)
 COPY app/ ./app/
 COPY scripts/ ./scripts/
+COPY crontab ./crontab
+COPY start.sh ./start.sh
 
-# Create logs directory
-RUN mkdir -p /app/logs
+# Create logs directory and make start script executable
+RUN mkdir -p /app/logs && chmod +x /app/start.sh
 
 # Expose port
 EXPOSE 8000
@@ -73,5 +76,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
     CMD curl -f http://localhost:8000/api/health || exit 1
 
-# Run application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run application via start.sh (installs crontab, starts cron daemon, then uvicorn)
+CMD ["/app/start.sh"]

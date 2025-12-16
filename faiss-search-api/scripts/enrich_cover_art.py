@@ -168,6 +168,9 @@ class CoverArtEnrichmentService:
         """
         Update play with cover art URLs.
 
+        Also sets image_validated_at since we just verified the URL works
+        (we followed the redirect and got a valid response).
+
         Args:
             play_id: Play ID to update
             image_uri: Full-size image URL
@@ -179,12 +182,16 @@ class CoverArtEnrichmentService:
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
+            now = datetime.now(timezone.utc).isoformat()
 
             cursor.execute("""
                 UPDATE fact_plays
-                SET image_uri = ?, thumbnail_uri = ?, updated_at = ?
+                SET image_uri = ?,
+                    thumbnail_uri = ?,
+                    image_validated_at = ?,
+                    updated_at = ?
                 WHERE id = ?
-            """, (image_uri, thumbnail_uri, datetime.now(timezone.utc).isoformat(), play_id))
+            """, (image_uri, thumbnail_uri, now, now, play_id))
 
             conn.commit()
             conn.close()

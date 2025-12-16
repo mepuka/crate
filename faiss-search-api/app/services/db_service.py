@@ -1727,6 +1727,124 @@ class DatabaseService:
             for row in cursor.fetchall()
         ]
 
+    # =========================================================================
+    # Image Validation Methods
+    # =========================================================================
+
+    def get_plays_needing_image_validation(
+        self,
+        limit: int = 1000,
+        max_age_days: int = 7
+    ) -> list:
+        """
+        Get plays with image_uri that need validation.
+
+        Returns plays where:
+        - image_uri IS NOT NULL
+        - AND (image_validated_at IS NULL OR older than max_age_days)
+
+        Args:
+            limit: Maximum number of plays to return
+            max_age_days: Re-validate images older than this many days
+
+        Returns:
+            List of dicts with id, image_uri, thumbnail_uri, image_validated_at
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT id, image_uri, thumbnail_uri, image_validated_at
+            FROM fact_plays
+            WHERE image_uri IS NOT NULL
+              AND (
+                image_validated_at IS NULL
+                OR datetime(image_validated_at) < datetime('now', ?)
+              )
+            ORDER BY image_validated_at ASC NULLS FIRST
+            LIMIT ?
+        """, (f'-{max_age_days} days', limit))
+
+        return [
+            {
+                'id': row[0],
+                'image_uri': row[1],
+                'thumbnail_uri': row[2],
+                'image_validated_at': row[3]
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def mark_image_validated(self, play_id: int) -> bool:
+        """
+        Mark a play's image as validated (URL is working).
+
+        Updates image_validated_at to current timestamp.
+
+        Args:
+            play_id: The play ID to mark as validated
+
+        Returns:
+            True if updated, False if play not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE fact_plays
+            SET image_validated_at = datetime('now'),
+                updated_at = datetime('now')
+            WHERE id = ?
+        """, (play_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def clear_broken_image(self, play_id: int) -> bool:
+        """
+        Clear broken image URLs and mark as validated.
+
+        Sets image_uri and thumbnail_uri to NULL, updates image_validated_at.
+        This prevents repeated validation attempts on known-broken URLs.
+
+        Args:
+            play_id: The play ID with broken image
+
+        Returns:
+            True if updated, False if play not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE fact_plays
+            SET image_uri = NULL,
+                thumbnail_uri = NULL,
+                image_validated_at = datetime('now'),
+                updated_at = datetime('now')
+            WHERE id = ?
+        """, (play_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_image_validation_stats(self) -> dict:
+        """
+        Get statistics about image validation status.
+
+        Returns:
+            Dict with counts for validated, unvalidated, stale, and total images
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total_with_images,
+                SUM(CASE WHEN image_validated_at IS NOT NULL THEN 1 ELSE 0 END) as validated,
+                SUM(CASE WHEN image_validated_at IS NULL THEN 1 ELSE 0 END) as unvalidated,
+                SUM(CASE WHEN datetime(image_validated_at) < datetime('now', '-7 days') THEN 1 ELSE 0 END) as stale
+            FROM fact_plays
+            WHERE image_uri IS NOT NULL
+        """)
+        row = cursor.fetchone()
+        return {
+            'total_with_images': row[0] or 0,
+            'validated': row[1] or 0,
+            'unvalidated': row[2] or 0,
+            'stale': row[3] or 0
+        }
+
     def close(self):
         """Close database connection."""
         if self._conn:

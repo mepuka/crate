@@ -1499,9 +1499,13 @@ async def image_proxy(url: str):
             response = await client.get(url, follow_redirects=True)
 
             if response.status_code == 404:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Image not found"
+                # Return cacheable 404 to prevent repeated requests for known-broken images
+                return Response(
+                    content=b'',
+                    status_code=404,
+                    headers={
+                        "Cache-Control": "public, max-age=3600",  # 1 hour
+                    }
                 )
 
             if response.status_code != 200:
@@ -1524,7 +1528,7 @@ async def image_proxy(url: str):
                 iter([response.content]),
                 media_type=content_type,
                 headers={
-                    "Cache-Control": "public, max-age=2592000",  # 30 days
+                    "Cache-Control": "public, max-age=604800",  # 7 days
                 }
             )
 

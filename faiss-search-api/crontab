@@ -5,4 +5,7 @@
 # Generate embeddings for pending plays hourly (at minute 5)
 5 * * * * cd /app && /usr/local/bin/python3 /app/scripts/embed_pending.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/embed.log 2>&1
 
+# Validate image URLs daily at 3:15 AM (clear broken images, update validation timestamps)
+15 3 * * * cd /app && /usr/local/bin/python3 /app/scripts/validate_image_urls.py --db-path /app/data/music_kb.sqlite --limit 5000 >> /app/logs/image_validation.log 2>&1
+
 # Keep a newline at end of file for cron
