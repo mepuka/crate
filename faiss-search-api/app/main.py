@@ -1519,12 +1519,12 @@ async def image_proxy(url: str):
                 )
 
             # Return streaming response with proper headers
+            # Note: CORS headers are handled by nginx, don't add them here
             return StreamingResponse(
                 iter([response.content]),
                 media_type=content_type,
                 headers={
                     "Cache-Control": "public, max-age=2592000",  # 30 days
-                    "Access-Control-Allow-Origin": "*",
                 }
             )
 
