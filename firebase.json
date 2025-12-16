@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "site": "crate-web", // change to your Firebase Hosting site id
+    "site": "crate-music-web",
     "public": "packages/web/dist",
     "ignore": [
       "firebase.json",
@@ -26,6 +26,3 @@
     ]
   }
 }
-
-
-

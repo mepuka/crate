@@ -1,17 +1,14 @@
 {
   "projects": {
-    "default": "crate-web" // replace with your Firebase project id
+    "default": "crate-music-web"
   },
   "targets": {
-    "crate-web": {
+    "crate-music-web": {
       "hosting": {
-        "crate-web": [
-          "crate-web"
+        "crate-music-web": [
+          "crate-music-web"
         ]
       }
     }
   }
 }
-
-
-

@@ -48,3 +48,4 @@ packages/*/src/**/*.d.ts.map
 !packages/*/src/**/vite-env.d.ts 
 analysis/data/
 packages/web/crate.db
+.firebase/
