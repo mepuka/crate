@@ -17,14 +17,33 @@ Fast API endpoint to power agent graph connection queries. Designed for sub-100m
 
 | Table | Rows | Indexed Columns |
 |-------|------|-----------------|
-| `artist_edges` | 101K | source_mbid, target_mbid, relationship_type |
+| `artist_edges` | 128K | source_mbid, target_mbid, relationship_type, has_vocals, has_guitar, has_bass, has_drums, has_keys |
 | `label_edges` | 17K | source_mbid, target_mbid, relationship_type |
-| `artist_label_edges` | 7.8K | artist_mbid, label_mbid |
+| `artist_label_edges` | 7.9K | artist_mbid, label_mbid |
+| `artist_work_edges` | 660K | artist_mbid, work_mbid, relationship_type |
 | `artist_event_edges` | 108K | artist_mbid, event_id, event_date |
 | `recording_work_links` | 60K | recording_mbid, work_mbid |
 | `artist_area_edges` | 7.5K | artist_mbid, area_mbid, area_name |
 | `area_hierarchy` | 239K | child_mbid, parent_mbid, child_name |
 | `place_recording_edges` | 2.3M | place_mbid, recording_mbid, area_name |
+
+### Instrument Distribution (artist_edges)
+| Instrument | Count |
+|------------|-------|
+| has_vocals | 7,986 |
+| has_guitar | 7,744 |
+| has_bass | 5,947 |
+| has_drums | 7,353 |
+| has_keys | 3,167 |
+
+### Creator Credit Distribution (artist_work_edges)
+| Credit Type | Count |
+|-------------|-------|
+| composer | 353,583 |
+| writer | 169,292 |
+| lyricist | 116,413 |
+| arranger | 10,995 |
+| orchestrator | 8,710 |
 
 ---
 
@@ -38,16 +57,23 @@ from pydantic import BaseModel, Field
 
 # Query types matching agent use cases
 GraphQueryType = Literal[
-    "band_members",      # Get members of a band
-    "member_of",         # Get bands an artist is member of
-    "labelmates",        # Get artists on same label(s)
-    "label_hierarchy",   # Get label ownership tree
-    "covers",            # Get cover versions of a work
-    "artist_origin",     # Get artist's origin area
-    "artists_from_area", # Get artists from an area
-    "recorded_at",       # Get recordings made at a place
-    "collaborators",     # Get artists who shared bands
+    "band_members",          # Get members of a band
+    "member_of",             # Get bands an artist is member of
+    "labelmates",            # Get artists on same label(s)
+    "label_hierarchy",       # Get label ownership tree
+    "covers",                # Get cover versions of a work
+    "artist_origin",         # Get artist's origin area
+    "artists_from_area",     # Get artists from an area
+    "recorded_at",           # Get recordings made at a place
+    "collaborators",         # Get artists who shared bands
+    # New queries (Dec 2025)
+    "members_by_instrument", # Get band members filtered by instrument
+    "works_by_creator",      # Get works composed/written by artist
+    "work_credits",          # Get who composed/wrote a work
 ]
+
+InstrumentFilter = Literal["vocals", "guitar", "bass", "drums", "keys"]
+CreatorType = Literal["composer", "lyricist", "writer", "arranger", "orchestrator"]
 
 class GraphConnectionsRequest(BaseModel):
     """Request for graph connections query."""
@@ -57,6 +83,11 @@ class GraphConnectionsRequest(BaseModel):
     limit: int = Field(default=20, ge=1, le=100)
     include_attributes: bool = Field(default=True,
                                      description="Include instrument/role attributes")
+    # Filter parameters for new queries
+    instrument: Optional[InstrumentFilter] = Field(
+        default=None, description="Filter by instrument (for members_by_instrument)")
+    creator_type: Optional[CreatorType] = Field(
+        default=None, description="Filter by creator type (for works_by_creator)")
 ```
 
 ### Response Models
@@ -339,6 +370,69 @@ ORDER BY ae.source_name
 LIMIT ?
 ```
 
+### 9. members_by_instrument (NEW)
+
+```sql
+-- Find band members filtered by instrument (e.g., guitarists in Radiohead)
+SELECT
+    source_mbid as mbid,
+    source_name as name,
+    'artist' as node_type,
+    relationship_type,
+    attributes,
+    begin_date,
+    end_date,
+    target_mbid as via_mbid,
+    target_name as via_name
+FROM artist_edges
+WHERE target_mbid IN (?, ?, ...)  -- Band MBIDs
+  AND relationship_type = 'member of band'
+  AND has_guitar = 1  -- or has_vocals, has_bass, has_drums, has_keys
+ORDER BY source_name
+LIMIT ?
+```
+
+### 10. works_by_creator (NEW)
+
+```sql
+-- Find works composed/written by an artist
+SELECT
+    work_mbid as mbid,
+    work_title as name,
+    'work' as node_type,
+    relationship_type,  -- composer, lyricist, writer, arranger, etc.
+    attributes,
+    NULL as begin_date,
+    NULL as end_date,
+    artist_mbid as via_mbid,
+    artist_name as via_name
+FROM artist_work_edges
+WHERE artist_mbid IN (?, ?, ...)
+  AND relationship_type = ?  -- Optional: filter by composer/lyricist/etc.
+ORDER BY work_title
+LIMIT ?
+```
+
+### 11. work_credits (NEW)
+
+```sql
+-- Find who composed/wrote a work
+SELECT
+    artist_mbid as mbid,
+    artist_name as name,
+    'artist' as node_type,
+    relationship_type,  -- composer, lyricist, etc.
+    attributes,
+    NULL as begin_date,
+    NULL as end_date,
+    work_mbid as via_mbid,
+    work_title as via_name
+FROM artist_work_edges
+WHERE work_mbid IN (?, ?, ...)
+ORDER BY relationship_type, artist_name
+LIMIT ?
+```
+
 ---
 
 ## FastAPI Endpoint Implementation
@@ -531,6 +625,9 @@ CACHE_DURATIONS = {
 | artists_from_area | < 20ms | idx_aae_area_name |
 | recorded_at | < 100ms | place_recording_edges (2.3M rows) |
 | collaborators | < 50ms | idx_ae_source, idx_ae_target |
+| members_by_instrument | < 50ms | idx_ae_target, idx_ae_guitar/vocals/etc |
+| works_by_creator | < 400ms | idx_awe_artist, idx_awe_type |
+| work_credits | < 50ms | idx_awe_work |
 
 ---
 
@@ -574,4 +671,36 @@ Agent output:
 "Fleet Foxes is the project of Seattle's Robin Pecknold, who also performs solo.
 They're on Sub Pop alongside labelmates Beach House and Father John Misty.
 This track was recorded at [studio] and features [band members with instruments]."
+```
+
+### New Query Examples (Dec 2025)
+
+```
+User: Who plays guitar in Radiohead?
+
+Agent thinking:
+1. semantic_search("Radiohead") → Get band MBID
+2. graph_connections(query_type="members_by_instrument", mbids=["a74b..."], instrument="guitar")
+
+Result: Jonny Greenwood (electric guitar, original)
+```
+
+```
+User: What songs did Bach compose?
+
+Agent thinking:
+1. semantic_search("Johann Sebastian Bach") → Get artist MBID
+2. graph_connections(query_type="works_by_creator", mbids=["24f1..."], creator_type="composer")
+
+Result: 7,843 works including "Erbarme Dich", Brandenburg Concertos, etc.
+```
+
+```
+User: Who wrote this song?
+
+Agent thinking:
+1. Get work MBID from recording via recording_work_links
+2. graph_connections(query_type="work_credits", mbids=["work-mbid"])
+
+Result: Composer: John Lennon, Lyricist: Paul McCartney
 ```
