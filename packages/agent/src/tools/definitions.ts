@@ -302,7 +302,10 @@ Use this to identify:
 - Influential artists whose work is frequently covered/sampled (high in_degree)
 - Well-connected artists (high total_degree)
 
-⚠️ Requires the graph to be populated first via explore_graph or graph_connections.`,
+⚠️ PREREQUISITE - Graph must be populated FIRST:
+1. explore_graph(query_type="band_members", mbids=[artist_mbid])
+2. explore_graph(query_type="member_of", mbids=[artist_mbid])
+Then call this tool. Returns error message if graph is empty.`,
   parameters: AnalyzeInfluenceParams.fields,
   success: AnalyzeInfluenceResponse,
   failureMode: "return",
@@ -325,7 +328,11 @@ Parameters:
 - limit: Maximum nodes to return (default 50, max 100)
 
 Returns nodes sorted by distance (closest first).
-⚠️ Requires the graph to be populated first via explore_graph or graph_connections.`,
+
+⚠️ PREREQUISITE - Graph must be populated FIRST:
+1. explore_graph(query_type="band_members", mbids=[artist_mbid])
+2. explore_graph(query_type="member_of", mbids=[artist_mbid])
+Then call this tool. Returns error message if graph is empty.`,
   parameters: ExploreNeighborhoodParams.fields,
   success: ExploreNeighborhoodResponse,
   failureMode: "return",
@@ -348,7 +355,10 @@ Use this for:
 - Understanding an artist's career scope
 - Finding key relationships to explore further
 
-⚠️ Requires the graph to be populated first via explore_graph or graph_connections.`,
+⚠️ PREREQUISITE - Graph must be populated FIRST:
+1. explore_graph(query_type="band_members", mbids=[artist_mbid])
+2. explore_graph(query_type="member_of", mbids=[artist_mbid])
+Then call this tool. Returns error message if graph is empty.`,
   parameters: SummarizeRelationshipsParams.fields,
   success: SummarizeRelationshipsResponse,
   failureMode: "return",
@@ -373,7 +383,11 @@ Returns:
 - active_edges: Number of relationships active during this period
 - relationship_types: Types of relationships found (band memberships, collaborations, etc.)
 
-⚠️ Requires the graph to be populated first via explore_graph or graph_connections.`,
+⚠️ PREREQUISITE - Graph must be populated FIRST:
+1. Get artist MBIDs via search
+2. explore_graph(query_type="band_members", mbids=[...])
+3. explore_graph(query_type="member_of", mbids=[...])
+Then call this tool. Returns error message if graph is empty.`,
   parameters: AnalyzeTimePeriodParams.fields,
   success: AnalyzeTimePeriodResponse,
   failureMode: "return",

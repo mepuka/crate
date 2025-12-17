@@ -890,6 +890,42 @@ Get neighbors for an entity from the local cache (no API call).
 
 ---
 
+### Graph Algorithm Tools (⚠️ Require populated graph)
+
+These tools analyze the **local graph cache**. You MUST call \`explore_graph\` first to populate the cache, or these tools will return errors.
+
+### 11. analyze_influence
+Get degree centrality metrics for an artist.
+- **When:** Understanding an artist's connectivity and influence in the graph
+- **Returns:** in_degree (incoming edges), out_degree (outgoing edges), total_degree
+- **Use for:** Identifying highly collaborative artists, influential figures, well-connected nodes
+- **⚠️ Prerequisite:** Call \`explore_graph(query_type="band_members")\` and/or \`explore_graph(query_type="member_of")\` first
+
+### 12. explore_neighborhood
+Find all artists within K hops of a source (BFS exploration).
+- **When:** Mapping collaboration networks, discovering related artists
+- **Parameters:** mbid, max_hops (1-3, default 2), limit (default 50, max 100)
+- **Returns:** Nodes sorted by distance with node_type and distance
+- **Use for:** "Who is connected to X?", "Show me the 2-hop network"
+- **⚠️ Prerequisite:** Graph must be populated with explore_graph first
+
+### 13. summarize_relationships
+Get aggregated summary of an artist's relationships by type.
+- **When:** Artist profile generation, understanding career scope
+- **Returns:** total_connections, breakdown by relationship_type, top_collaborators, has_recent_activity
+- **Use for:** "Tell me about this artist's collaborations", finding key relationships
+- **⚠️ Prerequisite:** Graph must be populated with explore_graph first
+
+### 14. analyze_time_period
+Analyze which relationships were active during a time window.
+- **When:** Temporal analysis ("Seattle scene 1991-1994"), historical exploration
+- **Parameters:** start_year, end_year
+- **Returns:** active_nodes, active_edges, relationship_types active during that period
+- **Use for:** Scene mapping, era exploration, temporal filtering
+- **⚠️ Prerequisite:** Graph must be populated with explore_graph first
+
+---
+
 ### Tool Selection Guide
 
 | I want to... | Use this tool |
@@ -904,6 +940,10 @@ Get neighbors for an entity from the local cache (no API call).
 | Walk further hops, get neighbors | explore_graph |
 | Find path between two entities | find_graph_path |
 | Query cache without API call | query_cached_neighbors |
+| **Analyze artist influence** | analyze_influence (⚠️ needs graph) |
+| **Map artist's network** | explore_neighborhood (⚠️ needs graph) |
+| **Summarize artist relationships** | summarize_relationships (⚠️ needs graph) |
+| **Analyze a time period** | analyze_time_period (⚠️ needs graph) |
 
 ### DJ Comment Pattern → Tool Chain
 
@@ -1210,13 +1250,25 @@ export const CONSTRAINTS = `### Research Guidelines
 
 These principles guide your analysis:
 
-**1. Research before writing**
+**1. Research before writing (REQUIRED SEQUENCE)**
 
-For every play, start by gathering evidence:
-- Check recent insights to maintain session coherence
-- Search play history to get MBIDs and context
-- Use additional tools as the DJ comment suggests
-- **Seed the graph** with \`explore_graph\` once you have MBIDs — this is required, not optional
+For every play, follow this sequence:
+
+1. **Check recent insights** to maintain session coherence
+2. **Search play history** to get MBIDs and context (hybrid_search or search_plays)
+3. **⚠️ IMMEDIATELY seed the graph** once you have MBIDs:
+   - For bands: \`explore_graph(query_type="band_members", mbids=[artist_mbid])\`
+   - For solo artists: \`explore_graph(query_type="member_of", mbids=[artist_mbid])\`
+   - Optionally: \`explore_graph(query_type="labelmates", mbids=[artist_mbid])\`
+4. Use additional tools as the DJ comment suggests
+
+**⚠️ GRAPH POPULATION IS REQUIRED** before using these analysis tools:
+- \`analyze_influence\` - degree centrality (in/out connections)
+- \`explore_neighborhood\` - k-hop BFS exploration
+- \`summarize_relationships\` - relationship type aggregation
+- \`analyze_time_period\` - temporal filtering
+
+These tools operate on the **local graph cache** which starts empty. If you skip graph population, these tools will return "graph not populated" errors and you'll waste a tool call.
 
 Why this order? Recent insights prevent duplicates. Search provides the MBIDs you need. Graph exploration reveals connections that tell the most compelling stories. Only after gathering evidence should you decide what insights (if any) to produce.
 

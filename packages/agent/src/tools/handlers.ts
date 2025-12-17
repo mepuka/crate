@@ -782,11 +782,34 @@ const makeAnalyzeInfluenceHandler =
 
         const centrality = yield* service.degreeCentrality(params.mbid);
 
-        // Generate human-readable summary
-        let summary = "";
+        // Check if graph is empty for this MBID - return explicit error
         if (centrality.totalDegree === 0) {
-          summary = "Artist not found in graph. Use explore_graph to populate first.";
-        } else if (centrality.outDegree > centrality.inDegree * 2) {
+          yield* Effect.logWarning(
+            `analyze_influence called on empty graph for ${params.mbid}. ` +
+            "Use explore_graph to populate first."
+          );
+          yield* Effect.annotateCurrentSpan({
+            error: "graph_not_populated",
+            mbid: params.mbid,
+          });
+
+          // Return error response that signals LLM to take corrective action
+          return {
+            mbid: params.mbid,
+            in_degree: 0,
+            out_degree: 0,
+            total_degree: 0,
+            influence_summary: `⚠️ GRAPH NOT POPULATED: Artist ${params.mbid} not found in graph cache. ` +
+              "You must call explore_graph FIRST to populate the graph before using this tool. " +
+              "Required steps: (1) explore_graph(query_type='band_members', mbids=['${params.mbid}']) " +
+              "(2) explore_graph(query_type='member_of', mbids=['${params.mbid}']) " +
+              "Then retry analyze_influence.",
+          } satisfies AnalyzeInfluenceResponse;
+        }
+
+        // Generate human-readable summary for populated graph
+        let summary = "";
+        if (centrality.outDegree > centrality.inDegree * 2) {
           summary = `Highly collaborative artist with ${centrality.outDegree} outgoing connections.`;
         } else if (centrality.inDegree > centrality.outDegree * 2) {
           summary = `Influential artist with ${centrality.inDegree} incoming connections (frequently referenced/covered).`;
@@ -834,6 +857,30 @@ const makeExploreNeighborhoodHandler =
 
         const neighborhood = yield* service.kHopNeighborhood(params.mbid, maxHops);
 
+        // Check if graph is empty for this MBID - return explicit error
+        if (neighborhood.length === 0) {
+          yield* Effect.logWarning(
+            `explore_neighborhood called on empty graph for ${params.mbid}. ` +
+            "Use explore_graph to populate first."
+          );
+          yield* Effect.annotateCurrentSpan({
+            error: "graph_not_populated",
+            mbid: params.mbid,
+          });
+
+          return {
+            source_mbid: params.mbid,
+            max_hops: maxHops,
+            nodes: [],
+            total_found: 0,
+            summary: `⚠️ GRAPH NOT POPULATED: Artist ${params.mbid} not found in graph cache. ` +
+              "You must call explore_graph FIRST to populate the graph before using this tool. " +
+              "Required steps: (1) explore_graph(query_type='band_members', mbids=['${params.mbid}']) " +
+              "(2) explore_graph(query_type='member_of', mbids=['${params.mbid}']) " +
+              "Then retry explore_neighborhood.",
+          } satisfies ExploreNeighborhoodResponse;
+        }
+
         // Transform and limit results
         const nodes = neighborhood.slice(0, limit).map((n) => ({
           mbid: n.node.mbid,
@@ -848,21 +895,16 @@ const makeExploreNeighborhoodHandler =
           byDistance.set(n.distance, (byDistance.get(n.distance) ?? 0) + 1);
         }
 
-        let summary = "";
-        if (nodes.length === 0) {
-          summary = "No neighbors found. Use explore_graph to populate the graph first.";
-        } else {
-          const parts: string[] = [];
-          for (let d = 1; d <= maxHops; d++) {
-            const count = byDistance.get(d) ?? 0;
-            if (count > 0) {
-              parts.push(`${count} at ${d} hop${d > 1 ? "s" : ""}`);
-            }
+        const parts: string[] = [];
+        for (let d = 1; d <= maxHops; d++) {
+          const count = byDistance.get(d) ?? 0;
+          if (count > 0) {
+            parts.push(`${count} at ${d} hop${d > 1 ? "s" : ""}`);
           }
-          summary = `Found ${neighborhood.length} nodes: ${parts.join(", ")}.`;
-          if (neighborhood.length > limit) {
-            summary += ` (showing first ${limit})`;
-          }
+        }
+        let summary = `Found ${neighborhood.length} nodes: ${parts.join(", ")}.`;
+        if (neighborhood.length > limit) {
+          summary += ` (showing first ${limit})`;
         }
 
         yield* Effect.annotateCurrentSpan({
@@ -899,6 +941,31 @@ const makeSummarizeRelationshipsHandler =
 
         const summary = yield* service.summarizeRelationships(params.mbid);
 
+        // Check if graph is empty for this MBID - return explicit error
+        if (summary.totalConnections === 0) {
+          yield* Effect.logWarning(
+            `summarize_relationships called on empty graph for ${params.mbid}. ` +
+            "Use explore_graph to populate first."
+          );
+          yield* Effect.annotateCurrentSpan({
+            error: "graph_not_populated",
+            mbid: params.mbid,
+          });
+
+          return {
+            mbid: params.mbid,
+            total_connections: 0,
+            by_type: [],
+            top_collaborators: [],
+            has_recent_activity: false,
+            summary: `⚠️ GRAPH NOT POPULATED: Artist ${params.mbid} not found in graph cache. ` +
+              "You must call explore_graph FIRST to populate the graph before using this tool. " +
+              "Required steps: (1) explore_graph(query_type='band_members', mbids=['${params.mbid}']) " +
+              "(2) explore_graph(query_type='member_of', mbids=['${params.mbid}']) " +
+              "Then retry summarize_relationships.",
+          } satisfies SummarizeRelationshipsResponse;
+        }
+
         // Convert Map to array format for JSON serialization
         const byType: Array<{ relationship_type: string; count: number }> = [];
         for (const [type, count] of summary.byType) {
@@ -908,19 +975,14 @@ const makeSummarizeRelationshipsHandler =
         byType.sort((a, b) => b.count - a.count);
 
         // Generate human-readable summary
-        let textSummary = "";
-        if (summary.totalConnections === 0) {
-          textSummary = "No relationships found. Use explore_graph to populate the graph first.";
-        } else {
-          const typeParts = byType.slice(0, 3).map((t) => `${t.count} ${t.relationship_type}`);
-          textSummary = `${summary.totalConnections} connections: ${typeParts.join(", ")}`;
-          if (byType.length > 3) {
-            textSummary += `, and ${byType.length - 3} more types`;
-          }
-          textSummary += ".";
-          if (summary.hasRecentActivity) {
-            textSummary += " Artist has recent/ongoing activity.";
-          }
+        const typeParts = byType.slice(0, 3).map((t) => `${t.count} ${t.relationship_type}`);
+        let textSummary = `${summary.totalConnections} connections: ${typeParts.join(", ")}`;
+        if (byType.length > 3) {
+          textSummary += `, and ${byType.length - 3} more types`;
+        }
+        textSummary += ".";
+        if (summary.hasRecentActivity) {
+          textSummary += " Artist has recent/ongoing activity.";
         }
 
         yield* Effect.annotateCurrentSpan({
@@ -960,11 +1022,37 @@ const makeAnalyzeTimePeriodHandler =
 
         const stats = yield* service.timeWindowStats(params.start_year, params.end_year);
 
-        // Generate human-readable summary
+        // Check if graph is empty - return explicit error
+        if (stats.edgeCount === 0 && stats.nodeCount === 0) {
+          yield* Effect.logWarning(
+            `analyze_time_period called on empty graph for ${params.start_year}-${params.end_year}. ` +
+            "Use explore_graph to populate first."
+          );
+          yield* Effect.annotateCurrentSpan({
+            error: "graph_not_populated",
+            start_year: params.start_year,
+            end_year: params.end_year,
+          });
+
+          return {
+            start_year: params.start_year,
+            end_year: params.end_year,
+            active_nodes: 0,
+            active_edges: 0,
+            relationship_types: [],
+            summary: `⚠️ GRAPH NOT POPULATED: No data found for ${params.start_year}-${params.end_year}. ` +
+              "The graph cache is likely empty. You must call explore_graph FIRST to populate the graph. " +
+              "Required steps: (1) Get an artist MBID via search (2) explore_graph(query_type='band_members', mbids=[...]) " +
+              "(3) explore_graph(query_type='member_of', mbids=[...]) " +
+              "Then retry analyze_time_period.",
+          } satisfies AnalyzeTimePeriodResponse;
+        }
+
+        // Generate human-readable summary - graph has data but maybe no overlap with time window
         let summary = "";
         if (stats.edgeCount === 0) {
           summary = `No relationships found active during ${params.start_year}-${params.end_year}. ` +
-            "Graph may be empty or time window doesn't overlap with any relationships.";
+            "The graph has data but the time window doesn't overlap with any relationships.";
         } else {
           summary = `${params.start_year}-${params.end_year}: ${stats.nodeCount} artists, ` +
             `${stats.edgeCount} relationships (${stats.activeRelationships.join(", ")}).`;
