@@ -29,6 +29,15 @@ import {
   FindGraphPathResponse,
   QueryCachedNeighborsParams,
   QueryCachedNeighborsResponse,
+  // Phase 1 graph algorithm schemas
+  AnalyzeInfluenceParams,
+  AnalyzeInfluenceResponse,
+  ExploreNeighborhoodParams,
+  ExploreNeighborhoodResponse,
+  SummarizeRelationshipsParams,
+  SummarizeRelationshipsResponse,
+  AnalyzeTimePeriodParams,
+  AnalyzeTimePeriodResponse,
 } from "./schemas.js";
 
 // =============================================================================
@@ -274,6 +283,103 @@ Returns empty array if MBID not in cache - use explore_graph first.`,
 });
 
 // =============================================================================
+// Phase 1 Graph Algorithm Tools
+// =============================================================================
+
+/**
+ * Analyze artist influence via degree centrality
+ */
+export const AnalyzeInfluenceTool = Tool.make("analyze_influence", {
+  description: `Analyze an artist's influence in the knowledge graph using degree centrality.
+
+Returns:
+- in_degree: How many artists point TO this artist (influences received, covers of their work, etc.)
+- out_degree: How many artists this artist points TO (collaborations, band memberships, etc.)
+- total_degree: Combined connectivity score
+
+Use this to identify:
+- Highly collaborative artists (high out_degree)
+- Influential artists whose work is frequently covered/sampled (high in_degree)
+- Well-connected artists (high total_degree)
+
+⚠️ Requires the graph to be populated first via explore_graph or graph_connections.`,
+  parameters: AnalyzeInfluenceParams.fields,
+  success: AnalyzeInfluenceResponse,
+  failureMode: "return",
+});
+
+/**
+ * Explore k-hop neighborhood around an artist
+ */
+export const ExploreNeighborhoodTool = Tool.make("explore_neighborhood", {
+  description: `Find all artists within K hops of a source artist in the knowledge graph.
+
+Use this to:
+- Discover artists connected to a seed artist ("Who is connected to Radiohead?")
+- Map collaboration networks ("Show me the 2-hop network around Thom Yorke")
+- Find related artists for recommendations
+
+Parameters:
+- mbid: Source artist's MusicBrainz ID
+- max_hops: How many relationship hops to explore (1-3, default 2)
+- limit: Maximum nodes to return (default 50, max 100)
+
+Returns nodes sorted by distance (closest first).
+⚠️ Requires the graph to be populated first via explore_graph or graph_connections.`,
+  parameters: ExploreNeighborhoodParams.fields,
+  success: ExploreNeighborhoodResponse,
+  failureMode: "return",
+});
+
+/**
+ * Summarize an artist's relationships in the graph
+ */
+export const SummarizeRelationshipsTool = Tool.make("summarize_relationships", {
+  description: `Get a summary of an artist's relationships in the knowledge graph.
+
+Returns:
+- total_connections: Number of relationships in the graph
+- by_type: Breakdown by relationship type (band memberships, collaborations, labelmates, etc.)
+- top_collaborators: Names of key collaborators/band members
+- has_recent_activity: Whether relationships are ongoing or ended in last 5 years
+
+Use this for:
+- Artist profile generation ("Tell me about this artist's collaborations")
+- Understanding an artist's career scope
+- Finding key relationships to explore further
+
+⚠️ Requires the graph to be populated first via explore_graph or graph_connections.`,
+  parameters: SummarizeRelationshipsParams.fields,
+  success: SummarizeRelationshipsResponse,
+  failureMode: "return",
+});
+
+/**
+ * Analyze graph activity during a time period
+ */
+export const AnalyzeTimePeriodTool = Tool.make("analyze_time_period", {
+  description: `Analyze which relationships in the graph were active during a time period.
+
+Use this for temporal analysis:
+- "What was the Seattle scene like in 1991-1994?"
+- "Show collaborations active in the 2000s"
+- "Find bands that were together in the 1980s"
+
+Filters edges by begin_date/end_date overlap with the specified window.
+Ongoing relationships (no end_date) are included if they started before end_year.
+
+Returns:
+- active_nodes: Number of artists involved in relationships during this period
+- active_edges: Number of relationships active during this period
+- relationship_types: Types of relationships found (band memberships, collaborations, etc.)
+
+⚠️ Requires the graph to be populated first via explore_graph or graph_connections.`,
+  parameters: AnalyzeTimePeriodParams.fields,
+  success: AnalyzeTimePeriodResponse,
+  failureMode: "return",
+});
+
+// =============================================================================
 // Toolkit
 // =============================================================================
 
@@ -292,7 +398,12 @@ export const CrateToolkit = Toolkit.make(
   GraphConnectionsTool,
   ExploreGraphTool,
   FindGraphPathTool,
-  QueryCachedNeighborsTool
+  QueryCachedNeighborsTool,
+  // Phase 1 graph algorithm tools
+  AnalyzeInfluenceTool,
+  ExploreNeighborhoodTool,
+  SummarizeRelationshipsTool,
+  AnalyzeTimePeriodTool
 );
 
 /**
@@ -313,3 +424,8 @@ export type GraphConnectionsToolType = typeof GraphConnectionsTool;
 export type ExploreGraphToolType = typeof ExploreGraphTool;
 export type FindGraphPathToolType = typeof FindGraphPathTool;
 export type QueryCachedNeighborsToolType = typeof QueryCachedNeighborsTool;
+// Phase 1 graph algorithm tool types
+export type AnalyzeInfluenceToolType = typeof AnalyzeInfluenceTool;
+export type ExploreNeighborhoodToolType = typeof ExploreNeighborhoodTool;
+export type SummarizeRelationshipsToolType = typeof SummarizeRelationshipsTool;
+export type AnalyzeTimePeriodToolType = typeof AnalyzeTimePeriodTool;

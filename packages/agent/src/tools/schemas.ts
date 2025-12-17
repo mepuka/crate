@@ -621,3 +621,120 @@ export const QueryCachedNeighborsResponse = Schema.Struct({
   neighbor_count: Schema.Number
 })
 export type QueryCachedNeighborsResponse = typeof QueryCachedNeighborsResponse.Type
+
+// =============================================================================
+// Graph Algorithm Tool Schemas (Phase 1)
+// =============================================================================
+
+/**
+ * Parameters for analyzing artist influence via degree centrality
+ */
+export const AnalyzeInfluenceParams = Schema.Struct({
+  mbid: Schema.String.annotations({
+    description: "MusicBrainz ID of the artist to analyze"
+  })
+})
+export type AnalyzeInfluenceParams = typeof AnalyzeInfluenceParams.Type
+
+/**
+ * Response from influence analysis - degree centrality metrics
+ */
+export const AnalyzeInfluenceResponse = Schema.Struct({
+  mbid: Schema.String,
+  in_degree: Schema.Number,
+  out_degree: Schema.Number,
+  total_degree: Schema.Number,
+  influence_summary: Schema.String
+})
+export type AnalyzeInfluenceResponse = typeof AnalyzeInfluenceResponse.Type
+
+/**
+ * Parameters for k-hop neighborhood exploration
+ */
+export const ExploreNeighborhoodParams = Schema.Struct({
+  mbid: Schema.String.annotations({
+    description: "MusicBrainz ID to explore from"
+  }),
+  max_hops: Schema.optional(Schema.Number).annotations({
+    description: "Maximum number of hops to explore (1-3, default 2)"
+  }),
+  limit: Schema.optional(Schema.Number).annotations({
+    description: "Maximum nodes to return (default 50, max 100)"
+  })
+})
+export type ExploreNeighborhoodParams = typeof ExploreNeighborhoodParams.Type
+
+/**
+ * A node with its distance from the source
+ */
+export const NeighborhoodNode = Schema.Struct({
+  mbid: Schema.String,
+  name: Schema.String,
+  node_type: Schema.String,
+  distance: Schema.Number
+})
+export type NeighborhoodNode = typeof NeighborhoodNode.Type
+
+/**
+ * Response from neighborhood exploration
+ */
+export const ExploreNeighborhoodResponse = Schema.Struct({
+  source_mbid: Schema.String,
+  max_hops: Schema.Number,
+  nodes: Schema.Array(NeighborhoodNode),
+  total_found: Schema.Number,
+  summary: Schema.String
+})
+export type ExploreNeighborhoodResponse = typeof ExploreNeighborhoodResponse.Type
+
+/**
+ * Parameters for summarizing artist relationships
+ */
+export const SummarizeRelationshipsParams = Schema.Struct({
+  mbid: Schema.String.annotations({
+    description: "MusicBrainz ID of the artist to summarize"
+  })
+})
+export type SummarizeRelationshipsParams = typeof SummarizeRelationshipsParams.Type
+
+/**
+ * Response from relationship summarization
+ */
+export const SummarizeRelationshipsResponse = Schema.Struct({
+  mbid: Schema.String,
+  total_connections: Schema.Number,
+  by_type: Schema.Array(Schema.Struct({
+    relationship_type: Schema.String,
+    count: Schema.Number
+  })),
+  top_collaborators: Schema.Array(Schema.String),
+  has_recent_activity: Schema.Boolean,
+  summary: Schema.String
+})
+export type SummarizeRelationshipsResponse = typeof SummarizeRelationshipsResponse.Type
+
+/**
+ * Parameters for time period analysis
+ */
+export const AnalyzeTimePeriodParams = Schema.Struct({
+  start_year: Schema.Number.annotations({
+    description: "Start year of the time window (e.g., 1990)"
+  }),
+  end_year: Schema.Number.annotations({
+    description: "End year of the time window (e.g., 1999)"
+  })
+})
+export type AnalyzeTimePeriodParams = typeof AnalyzeTimePeriodParams.Type
+
+/**
+ * Response from time period analysis
+ */
+export const AnalyzeTimePeriodResponse = Schema.Struct({
+  start_year: Schema.Number,
+  end_year: Schema.Number,
+  active_nodes: Schema.Number,
+  active_edges: Schema.Number,
+  relationship_types: Schema.Array(Schema.String),
+  summary: Schema.String
+})
+export type AnalyzeTimePeriodResponse = typeof AnalyzeTimePeriodResponse.Type

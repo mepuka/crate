@@ -36,6 +36,15 @@ import type {
   QueryCachedNeighborsParams,
   QueryCachedNeighborsResponse,
   ConnectionNodeCompact,
+  // Phase 1 graph algorithm schemas
+  AnalyzeInfluenceParams,
+  AnalyzeInfluenceResponse,
+  ExploreNeighborhoodParams,
+  ExploreNeighborhoodResponse,
+  SummarizeRelationshipsParams,
+  SummarizeRelationshipsResponse,
+  AnalyzeTimePeriodParams,
+  AnalyzeTimePeriodResponse,
 } from "./schemas.js";
 import { toCompactPlayResult, toCompactConnection } from "../services/http-utils.js";
 
@@ -752,6 +761,234 @@ const makeQueryCachedNeighborsHandler =
     );
 
 // =============================================================================
+// Phase 1 Graph Algorithm Handlers
+// =============================================================================
+
+/**
+ * Create handler for analyze_influence tool
+ *
+ * Uses MusicGraphService.degreeCentrality() to get degree metrics
+ */
+const makeAnalyzeInfluenceHandler =
+  (service: MusicGraphServiceInterface) =>
+  (params: AnalyzeInfluenceParams): Effect.Effect<AnalyzeInfluenceResponse> =>
+    pipe(
+      Effect.gen(function* () {
+        yield* Effect.logDebug("Executing analyze_influence tool");
+        yield* Effect.annotateCurrentSpan({
+          tool: "analyze_influence",
+          mbid: params.mbid,
+        });
+
+        const centrality = yield* service.degreeCentrality(params.mbid);
+
+        // Generate human-readable summary
+        let summary = "";
+        if (centrality.totalDegree === 0) {
+          summary = "Artist not found in graph. Use explore_graph to populate first.";
+        } else if (centrality.outDegree > centrality.inDegree * 2) {
+          summary = `Highly collaborative artist with ${centrality.outDegree} outgoing connections.`;
+        } else if (centrality.inDegree > centrality.outDegree * 2) {
+          summary = `Influential artist with ${centrality.inDegree} incoming connections (frequently referenced/covered).`;
+        } else {
+          summary = `Well-balanced connectivity with ${centrality.totalDegree} total connections.`;
+        }
+
+        yield* Effect.annotateCurrentSpan({
+          in_degree: centrality.inDegree,
+          out_degree: centrality.outDegree,
+          total_degree: centrality.totalDegree,
+        });
+
+        return {
+          mbid: params.mbid,
+          in_degree: centrality.inDegree,
+          out_degree: centrality.outDegree,
+          total_degree: centrality.totalDegree,
+          influence_summary: summary,
+        } satisfies AnalyzeInfluenceResponse;
+      }),
+      Effect.withSpan("Tool.analyze_influence")
+    );
+
+/**
+ * Create handler for explore_neighborhood tool
+ *
+ * Uses MusicGraphService.kHopNeighborhood() for BFS exploration
+ */
+const makeExploreNeighborhoodHandler =
+  (service: MusicGraphServiceInterface) =>
+  (params: ExploreNeighborhoodParams): Effect.Effect<ExploreNeighborhoodResponse> =>
+    pipe(
+      Effect.gen(function* () {
+        yield* Effect.logDebug("Executing explore_neighborhood tool");
+        const maxHops = Math.min(Math.max(params.max_hops ?? 2, 1), 3);
+        const limit = Math.min(params.limit ?? 50, 100);
+
+        yield* Effect.annotateCurrentSpan({
+          tool: "explore_neighborhood",
+          mbid: params.mbid,
+          max_hops: maxHops,
+          limit,
+        });
+
+        const neighborhood = yield* service.kHopNeighborhood(params.mbid, maxHops);
+
+        // Transform and limit results
+        const nodes = neighborhood.slice(0, limit).map((n) => ({
+          mbid: n.node.mbid,
+          name: n.node.name,
+          node_type: n.node.nodeType,
+          distance: n.distance,
+        }));
+
+        // Group by distance for summary
+        const byDistance = new Map<number, number>();
+        for (const n of neighborhood) {
+          byDistance.set(n.distance, (byDistance.get(n.distance) ?? 0) + 1);
+        }
+
+        let summary = "";
+        if (nodes.length === 0) {
+          summary = "No neighbors found. Use explore_graph to populate the graph first.";
+        } else {
+          const parts: string[] = [];
+          for (let d = 1; d <= maxHops; d++) {
+            const count = byDistance.get(d) ?? 0;
+            if (count > 0) {
+              parts.push(`${count} at ${d} hop${d > 1 ? "s" : ""}`);
+            }
+          }
+          summary = `Found ${neighborhood.length} nodes: ${parts.join(", ")}.`;
+          if (neighborhood.length > limit) {
+            summary += ` (showing first ${limit})`;
+          }
+        }
+
+        yield* Effect.annotateCurrentSpan({
+          total_found: neighborhood.length,
+          returned: nodes.length,
+        });
+
+        return {
+          source_mbid: params.mbid,
+          max_hops: maxHops,
+          nodes,
+          total_found: neighborhood.length,
+          summary,
+        } satisfies ExploreNeighborhoodResponse;
+      }),
+      Effect.withSpan("Tool.explore_neighborhood")
+    );
+
+/**
+ * Create handler for summarize_relationships tool
+ *
+ * Uses MusicGraphService.summarizeRelationships() for relationship aggregation
+ */
+const makeSummarizeRelationshipsHandler =
+  (service: MusicGraphServiceInterface) =>
+  (params: SummarizeRelationshipsParams): Effect.Effect<SummarizeRelationshipsResponse> =>
+    pipe(
+      Effect.gen(function* () {
+        yield* Effect.logDebug("Executing summarize_relationships tool");
+        yield* Effect.annotateCurrentSpan({
+          tool: "summarize_relationships",
+          mbid: params.mbid,
+        });
+
+        const summary = yield* service.summarizeRelationships(params.mbid);
+
+        // Convert Map to array format for JSON serialization
+        const byType: Array<{ relationship_type: string; count: number }> = [];
+        for (const [type, count] of summary.byType) {
+          byType.push({ relationship_type: type, count });
+        }
+        // Sort by count descending
+        byType.sort((a, b) => b.count - a.count);
+
+        // Generate human-readable summary
+        let textSummary = "";
+        if (summary.totalConnections === 0) {
+          textSummary = "No relationships found. Use explore_graph to populate the graph first.";
+        } else {
+          const typeParts = byType.slice(0, 3).map((t) => `${t.count} ${t.relationship_type}`);
+          textSummary = `${summary.totalConnections} connections: ${typeParts.join(", ")}`;
+          if (byType.length > 3) {
+            textSummary += `, and ${byType.length - 3} more types`;
+          }
+          textSummary += ".";
+          if (summary.hasRecentActivity) {
+            textSummary += " Artist has recent/ongoing activity.";
+          }
+        }
+
+        yield* Effect.annotateCurrentSpan({
+          total_connections: summary.totalConnections,
+          relationship_types: byType.length,
+          has_recent_activity: summary.hasRecentActivity,
+        });
+
+        return {
+          mbid: params.mbid,
+          total_connections: summary.totalConnections,
+          by_type: byType,
+          top_collaborators: [...summary.topCollaborators],
+          has_recent_activity: summary.hasRecentActivity,
+          summary: textSummary,
+        } satisfies SummarizeRelationshipsResponse;
+      }),
+      Effect.withSpan("Tool.summarize_relationships")
+    );
+
+/**
+ * Create handler for analyze_time_period tool
+ *
+ * Uses MusicGraphService.timeWindowStats() for temporal analysis
+ */
+const makeAnalyzeTimePeriodHandler =
+  (service: MusicGraphServiceInterface) =>
+  (params: AnalyzeTimePeriodParams): Effect.Effect<AnalyzeTimePeriodResponse> =>
+    pipe(
+      Effect.gen(function* () {
+        yield* Effect.logDebug("Executing analyze_time_period tool");
+        yield* Effect.annotateCurrentSpan({
+          tool: "analyze_time_period",
+          start_year: params.start_year,
+          end_year: params.end_year,
+        });
+
+        const stats = yield* service.timeWindowStats(params.start_year, params.end_year);
+
+        // Generate human-readable summary
+        let summary = "";
+        if (stats.edgeCount === 0) {
+          summary = `No relationships found active during ${params.start_year}-${params.end_year}. ` +
+            "Graph may be empty or time window doesn't overlap with any relationships.";
+        } else {
+          summary = `${params.start_year}-${params.end_year}: ${stats.nodeCount} artists, ` +
+            `${stats.edgeCount} relationships (${stats.activeRelationships.join(", ")}).`;
+        }
+
+        yield* Effect.annotateCurrentSpan({
+          active_nodes: stats.nodeCount,
+          active_edges: stats.edgeCount,
+          relationship_type_count: stats.activeRelationships.length,
+        });
+
+        return {
+          start_year: params.start_year,
+          end_year: params.end_year,
+          active_nodes: stats.nodeCount,
+          active_edges: stats.edgeCount,
+          relationship_types: [...stats.activeRelationships],
+          summary,
+        } satisfies AnalyzeTimePeriodResponse;
+      }),
+      Effect.withSpan("Tool.analyze_time_period")
+    );
+
+// =============================================================================
 // Toolkit Handler Builder
 // =============================================================================
 
@@ -787,6 +1024,11 @@ export const makeCrateToolHandlers: Effect.Effect<
     explore_graph: makeExploreGraphHandler(musicGraphService),
     find_graph_path: makeFindGraphPathHandler(musicGraphService),
     query_cached_neighbors: makeQueryCachedNeighborsHandler(musicGraphService),
+    // Phase 1 graph algorithm tools
+    analyze_influence: makeAnalyzeInfluenceHandler(musicGraphService),
+    explore_neighborhood: makeExploreNeighborhoodHandler(musicGraphService),
+    summarize_relationships: makeSummarizeRelationshipsHandler(musicGraphService),
+    analyze_time_period: makeAnalyzeTimePeriodHandler(musicGraphService),
   });
 });
 
@@ -837,4 +1079,9 @@ export {
   makeExploreGraphHandler,
   makeFindGraphPathHandler,
   makeQueryCachedNeighborsHandler,
+  // Phase 1 graph algorithm handlers
+  makeAnalyzeInfluenceHandler,
+  makeExploreNeighborhoodHandler,
+  makeSummarizeRelationshipsHandler,
+  makeAnalyzeTimePeriodHandler,
 };
