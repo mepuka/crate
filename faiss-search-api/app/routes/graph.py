@@ -31,6 +31,10 @@ QUERY_HANDLERS = {
     "artists_from_area": "query_artists_from_area",
     "recorded_at": "query_recorded_at",
     "collaborators": "query_collaborators",
+    # New queries
+    "members_by_instrument": "query_members_by_instrument",
+    "works_by_creator": "query_works_by_creator",
+    "work_credits": "query_work_credits",
 }
 
 
@@ -92,12 +96,19 @@ async def query_connections(
                 detail=f"Handler not implemented: {handler_name}"
             )
 
-        # Execute query
-        results = handler(
-            mbids=request.mbids,
-            limit=request.limit,
-            include_attributes=request.include_attributes
-        )
+        # Execute query with optional filters
+        kwargs = {
+            "mbids": request.mbids,
+            "limit": request.limit,
+            "include_attributes": request.include_attributes,
+        }
+        # Add optional filters if present
+        if request.instrument:
+            kwargs["instrument"] = request.instrument
+        if request.creator_type:
+            kwargs["creator_type"] = request.creator_type
+
+        results = handler(**kwargs)
 
         # Convert to ConnectionNode models
         connections = [

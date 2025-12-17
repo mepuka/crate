@@ -22,6 +22,27 @@ GraphQueryType = Literal[
     "artists_from_area", # Get artists from an area (by name or MBID)
     "recorded_at",       # Get recordings made at a place
     "collaborators",     # Get artists who shared bands
+    # New instrument/role queries
+    "members_by_instrument", # Get band members who play specific instrument
+    # New creator credit queries
+    "works_by_creator",  # Get works composed/written by artist
+    "work_credits",      # Get who composed/wrote a work
+]
+
+InstrumentFilter = Literal[
+    "vocals",
+    "guitar",
+    "bass",
+    "drums",
+    "keys",
+]
+
+CreatorType = Literal[
+    "composer",
+    "lyricist",
+    "writer",
+    "arranger",
+    "orchestrator",
 ]
 
 NodeType = Literal[
@@ -60,6 +81,15 @@ class GraphConnectionsRequest(BaseModel):
     include_attributes: bool = Field(
         default=True,
         description="Include instrument/role attributes"
+    )
+    # Filter parameters for new queries
+    instrument: Optional[InstrumentFilter] = Field(
+        default=None,
+        description="Filter by instrument (for members_by_instrument)"
+    )
+    creator_type: Optional[CreatorType] = Field(
+        default=None,
+        description="Filter by creator type (for works_by_creator)"
     )
 
 

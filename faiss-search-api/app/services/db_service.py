@@ -1727,6 +1727,173 @@ class DatabaseService:
             for row in cursor.fetchall()
         ]
 
+    def query_members_by_instrument(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True,
+        instrument: str = None,
+        **kwargs
+    ) -> List[dict]:
+        """Get band members filtered by instrument."""
+        if not mbids:
+            return []
+        if not instrument:
+            return self.query_band_members(mbids, limit, include_attributes)
+
+        # Map instrument to column
+        instrument_column = {
+            "vocals": "has_vocals",
+            "guitar": "has_guitar",
+            "bass": "has_bass",
+            "drums": "has_drums",
+            "keys": "has_keys",
+        }.get(instrument)
+
+        if not instrument_column:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        cursor.execute(f"""
+            SELECT
+                source_mbid,
+                source_name,
+                relationship_type,
+                attributes,
+                begin_date,
+                end_date,
+                target_mbid,
+                target_name,
+                primary_role
+            FROM artist_edges
+            WHERE target_mbid IN ({placeholders})
+              AND relationship_type = 'member of band'
+              AND {instrument_column} = 1
+            ORDER BY source_name
+            LIMIT ?
+        """, [*mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1],
+                'node_type': 'artist',
+                'relationship_type': row[2],
+                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
+                'begin_date': row[4],
+                'end_date': row[5],
+                'via_mbid': row[6],
+                'via_name': row[7]
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def query_works_by_creator(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True,
+        creator_type: str = None,
+        **kwargs
+    ) -> List[dict]:
+        """Get works composed/written by artist."""
+        if not mbids:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        # Build query with optional creator_type filter
+        if creator_type:
+            cursor.execute(f"""
+                SELECT
+                    work_mbid,
+                    work_title,
+                    relationship_type,
+                    attributes,
+                    artist_mbid,
+                    artist_name
+                FROM artist_work_edges
+                WHERE artist_mbid IN ({placeholders})
+                  AND relationship_type = ?
+                ORDER BY work_title
+                LIMIT ?
+            """, [*mbids, creator_type, limit])
+        else:
+            cursor.execute(f"""
+                SELECT
+                    work_mbid,
+                    work_title,
+                    relationship_type,
+                    attributes,
+                    artist_mbid,
+                    artist_name
+                FROM artist_work_edges
+                WHERE artist_mbid IN ({placeholders})
+                ORDER BY work_title
+                LIMIT ?
+            """, [*mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1] or 'Unknown Work',
+                'node_type': 'work',
+                'relationship_type': row[2],
+                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
+                'begin_date': None,
+                'end_date': None,
+                'via_mbid': row[4],
+                'via_name': row[5]
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def query_work_credits(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True,
+        **kwargs
+    ) -> List[dict]:
+        """Get creators (composers/lyricists) of a work."""
+        if not mbids:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        cursor.execute(f"""
+            SELECT
+                artist_mbid,
+                artist_name,
+                relationship_type,
+                attributes,
+                work_mbid,
+                work_title
+            FROM artist_work_edges
+            WHERE work_mbid IN ({placeholders})
+            ORDER BY relationship_type, artist_name
+            LIMIT ?
+        """, [*mbids, limit])
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1] or 'Unknown Artist',
+                'node_type': 'artist',
+                'relationship_type': row[2],
+                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
+                'begin_date': None,
+                'end_date': None,
+                'via_mbid': row[4],
+                'via_name': row[5]
+            }
+            for row in cursor.fetchall()
+        ]
+
     # =========================================================================
     # Image Validation Methods
     # =========================================================================
