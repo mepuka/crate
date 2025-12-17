@@ -353,7 +353,8 @@ export function getInsightSummary(insight: Insight): string {
     case "Connection":
       return `${insight.fromArtist.name} → ${insight.toArtist.name} (${insight.connectionType})`;
     case "Link":
-      return `${insight.linkType}: ${insight.title}`;
+      // Include URL so model can detect duplicate links by URL, not just title
+      return `${insight.linkType}: ${insight.title} (${insight.url})`;
   }
 }
 

@@ -606,11 +606,29 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             Effect.withSpan("MusicAgent.outputPhase")
           );
 
+        // Debug: Log raw response value to understand what the model returned
+        yield* Effect.logDebug(
+          `Output phase raw response: ${JSON.stringify(response.value, null, 2).slice(0, 2000)}`
+        );
+
         const rawInsights =
           (response.value as any)?.insights &&
           Array.isArray((response.value as any).insights)
             ? (response.value as any).insights
             : [];
+
+        // Debug: Log if insights array is empty vs missing
+        if (!response.value) {
+          yield* Effect.logWarning("Output phase returned null/undefined value");
+        } else if (!(response.value as any).insights) {
+          yield* Effect.logWarning(
+            `Output phase missing 'insights' key. Keys present: ${Object.keys(response.value as object).join(", ")}`
+          );
+        } else if (!Array.isArray((response.value as any).insights)) {
+          yield* Effect.logWarning(
+            `Output phase 'insights' is not an array: ${typeof (response.value as any).insights}`
+          );
+        }
 
         // Add output phase token usage to the total
         const outputUsage = response.usage;

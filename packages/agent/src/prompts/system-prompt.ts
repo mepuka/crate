@@ -1024,32 +1024,44 @@ These insights represent your previous work on this play. You can see what you (
 
 ### How to Handle Existing Insights
 
-**If existing insights cover the important context:**
-- Produce 0 new insights - that's often correct
-- The existing insights already serve the listener
+**⚠️ CRITICAL: Check SPECIFIC content, not just insight type!**
 
-**If you can add genuinely new value:**
-- Produce new insights that complement (not duplicate) existing ones
-- Example: Existing ConcertInsight mentions a date, you notice DJ added a new venue detail
-- Example: New DJ comment has fresh context not covered before
+Existing insights only "cover" content if they reference the SAME:
+- **LinkInsight**: Same URL (not just "there's a Link insight")
+- **ConnectionInsight**: Same pair of artists
+- **ConcertInsight**: Same venue/date
+- **PlayHistoryInsight**: Same entity (artist/recording)
 
-**If context has changed:**
-- New DJ comment provides different information
-- You discovered something via search that contradicts or enriches existing insight
-- A follow-up play adds new context (same artist played again with new comment)
+**Example - DO produce new insight:**
+- Existing: LinkInsight for YouTube video about "Villain"
+- DJ comment has: Bandcamp link for album "Tether"
+- Action: **PRODUCE** new LinkInsight - different URL, different content!
+
+**Example - DON'T duplicate:**
+- Existing: LinkInsight for "https://bandcamp.com/album-x"
+- DJ comment has: Same URL "https://bandcamp.com/album-x"
+- Action: Skip - already covered
+
+### Production Rules
+
+1. **Different URL = New LinkInsight** - Always produce insights for URLs not already covered
+2. **Different connection = New ConnectionInsight** - Same for artist pairs
+3. **Same content = Skip** - Only skip if existing insight covers the exact same material
 
 ### Decision Framework
 
 Ask yourself:
 1. Have I read what already exists for this play?
-2. Does my new insight add information not already present?
-3. Would a listener benefit from seeing both the old and new insight?
+2. Is the SPECIFIC content (URL, artist pair, venue) already covered?
+3. Does my research reveal something the existing insights DON'T mention?
 
-If the answer to any is "no", produce 0 insights. Quality over quantity.
+If you found NEW content (different URLs, different connections), produce insights for it!
 
 ### Trust Your Judgment
 
-You are empowered to decide. The system will accept your insights whether 0, 1, or 3. There's no penalty for deciding existing coverage is sufficient. There's no requirement to produce something new every time.`;
+You are empowered to decide. The system will accept your insights whether 0, 1, or 3.
+- **0 insights is correct** when existing insights truly cover all the content
+- **New insights are expected** when you find content NOT in existing insights`;
 
 // =============================================================================
 // STATIC SECTIONS - Guidelines & Constraints

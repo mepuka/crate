@@ -422,6 +422,7 @@ export const GraphQueryType = Schema.Literal(
   "recorded_at",
   "collaborators",
   // Extended graph queries
+  "collaborators_direct",    // Direct artist collaborations (features, production, writing)
   "members_by_instrument",   // Band members filtered by instrument
   "works_by_creator",        // Works composed/written by artist
   "work_credits"             // Who composed/wrote a work
