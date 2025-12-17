@@ -294,6 +294,23 @@ export class GraphStats extends Schema.Class<GraphStats>("GraphStats")({
 
 /**
  * Supported query types for graph connections
+ *
+ * **Basic queries (9):**
+ * - `band_members` - Get members of a band
+ * - `member_of` - Get bands an artist is member of
+ * - `labelmates` - Get artists on same label(s)
+ * - `label_hierarchy` - Get label ownership tree
+ * - `covers` - Get cover/live/other versions (supports version_type filter)
+ * - `artist_origin` - Get artist's origin area
+ * - `artists_from_area` - Get artists from an area
+ * - `recorded_at` - Get recordings from a place
+ * - `collaborators` - Get artists who shared bands (2-hop)
+ *
+ * **Extended queries (4):**
+ * - `collaborators_direct` - Direct collaborations (supports collaboration_type)
+ * - `members_by_instrument` - Band members by instrument (supports instrument)
+ * - `works_by_creator` - Works by composer/lyricist (supports creator_type)
+ * - `work_credits` - Who composed/wrote a work
  */
 export const GraphQueryType = Schema.Literal(
   "band_members",
@@ -314,25 +331,35 @@ export const GraphQueryType = Schema.Literal(
 export type GraphQueryType = typeof GraphQueryType.Type
 
 /**
- * Filter types for covers query
+ * Filter types for `covers` query - specifies the version type to search for.
+ * Use with query_type: "covers" to filter by specific recording attributes.
  */
 export const VersionType = Schema.Literal("cover", "live", "medley", "instrumental")
 export type VersionType = typeof VersionType.Type
 
 /**
- * Filter types for collaborators_direct query
+ * Filter types for `collaborators_direct` query - specifies collaboration category.
+ * - "featured" - Guest appearances on tracks
+ * - "production" - Producer/engineer credits
+ * - "writing" - Co-writing credits
  */
 export const CollaborationType = Schema.Literal("featured", "production", "writing")
 export type CollaborationType = typeof CollaborationType.Type
 
 /**
- * Filter types for members_by_instrument query
+ * Filter types for `members_by_instrument` query - specifies instrument category.
+ * Returns band members who played the specified instrument role.
  */
 export const InstrumentFilter = Schema.Literal("vocals", "guitar", "bass", "drums", "keys")
 export type InstrumentFilter = typeof InstrumentFilter.Type
 
 /**
- * Filter types for works_by_creator query
+ * Filter types for `works_by_creator` query - specifies creator role.
+ * - "composer" - Wrote the music
+ * - "lyricist" - Wrote the lyrics
+ * - "writer" - Combined composer/lyricist
+ * - "arranger" - Created arrangement
+ * - "orchestrator" - Orchestration credits
  */
 export const CreatorType = Schema.Literal("composer", "lyricist", "writer", "arranger", "orchestrator")
 export type CreatorType = typeof CreatorType.Type

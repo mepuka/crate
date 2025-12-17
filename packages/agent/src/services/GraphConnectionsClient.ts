@@ -1,7 +1,46 @@
 /**
  * Graph Connections API Client
  *
- * Typed HTTP client for /api/graph/connections
+ * Typed HTTP client for /api/graph/connections endpoint.
+ *
+ * ## 13 Query Types
+ *
+ * **Basic queries:**
+ * - `band_members` - Get members of a band
+ * - `member_of` - Get bands an artist is member of
+ * - `labelmates` - Get artists on same label(s)
+ * - `label_hierarchy` - Get label ownership tree
+ * - `covers` - Get cover/live/other versions (supports version_type filter)
+ * - `artist_origin` - Get artist's origin area
+ * - `artists_from_area` - Get artists from an area
+ * - `recorded_at` - Get recordings from a place
+ * - `collaborators` - Get artists who shared bands (2-hop)
+ *
+ * **Extended queries (NEW):**
+ * - `collaborators_direct` - Direct collaborations (supports collaboration_type filter)
+ * - `members_by_instrument` - Band members by instrument (supports instrument filter)
+ * - `works_by_creator` - Works by composer/lyricist (supports creator_type filter)
+ * - `work_credits` - Who composed/wrote a work
+ *
+ * ## Filter Parameters
+ *
+ * - `version_type`: "cover" | "live" | "medley" | "instrumental" (for covers)
+ * - `collaboration_type`: "featured" | "production" | "writing" (for collaborators_direct)
+ * - `instrument`: "vocals" | "guitar" | "bass" | "drums" | "keys" (for members_by_instrument)
+ * - `creator_type`: "composer" | "lyricist" | "writer" | "arranger" (for works_by_creator)
+ *
+ * @example
+ * ```ts
+ * // Basic query
+ * client.connections({ query_type: "band_members", mbids: ["band-mbid"] })
+ *
+ * // With filter
+ * client.connections({
+ *   query_type: "covers",
+ *   mbids: ["recording-mbid"],
+ *   version_type: "live"
+ * })
+ * ```
  */
 
 import { Data, Effect, Layer } from "effect";
@@ -14,7 +53,7 @@ import {
 import {
   GraphConnectionsRequest,
   GraphConnectionsResponse,
-} from "@crate/domain/graph/schemas.js";
+} from "@crate/domain/graph/schemas";
 import { makeJsonClient } from "./http-utils.js";
 import { FaissConfig } from "../config.js";
 import { GraphApiError } from "./errors.js";

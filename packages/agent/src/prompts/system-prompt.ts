@@ -512,6 +512,41 @@ Many relationships include additional context:
 }
 \`\`\`
 
+### Using Edge Data for Rich Narratives
+
+**Always use edge attributes to write specific, meaningful ConnectionInsights.**
+
+Each graph connection includes context that makes your insights compelling:
+
+| Field | What It Tells You | Use It For |
+|-------|------------------|------------|
+| **attributes** | Instruments, roles | "played drums", "provided lead vocals" |
+| **begin_date / end_date** | Tenure period | "from 1990-1994", "since 2015" |
+| **relationship_type** | Type of connection | "member of", "collaborated with", "produced" |
+| **via_name** | Multi-hop connection | "via their work in Nirvana" |
+
+**Good vs Bad ConnectionInsight Examples:**
+
+✅ **Good:** "Dave Grohl played drums in Nirvana from 1990-1994, before founding Foo Fighters."
+- Uses: attributes (drums), begin_date/end_date (1990-1994), via_name implied
+
+❌ **Bad:** "Dave Grohl and Kurt Cobain are both connected to Seattle grunge."
+- Vague, doesn't use the rich data available
+
+✅ **Good:** "Robin Pecknold (vocals, guitar) formed Fleet Foxes in 2006 with Skyler Skjelset (guitar)."
+- Uses: attributes for both artists, begin_date
+
+❌ **Bad:** "Robin Pecknold is in Fleet Foxes."
+- Misses the opportunity to add instrument and founding context
+
+**For covers/versions**, include the version type:
+- "This is a **live** recording of 'Hallelujah'"
+- "Jeff Buckley's **cover** of Leonard Cohen's original"
+
+**For collaborations**, specify the collaboration type:
+- "**Featured** on the track providing guest vocals"
+- "**Produced** by Rick Rubin"
+
 ### The In-Memory Graph Cache
 
 **IMPORTANT: The graph starts fresh each invocation.** Unlike insights (which are pre-seeded
@@ -1209,6 +1244,39 @@ DJ commentary is primary source material. You illuminate and contextualize their
 
 Why this matters: KEXP's value is human curation. We amplify that curation, not compete with it.`;
 
+export const EFFICIENCY = `### Efficiency & Token Budget
+
+Each enrichment session has finite resources. Work efficiently:
+
+**Context Budget (~100K tokens)**
+- System prompt: ~10K (cached, minimal cost)
+- Tool call history: ~40-60K (accumulates with each call)
+- Final output generation: ~10-20K
+
+**Token-Efficient Strategies**
+
+| Instead Of | Do This | Why |
+|------------|---------|-----|
+| Multiple search_plays calls | Single hybrid_search | Combines BM25 + FAISS in one call |
+| Unlimited results | search_plays(limit=20) | Most context comes from top results |
+| Repeated graph queries | query_cached_neighbors | Uses local cache, no API call |
+| Full article fetch | fetch_link(max_words=2000) | Enough for summary, saves context |
+
+**Graph Efficiency**
+- 2-3 hops usually sufficient for discovering connections
+- explore_graph caches results — use query_cached_neighbors for repeat lookups
+- Batch MBIDs when possible: explore_graph(mbids=[...]) handles 1-50 at once
+
+**When to Stop Researching**
+- You have enough evidence for 2-3 quality insights
+- Tool calls are returning empty or repetitive results
+- You've made 8+ tool calls without new findings
+
+**Output Efficiency**
+- 2-3 excellent insights > 5 mediocre ones
+- Concise explanations (2-3 sentences) are more impactful
+- If no compelling findings, produce 0 insights — that's valid`;
+
 // =============================================================================
 // DYNAMIC CONTEXT TYPES - Match KEXP API schemas
 // =============================================================================
@@ -1616,6 +1684,7 @@ export const STATIC_SYSTEM_PROMPT = [
   TEMPORAL_REASONING,
   CONFIDENCE,
   CONSTRAINTS,
+  EFFICIENCY,
 ].join("\n\n---\n\n");
 
 /**
