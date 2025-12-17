@@ -39,6 +39,42 @@ export interface NeighborWithEdge {
   readonly edge: GraphEdgeData;
 }
 
+/**
+ * Degree centrality metrics for a node
+ */
+export interface DegreeCentrality {
+  readonly inDegree: number;
+  readonly outDegree: number;
+  readonly totalDegree: number;
+}
+
+/**
+ * A node with its distance from the source in k-hop exploration
+ */
+export interface NodeWithDistance {
+  readonly node: GraphNode;
+  readonly distance: number;
+}
+
+/**
+ * Summary of an artist's relationships in the graph
+ */
+export interface RelationshipSummary {
+  readonly totalConnections: number;
+  readonly byType: ReadonlyMap<string, number>;
+  readonly topCollaborators: readonly string[];
+  readonly hasRecentActivity: boolean;
+}
+
+/**
+ * Stats about a time-windowed subgraph
+ */
+export interface TimeWindowStats {
+  readonly nodeCount: number;
+  readonly edgeCount: number;
+  readonly activeRelationships: readonly string[];
+}
+
 interface GraphState {
   readonly graph: Graph.DirectedGraph<GraphNode, GraphEdgeData>;
   readonly indexByMbid: HashMap.HashMap<Mbid, Graph.NodeIndex>;
@@ -69,6 +105,42 @@ export interface MusicGraphServiceInterface {
     })[];
   }>;
   readonly reset: () => Effect.Effect<void>;
+
+  // ==========================================================================
+  // Phase 1 Graph Algorithms
+  // ==========================================================================
+
+  /**
+   * Get degree centrality metrics for a node
+   * - inDegree: number of incoming edges (how many point to this node)
+   * - outDegree: number of outgoing edges (how many this node points to)
+   * - totalDegree: sum of in and out degree
+   */
+  readonly degreeCentrality: (mbid: Mbid) => Effect.Effect<DegreeCentrality>;
+
+  /**
+   * Get all nodes within K hops of a source node (BFS exploration)
+   * Returns nodes sorted by distance, closest first
+   */
+  readonly kHopNeighborhood: (
+    mbid: Mbid,
+    k: number
+  ) => Effect.Effect<readonly NodeWithDistance[]>;
+
+  /**
+   * Summarize an artist's relationships by type
+   * Useful for generating artist profile insights
+   */
+  readonly summarizeRelationships: (mbid: Mbid) => Effect.Effect<RelationshipSummary>;
+
+  /**
+   * Get stats about edges active during a time window
+   * Filters by beginDate/endDate overlap with [startYear, endYear]
+   */
+  readonly timeWindowStats: (
+    startYear: number,
+    endYear: number
+  ) => Effect.Effect<TimeWindowStats>;
 }
 
 export class MusicGraphService extends Context.Tag("MusicGraphService")<
@@ -285,6 +357,194 @@ const makeMusicGraphService = Effect.gen(function* () {
 
   const reset = () => Ref.set(state, emptyState());
 
+  // ==========================================================================
+  // Phase 1 Graph Algorithms
+  // ==========================================================================
+
+  /**
+   * Get degree centrality metrics for a node
+   * O(1) complexity - adjacency lists are pre-computed
+   */
+  const degreeCentrality = (mbid: Mbid): Effect.Effect<DegreeCentrality> =>
+    Ref.get(state).pipe(
+      Effect.map((s) => {
+        const idx = HashMap.get(s.indexByMbid, mbid);
+        if (Option.isNone(idx)) {
+          return { inDegree: 0, outDegree: 0, totalDegree: 0 };
+        }
+
+        const outDegree = Graph.neighborsDirected(s.graph, idx.value, "outgoing").length;
+        const inDegree = Graph.neighborsDirected(s.graph, idx.value, "incoming").length;
+
+        return {
+          inDegree,
+          outDegree,
+          totalDegree: inDegree + outDegree,
+        };
+      })
+    );
+
+  /**
+   * Get all nodes within K hops of a source node using BFS
+   * O(V+E) but limited by k - typically small
+   */
+  const kHopNeighborhood = (
+    mbid: Mbid,
+    k: number
+  ): Effect.Effect<readonly NodeWithDistance[]> =>
+    Ref.get(state).pipe(
+      Effect.map((s) => {
+        const startIdx = HashMap.get(s.indexByMbid, mbid);
+        if (Option.isNone(startIdx)) return [];
+
+        // BFS with distance tracking
+        const queue: Array<{ idx: Graph.NodeIndex; dist: number }> = [
+          { idx: startIdx.value, dist: 0 },
+        ];
+        const visited = new Set<Graph.NodeIndex>();
+        const result: NodeWithDistance[] = [];
+
+        while (queue.length > 0) {
+          const { idx, dist } = queue.shift()!;
+
+          if (visited.has(idx)) continue;
+          visited.add(idx);
+
+          // Don't include source node in results
+          if (dist > 0) {
+            const node = Graph.getNode(s.graph, idx);
+            if (Option.isSome(node)) {
+              result.push({ node: node.value, distance: dist });
+            }
+          }
+
+          // Continue BFS if within k hops
+          if (dist < k) {
+            const neighbors = Graph.neighbors(s.graph, idx);
+            for (const nIdx of neighbors) {
+              if (!visited.has(nIdx)) {
+                queue.push({ idx: nIdx, dist: dist + 1 });
+              }
+            }
+          }
+        }
+
+        return result;
+      })
+    );
+
+  /**
+   * Summarize an artist's relationships by type
+   * Aggregates edge types and identifies top collaborators
+   */
+  const summarizeRelationships = (mbid: Mbid): Effect.Effect<RelationshipSummary> =>
+    Ref.get(state).pipe(
+      Effect.map((s) => {
+        const sourceIdx = HashMap.get(s.indexByMbid, mbid);
+        if (Option.isNone(sourceIdx)) {
+          return {
+            totalConnections: 0,
+            byType: new Map(),
+            topCollaborators: [],
+            hasRecentActivity: false,
+          };
+        }
+
+        // Get all outgoing edges
+        const edgeIndices = Graph.findEdges(
+          s.graph,
+          (_, source) => source === sourceIdx.value
+        );
+
+        const byType = new Map<string, number>();
+        const collaborators: string[] = [];
+        let hasRecentActivity = false;
+        const currentYear = new Date().getFullYear();
+
+        for (const edgeIdx of edgeIndices) {
+          const edgeOpt = Graph.getEdge(s.graph, edgeIdx);
+          if (Option.isSome(edgeOpt)) {
+            const edge = edgeOpt.value;
+            const relType = edge.data.relationshipType;
+
+            // Count by type
+            byType.set(relType, (byType.get(relType) ?? 0) + 1);
+
+            // Track collaborators (band memberships and collaborations)
+            if (
+              relType === "member of band" ||
+              relType === "collaboration" ||
+              relType.includes("member")
+            ) {
+              const targetNode = Graph.getNode(s.graph, edge.target);
+              if (Option.isSome(targetNode)) {
+                collaborators.push(targetNode.value.name);
+              }
+            }
+
+            // Check for recent activity (ongoing or ended within last 5 years)
+            if (!edge.data.endDate) {
+              hasRecentActivity = true;
+            } else {
+              const endYear = parseInt(edge.data.endDate.split("-")[0], 10);
+              if (currentYear - endYear <= 5) {
+                hasRecentActivity = true;
+              }
+            }
+          }
+        }
+
+        return {
+          totalConnections: edgeIndices.length,
+          byType,
+          topCollaborators: collaborators.slice(0, 10),
+          hasRecentActivity,
+        };
+      })
+    );
+
+  /**
+   * Get stats about edges active during a time window
+   * Filters by beginDate/endDate overlap with [startYear, endYear]
+   */
+  const timeWindowStats = (
+    startYear: number,
+    endYear: number
+  ): Effect.Effect<TimeWindowStats> =>
+    Ref.get(state).pipe(
+      Effect.map((s) => {
+        const activeNodes = new Set<Graph.NodeIndex>();
+        const activeRelationships = new Set<string>();
+        let activeEdgeCount = 0;
+
+        for (const [, edge] of Graph.entries(Graph.edges(s.graph))) {
+          // Parse dates - treat missing dates as unbounded
+          const beginStr = edge.data.beginDate;
+          const endStr = edge.data.endDate;
+
+          const begin = beginStr ? parseInt(beginStr.split("-")[0], 10) : -Infinity;
+          const end = endStr ? parseInt(endStr.split("-")[0], 10) : Infinity;
+
+          // Check if edge overlaps with time window
+          // Edge [begin, end] overlaps [startYear, endYear] if begin <= endYear && end >= startYear
+          const overlaps = begin <= endYear && end >= startYear;
+
+          if (overlaps) {
+            activeEdgeCount++;
+            activeNodes.add(edge.source);
+            activeNodes.add(edge.target);
+            activeRelationships.add(edge.data.relationshipType);
+          }
+        }
+
+        return {
+          nodeCount: activeNodes.size,
+          edgeCount: activeEdgeCount,
+          activeRelationships: [...activeRelationships].sort(),
+        };
+      })
+    );
+
   return {
     expand,
     neighbors,
@@ -292,6 +552,11 @@ const makeMusicGraphService = Effect.gen(function* () {
     path,
     snapshot,
     reset,
+    // Phase 1 algorithms
+    degreeCentrality,
+    kHopNeighborhood,
+    summarizeRelationships,
+    timeWindowStats,
   } satisfies MusicGraphServiceInterface;
 });
 
