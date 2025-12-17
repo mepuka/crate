@@ -4,12 +4,16 @@
  * Wires tool definitions to their service implementations.
  * Uses @effect/ai Toolkit.toLayer() pattern for handler registration.
  *
+ * All external service calls are wrapped with retry logic for transient failures
+ * (network errors, timeouts, rate limits). See retry-policy.ts for configuration.
+ *
  * @module
  */
 
 import { Effect, pipe } from "effect";
 import { Toolkit } from "@effect/ai";
 import { CrateToolkit } from "./definitions.js";
+import { withRetry, TOOL_RETRY_CONFIGS } from "./retry-policy.js";
 import type {
   SearchPlaysParams,
   SearchPlaysResponse,
@@ -138,11 +142,15 @@ const makeSearchPlaysHandler =
         if (params.until !== undefined) timelineParams.until = params.until;
 
         // Call timeline with mapped parameters
-        const response = yield* service.timeline(timelineParams).pipe(
+        // Retry on transient failures (network errors, timeouts, rate limits)
+        const response = yield* withRetry(
+          service.timeline(timelineParams),
+          TOOL_RETRY_CONFIGS.search
+        ).pipe(
           // Map service error to success with empty results for tool robustness
           Effect.catchAll((error) =>
             Effect.gen(function* () {
-              yield* Effect.logWarning(`search_plays tool error: ${error.message}`);
+              yield* Effect.logWarning(`search_plays tool error after retries: ${error.message}`);
               yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
               return {
                 results: [],
@@ -200,28 +208,30 @@ const makeSemanticSearchHandler =
           limit: params.limit ?? 10,
         });
 
-        const response = yield* service
-          .search({
+        // Retry on transient failures (network errors, timeouts, rate limits)
+        const response = yield* withRetry(
+          service.search({
             query: params.query,
             ...(params.limit !== undefined ? { limit: params.limit } : {}),
             ...(params.offset !== undefined ? { offset: params.offset } : {}),
-          })
-          .pipe(
-            // Map service error to success with empty results for tool robustness
-            Effect.catchAll((error) =>
-              Effect.gen(function* () {
-                yield* Effect.logWarning(`semantic_search tool error: ${error.message}`);
-                yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
-                return {
-                  results: [],
-                  total: 0,
-                  query_time_ms: 0,
-                  query: params.query,
-                  _error: error.message,
-                };
-              })
-            )
-          );
+          }),
+          TOOL_RETRY_CONFIGS.search
+        ).pipe(
+          // Map service error to success with empty results for tool robustness
+          Effect.catchAll((error) =>
+            Effect.gen(function* () {
+              yield* Effect.logWarning(`semantic_search tool error after retries: ${error.message}`);
+              yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
+              return {
+                results: [],
+                total: 0,
+                query_time_ms: 0,
+                query: params.query,
+                _error: error.message,
+              };
+            })
+          )
+        );
 
         // Transform to match tool schema - uses shared toCompactPlayResult
         const results = response.results.map((play) =>
@@ -268,31 +278,33 @@ const makeHybridSearchHandler =
           faiss_weight: params.faiss_weight ?? 0.5,
         });
 
-        const response = yield* service
-          .hybridSearch({
+        // Retry on transient failures (network errors, timeouts, rate limits)
+        const response = yield* withRetry(
+          service.hybridSearch({
             query: params.query,
             ...(params.limit !== undefined ? { limit: params.limit } : {}),
             ...(params.bm25_weight !== undefined ? { bm25_weight: params.bm25_weight } : {}),
             ...(params.faiss_weight !== undefined ? { faiss_weight: params.faiss_weight } : {}),
-          })
-          .pipe(
-            // Map service error to success with empty results for tool robustness
-            Effect.catchAll((error) =>
-              Effect.gen(function* () {
-                yield* Effect.logWarning(`hybrid_search tool error: ${error.message}`);
-                yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
-                return {
-                  results: [],
-                  total: 0,
-                  query_time_ms: 0,
-                  query: params.query,
-                  bm25_weight: params.bm25_weight ?? 0.5,
-                  faiss_weight: params.faiss_weight ?? 0.5,
-                  _error: error.message,
-                };
-              })
-            )
-          );
+          }),
+          TOOL_RETRY_CONFIGS.search
+        ).pipe(
+          // Map service error to success with empty results for tool robustness
+          Effect.catchAll((error) =>
+            Effect.gen(function* () {
+              yield* Effect.logWarning(`hybrid_search tool error after retries: ${error.message}`);
+              yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
+              return {
+                results: [],
+                total: 0,
+                query_time_ms: 0,
+                query: params.query,
+                bm25_weight: params.bm25_weight ?? 0.5,
+                faiss_weight: params.faiss_weight ?? 0.5,
+                _error: error.message,
+              };
+            })
+          )
+        );
 
         // Transform results: Date -> ISO string for airdate, arrays to mutable
         const results = response.results.map((play) => ({
@@ -341,11 +353,15 @@ const makeResolveMbidHandler =
           entity_type: params.entity_type,
         });
 
-        const response = yield* service.resolve(params).pipe(
+        // Retry on transient failures (network errors, timeouts, rate limits)
+        const response = yield* withRetry(
+          service.resolve(params),
+          TOOL_RETRY_CONFIGS.resolve
+        ).pipe(
           // Map service error to success with empty results for tool robustness
           Effect.catchAll((error) =>
             Effect.gen(function* () {
-              yield* Effect.logWarning(`resolve_mbid tool error: ${error.message}`);
+              yield* Effect.logWarning(`resolve_mbid tool error after retries: ${error.message}`);
               yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
               return {
                 results: [],
@@ -390,11 +406,15 @@ const makeFetchLinkHandler =
           url: params.url,
         });
 
-        const rawResponse = yield* service.fetch(params).pipe(
+        // Retry on transient failures - external fetches can be flaky
+        const rawResponse = yield* withRetry(
+          service.fetch(params),
+          TOOL_RETRY_CONFIGS.fetch
+        ).pipe(
           // Map service error to success with error content for tool robustness
           Effect.catchAll((error) =>
             Effect.gen(function* () {
-              yield* Effect.logWarning(`fetch_link tool error: ${error.message}`);
+              yield* Effect.logWarning(`fetch_link tool error after retries: ${error.message}`);
               yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
               return {
                 url: params.url,
@@ -484,8 +504,11 @@ const makeGraphConnectionsHandler =
           mbids: params.mbids.join(","),
         });
 
-        // Call service and transform success case
-        const result = yield* service.connections(params).pipe(
+        // Retry on transient failures - graph API is a remote service
+        const result = yield* withRetry(
+          service.connections(params),
+          TOOL_RETRY_CONFIGS.graph
+        ).pipe(
           Effect.map((response) => ({
             query_type: response.query_type,
             source_mbids: response.source_mbids,
@@ -496,7 +519,7 @@ const makeGraphConnectionsHandler =
           // Map service error to success with empty results for tool robustness
           Effect.catchAll((error) =>
             Effect.gen(function* () {
-              yield* Effect.logWarning(`graph_connections tool error: ${error.message}`);
+              yield* Effect.logWarning(`graph_connections tool error after retries: ${error.message}`);
               yield* Effect.annotateCurrentSpan({ error: error.message, error_type: error._tag ?? "UnknownError" });
               return {
                 query_type: params.query_type,
@@ -537,41 +560,43 @@ const makeExploreGraphHandler =
         });
 
         // Expand returns full connection data from remote API
-        const result = yield* service
-          .expand({
+        // Retry on transient failures
+        const result = yield* withRetry(
+          service.expand({
             query_type: params.query_type,
             mbids: params.mbids,
             limit: params.limit,
             include_attributes: true,
-          })
-          .pipe(
-            Effect.map((r) => ({
-              ...r,
-              // Preserve connections for neighbor extraction
-              hasConnections: true as const,
-              _error: undefined as string | undefined,
-            })),
-            // Map service error to success with empty results for tool robustness
-            Effect.catchAll((error) =>
-              Effect.gen(function* () {
-                // Log full error details including cause for debugging
-                const cause = "cause" in error ? error.cause : undefined;
-                const causeStr = cause ? ` (cause: ${cause instanceof Error ? cause.message : String(cause)})` : "";
-                yield* Effect.logWarning(`explore_graph tool error: ${error.message}${causeStr}`);
-                yield* Effect.annotateCurrentSpan({
-                  error: error.message,
-                  error_type: error._tag ?? "UnknownError",
-                  error_cause: causeStr || undefined
-                });
-                return {
-                  newNodes: 0,
-                  newEdges: 0,
-                  hasConnections: false as const,
-                  _error: error.message,
-                };
-              })
-            )
-          );
+          }),
+          TOOL_RETRY_CONFIGS.graph
+        ).pipe(
+          Effect.map((r) => ({
+            ...r,
+            // Preserve connections for neighbor extraction
+            hasConnections: true as const,
+            _error: undefined as string | undefined,
+          })),
+          // Map service error to success with empty results for tool robustness
+          Effect.catchAll((error) =>
+            Effect.gen(function* () {
+              // Log full error details including cause for debugging
+              const cause = "cause" in error ? error.cause : undefined;
+              const causeStr = cause ? ` (cause: ${cause instanceof Error ? cause.message : String(cause)})` : "";
+              yield* Effect.logWarning(`explore_graph tool error after retries: ${error.message}${causeStr}`);
+              yield* Effect.annotateCurrentSpan({
+                error: error.message,
+                error_type: error._tag ?? "UnknownError",
+                error_cause: causeStr || undefined
+              });
+              return {
+                newNodes: 0,
+                newEdges: 0,
+                hasConnections: false as const,
+                _error: error.message,
+              };
+            })
+          )
+        );
 
         // Use connections directly from expand result - preserves all edge data!
         // No need to call neighbors() which loses relationship context.

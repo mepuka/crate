@@ -92,3 +92,13 @@ export {
   type CrateToolHandlers,
   type CrateToolServices
 } from "./handlers.js"
+
+// Retry policy for transient failure handling
+export {
+  withRetry,
+  withRetryOrDefault,
+  isRetryableError,
+  makeRetrySchedule,
+  DEFAULT_RETRY_CONFIG,
+  TOOL_RETRY_CONFIGS
+} from "./retry-policy.js"

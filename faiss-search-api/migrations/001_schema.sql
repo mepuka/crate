@@ -382,11 +382,22 @@ CREATE TABLE IF NOT EXISTS recording_work_links (
     work_mbid TEXT NOT NULL,
     work_title TEXT,
     attributes TEXT,
+    relationship_type TEXT DEFAULT 'performance',
+    is_cover INTEGER DEFAULT 0,
+    is_live INTEGER DEFAULT 0,
+    is_medley INTEGER DEFAULT 0,
+    is_instrumental INTEGER DEFAULT 0,
+    is_partial INTEGER DEFAULT 0,
     PRIMARY KEY (recording_mbid, work_mbid)
 );
 
 CREATE INDEX IF NOT EXISTS idx_rwl_recording ON recording_work_links(recording_mbid);
 CREATE INDEX IF NOT EXISTS idx_rwl_work ON recording_work_links(work_mbid);
+CREATE INDEX IF NOT EXISTS idx_rwl_type ON recording_work_links(relationship_type);
+CREATE INDEX IF NOT EXISTS idx_rwl_cover ON recording_work_links(is_cover);
+CREATE INDEX IF NOT EXISTS idx_rwl_live ON recording_work_links(is_live);
+CREATE INDEX IF NOT EXISTS idx_rwl_medley ON recording_work_links(is_medley);
+CREATE INDEX IF NOT EXISTS idx_rwl_instrumental ON recording_work_links(is_instrumental);
 
 -- Artist-to-Area edges (origins)
 CREATE TABLE IF NOT EXISTS artist_area_edges (

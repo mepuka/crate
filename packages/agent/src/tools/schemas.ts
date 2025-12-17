@@ -420,9 +420,38 @@ export const GraphQueryType = Schema.Literal(
   "artist_origin",
   "artists_from_area",
   "recorded_at",
-  "collaborators"
+  "collaborators",
+  // New expanded graph queries
+  "collaborators_direct",    // Direct artist collaborations (featured, production, writing)
+  "members_by_instrument",   // Band members filtered by instrument
+  "works_by_creator",        // Works composed/written by artist
+  "work_credits"             // Who composed/wrote a work
 )
 export type GraphQueryType = typeof GraphQueryType.Type
+
+/**
+ * Filter types for covers query - filter by version type
+ */
+export const VersionType = Schema.Literal("cover", "live", "medley", "instrumental")
+export type VersionType = typeof VersionType.Type
+
+/**
+ * Filter types for collaborators_direct query
+ */
+export const CollaborationType = Schema.Literal("featured", "production", "writing")
+export type CollaborationType = typeof CollaborationType.Type
+
+/**
+ * Filter types for members_by_instrument query
+ */
+export const InstrumentFilter = Schema.Literal("vocals", "guitar", "bass", "drums", "keys")
+export type InstrumentFilter = typeof InstrumentFilter.Type
+
+/**
+ * Filter types for works_by_creator query
+ */
+export const CreatorType = Schema.Literal("composer", "lyricist", "writer", "arranger", "orchestrator")
+export type CreatorType = typeof CreatorType.Type
 
 /**
  * Parameters for graph connections lookup
@@ -431,7 +460,7 @@ export type GraphQueryType = typeof GraphQueryType.Type
  */
 export const GraphConnectionsParams = Schema.Struct({
   query_type: GraphQueryType.annotations({
-    description: "Type of graph query to run (e.g., band_members, labelmates)"
+    description: "Type of graph query to run (e.g., band_members, labelmates, collaborators_direct)"
   }),
   mbids: Schema.Array(Schema.String).annotations({
     description: "List of MusicBrainz IDs to query (1-50)"
@@ -441,6 +470,19 @@ export const GraphConnectionsParams = Schema.Struct({
   }),
   include_attributes: Schema.optional(Schema.Boolean).annotations({
     description: "Whether to include edge attributes (default true)"
+  }),
+  // Filter parameters for specific query types
+  version_type: Schema.optional(VersionType).annotations({
+    description: "For 'covers' query: filter by version type (cover, live, medley, instrumental)"
+  }),
+  collaboration_type: Schema.optional(CollaborationType).annotations({
+    description: "For 'collaborators_direct' query: filter by collaboration type (featured, production, writing)"
+  }),
+  instrument: Schema.optional(InstrumentFilter).annotations({
+    description: "For 'members_by_instrument' query: filter by instrument (vocals, guitar, bass, drums, keys)"
+  }),
+  creator_type: Schema.optional(CreatorType).annotations({
+    description: "For 'works_by_creator' query: filter by creator role (composer, lyricist, writer, arranger)"
   })
 })
 export type GraphConnectionsParams = typeof GraphConnectionsParams.Type

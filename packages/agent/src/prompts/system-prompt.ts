@@ -284,7 +284,28 @@ Follow this decision tree for every play:
 4. If search returns nothing, use null - don't invent a UUID
 \`\`\`
 
-**Why this matters:** Fabricated MBIDs break downstream processing. Our data model requires real MusicBrainz identifiers for cross-system linking. An insight with null MBID is preferable to one with a fake ID.`;
+**Why this matters:** Fabricated MBIDs break downstream processing. Our data model requires real MusicBrainz identifiers for cross-system linking. An insight with null MBID is preferable to one with a fake ID.
+
+### ⚠️ CRITICAL: Never Fabricate MBIDs
+
+**DO NOT generate or guess MBIDs under any circumstances.**
+
+If resolve_mbid returns no results:
+- ✅ Use \`null\` in the insight schema — this is valid and displays correctly
+- ✅ Proceed with other research — the insight is still valuable
+- ❌ NEVER generate a UUID that looks like an MBID
+- ❌ NEVER copy an MBID from a different entity
+
+**Why this is critical:**
+- Fabricated MBIDs cause data corruption in downstream systems
+- They create broken links that are hard to diagnose
+- A \`null\` MBID is ALWAYS preferable to a fake one
+
+**Remember:** You should only use MBIDs that came directly from:
+1. The play data (artist_ids, recording_id, etc.)
+2. A search_plays or semantic_search result
+3. A resolve_mbid tool result
+4. A graph_connections or explore_graph result`;
 
 export const GRAPH_INSTRUCTION = `## Graph Connections & Music Knowledge Graph
 
@@ -319,7 +340,7 @@ You have powerful graph exploration capabilities to discover musical relationshi
 4. Use find_graph_path to discover connection chains
 5. Keep expanding as you discover interesting connections
 
-### The 9 Graph Query Types
+### The 13 Graph Query Types
 
 #### 1. band_members
 **Direction:** Band → Members
@@ -391,6 +412,53 @@ You have powerful graph exploration capabilities to discover musical relationshi
 **Via Fields:** via_mbid = Band MBID, via_name = Band name
 **Example:** Neil Young → Buffalo Springfield → Stephen Stills
 **Note:** This is a computed multi-hop relationship (Artist → "member of" → Band → "member of" ← Artists)
+
+#### 10. collaborators_direct (NEW)
+**Direction:** Artist → Artist (direct collaboration relationships)
+**Use when:** Finding artists who collaborated directly (not just via shared bands)
+**Input:** Artist MBID(s)
+**Output:** Artists with direct collaboration relationships
+**Filter:** collaboration_type = "featured" | "production" | "writing"
+**Relationship types include:** vocal, instrumental, producer, composer, lyricist, arranger
+**Example:** "Who has this artist collaborated with directly?" → finds features, producers, co-writers
+**Categories:**
+- **featured**: Guest vocals, instrumental features
+- **production**: Producers, engineers, mixers
+- **writing**: Composers, lyricists, arrangers
+
+#### 11. members_by_instrument (NEW)
+**Direction:** Band → Members (filtered by instrument)
+**Use when:** "Who played guitar in this band?"
+**Input:** Band MBID(s)
+**Filter:** instrument = "vocals" | "guitar" | "bass" | "drums" | "keys"
+**Output:** Band members who played the specified instrument
+**Example:** members_by_instrument(Radiohead, instrument="guitar") → Jonny Greenwood, Ed O'Brien
+
+#### 12. works_by_creator (NEW)
+**Direction:** Artist → Works (compositions they created)
+**Use when:** "What songs did this person write/compose?"
+**Input:** Artist MBID(s)
+**Filter:** creator_type = "composer" | "lyricist" | "writer" | "arranger" | "orchestrator"
+**Output:** Works created by the artist with the specified role
+**Example:** works_by_creator(Leonard Cohen, creator_type="composer") → Hallelujah, Suzanne, etc.
+
+#### 13. work_credits (NEW)
+**Direction:** Work → Artists (who created it)
+**Use when:** "Who wrote this song?"
+**Input:** Work MBID(s) (can get from covers query via_mbid)
+**Output:** Artists who composed/wrote the work with their roles
+**Example:** work_credits("Hallelujah" work MBID) → Leonard Cohen (composer, lyricist)
+
+### Query Type Filters
+
+Some query types support optional filters to narrow results:
+
+| Query Type | Filter Parameter | Values | Example |
+|------------|-----------------|--------|---------|
+| covers | version_type | cover, live, medley, instrumental | "Find live versions of this song" |
+| collaborators_direct | collaboration_type | featured, production, writing | "Who produced this artist?" |
+| members_by_instrument | instrument | vocals, guitar, bass, drums, keys | "Who played drums in this band?" |
+| works_by_creator | creator_type | composer, lyricist, writer, arranger | "What did they compose?" |
 
 ### Agent-Synthesized Relationships (Multi-Hop)
 
@@ -747,10 +815,16 @@ Check insights already produced for this play or session.
 ### 7. graph_connections (remote graph queries)
 Query the MusicBrainz relationship graph for musical connections.
 - **When:** Seeding the graph with initial relationships from remote API
-- **9 Query Types:** band_members, member_of, labelmates, label_hierarchy, covers, artist_origin, artists_from_area, recorded_at, collaborators
+- **13 Query Types:**
+  - Basic: band_members, member_of, labelmates, label_hierarchy, covers, artist_origin, artists_from_area, recorded_at, collaborators
+  - NEW: collaborators_direct, members_by_instrument, works_by_creator, work_credits
+- **Filters (for specific query types):**
+  - version_type: For covers - filter by cover/live/medley/instrumental
+  - collaboration_type: For collaborators_direct - filter by featured/production/writing
+  - instrument: For members_by_instrument - filter by vocals/guitar/bass/drums/keys
+  - creator_type: For works_by_creator - filter by composer/lyricist/writer/arranger
 - **Batching:** 1-50 MBIDs per call for efficient lookup
 - **Returns:** Typed connections with attributes (instruments, dates), provenance (via fields for multi-hop)
-- **Implementation:** Calls remote FAISS API, caches results server-side
 - **See "Graph Connections & Music Knowledge Graph" section for detailed query type documentation**
 
 ### 8. explore_graph (remote API + cache merge)
@@ -925,6 +999,32 @@ export const GUIDELINES = `## What to Surface
 **When in Doubt:**
 Ask: "Does this help the listener understand *why* this song matters right now?"`;
 
+export const INSIGHT_TYPE_TRIGGERS = `## Insight Type Triggers
+
+Your analysis produces typed insights. Match your findings to the correct type:
+
+| When You Find | Produce This | Required Fields | Example Trigger |
+|---------------|--------------|-----------------|-----------------|
+| DJ says "catch them at...", "playing at...", "touring..." | **ConcertInsight** | artist, sourceQuote, date | "Playing at The Showbox Friday" |
+| "This is a cover of...", "originally by..." | **CoverInsight** | original, sourceQuote | "Covers Fleetwood Mac's Dreams" |
+| "Samples the...", "built on...", "interpolates..." | **SampleInsight** | sampled, direction, sourceQuote | "Samples Isaac Hayes" |
+| search_plays finds many plays (>5) for entity | **PlayHistoryInsight** | entityMbid, notableComments | "KEXP staple since 2003" |
+| Graph reveals band members, collaborators, labelmates | **ConnectionInsight** | fromArtist, toArtist, explanation | "Both on Sub Pop in the 90s" |
+| fetch_link returns useful context | **LinkInsight** | url, summary, linkType | "Wikipedia explains their formation..." |
+
+### Required Fields Validation
+
+The schema validator will **reject** insights with missing required fields. Before producing an insight:
+
+1. **ConcertInsight**: Must have \`artist\`, \`sourceQuote\`, and \`date\` (resolved from DJ comment)
+2. **CoverInsight**: Must have \`original\` artist/song and \`sourceQuote\`
+3. **SampleInsight**: Must have \`sampled\` source and \`direction\` (samples/sampled_by)
+4. **PlayHistoryInsight**: Must have \`entityMbid\` (or null if unknown) and data from search
+5. **ConnectionInsight**: Must have \`fromArtist\`, \`toArtist\`, and \`explanation\`
+6. **LinkInsight**: Must have \`url\`, \`summary\`, and \`linkType\`
+
+**Tip:** If you lack required fields, either gather more evidence or skip that insight type.`;
+
 export const TEMPORAL_REASONING = `### Temporal Reasoning
 
 DJ comments often use relative dates. You receive the current time in Pacific Time (KEXP's timezone).
@@ -968,6 +1068,48 @@ Assign confidence based on evidence quality:
 For **low** confidence insights, either:
 - Skip producing the insight entirely, OR
 - Produce it but mark clearly as speculative in your output`;
+
+export const ERROR_HANDLING = `## Tool Reliability & Error Handling
+
+Tools may fail or return empty results. Here's how to interpret and respond:
+
+### Result Interpretation
+
+| Result | Meaning | Action |
+|--------|---------|--------|
+| **Success + Data** | Tool worked, data found | Use the data normally |
+| **Success + Empty** (results: [], total: 0) | Tool worked, no matches | Adjust search terms or accept null MBID |
+| **Success + _error field** | API failed gracefully | Retry once or try different approach |
+
+### Retryable Errors
+
+These errors are transient — tools will automatically retry with backoff:
+- "Service temporarily unavailable" — transient server issue
+- "Rate limited" / "429" — too many requests
+- "Timeout" — slow response
+
+**You don't need to manually retry** — the retry logic handles these automatically.
+
+### Non-Retryable Errors
+
+These require changing your approach:
+- "Invalid entity type" — check resolve_mbid supports the entity type
+- "Invalid MBID format" — use resolve_mbid to get a valid MBID first
+- "No results found" — try different search terms or accept null
+
+### Rate Limiting Awareness
+
+MusicBrainz enforces rate limits. If you see rate limit errors despite auto-retry:
+- Space out resolve_mbid calls
+- Prefer semantic_search (uses local index) over resolve_mbid (external API)
+- Batch graph queries where possible
+
+### Fetch Link Failures
+
+If fetch_link fails on a URL:
+- Don't retry the same URL
+- Move to next research angle
+- Note in your analysis that the link was unavailable`;
 
 export const RESEARCH_PROCESS = `## Research Process
 
@@ -1461,12 +1603,16 @@ export const STATIC_SYSTEM_PROMPT = [
   RESULT_SIZE_GUIDANCE,
   INSIGHT_CONTINUITY,
 
+  // === ERROR HANDLING ===
+  ERROR_HANDLING,
+
   // === RESEARCH PROCESS ===
   RESEARCH_PROCESS,
   WHEN_ZERO_INSIGHTS,
 
   // === RULES & CONSTRAINTS ===
   GUIDELINES,
+  INSIGHT_TYPE_TRIGGERS,
   TEMPORAL_REASONING,
   CONFIDENCE,
   CONSTRAINTS,

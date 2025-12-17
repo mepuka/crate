@@ -22,7 +22,7 @@ Fast API endpoint to power agent graph connection queries. Designed for sub-100m
 | `artist_label_edges` | 7.9K | artist_mbid, label_mbid |
 | `artist_work_edges` | 660K | artist_mbid, work_mbid, relationship_type |
 | `artist_event_edges` | 108K | artist_mbid, event_id, event_date |
-| `recording_work_links` | 60K | recording_mbid, work_mbid |
+| `recording_work_links` | 60K+ | recording_mbid, work_mbid, is_cover, is_live, is_medley, is_instrumental |
 | `artist_area_edges` | 7.5K | artist_mbid, area_mbid, area_name |
 | `area_hierarchy` | 239K | child_mbid, parent_mbid, child_name |
 | `place_recording_edges` | 2.3M | place_mbid, recording_mbid, area_name |
@@ -74,6 +74,7 @@ GraphQueryType = Literal[
 
 InstrumentFilter = Literal["vocals", "guitar", "bass", "drums", "keys"]
 CreatorType = Literal["composer", "lyricist", "writer", "arranger", "orchestrator"]
+VersionType = Literal["cover", "live", "medley", "instrumental"]
 
 class GraphConnectionsRequest(BaseModel):
     """Request for graph connections query."""
@@ -83,11 +84,13 @@ class GraphConnectionsRequest(BaseModel):
     limit: int = Field(default=20, ge=1, le=100)
     include_attributes: bool = Field(default=True,
                                      description="Include instrument/role attributes")
-    # Filter parameters for new queries
+    # Filter parameters for queries
     instrument: Optional[InstrumentFilter] = Field(
         default=None, description="Filter by instrument (for members_by_instrument)")
     creator_type: Optional[CreatorType] = Field(
         default=None, description="Filter by creator type (for works_by_creator)")
+    version_type: Optional[VersionType] = Field(
+        default=None, description="Filter by version type (for covers): cover, live, medley, instrumental")
 ```
 
 ### Response Models
@@ -261,8 +264,11 @@ LIMIT ?
 
 ### 4. covers
 
+Supports filtering by version type: `cover`, `live`, `medley`, `instrumental`
+
 ```sql
 -- Find other recordings of the same work(s)
+-- Optional: filter by version_type (cover, live, medley, instrumental)
 WITH source_works AS (
     SELECT DISTINCT work_mbid, work_title
     FROM recording_work_links
@@ -272,7 +278,13 @@ SELECT DISTINCT
     rwl.recording_mbid as mbid,
     r.song_title as name,
     'recording' as node_type,
-    'cover' as relationship_type,
+    CASE
+        WHEN rwl.is_cover = 1 THEN 'cover'
+        WHEN rwl.is_live = 1 THEN 'live'
+        WHEN rwl.is_medley = 1 THEN 'medley'
+        WHEN rwl.is_instrumental = 1 THEN 'instrumental'
+        ELSE 'version'
+    END as relationship_type,
     rwl.attributes,
     NULL as begin_date,
     NULL as end_date,
@@ -282,6 +294,7 @@ FROM recording_work_links rwl
 JOIN source_works sw ON rwl.work_mbid = sw.work_mbid
 LEFT JOIN mb_recordings r ON rwl.recording_mbid = r.recording_mbid
 WHERE rwl.recording_mbid NOT IN (?, ?, ...)  -- Exclude source recordings
+  AND rwl.is_cover = 1  -- Optional filter: is_live, is_medley, is_instrumental
 LIMIT ?
 ```
 
@@ -345,7 +358,7 @@ LIMIT ?
 ### 8. collaborators
 
 ```sql
--- Find artists who shared bands with input artist
+-- Find artists who shared bands with input artist (2-hop via member_of)
 WITH source_bands AS (
     SELECT DISTINCT target_mbid as band_mbid, target_name as band_name
     FROM artist_edges
@@ -367,6 +380,35 @@ JOIN source_bands sb ON ae.target_mbid = sb.band_mbid
 WHERE ae.source_mbid NOT IN (?, ?, ...)  -- Exclude source artists
   AND ae.relationship_type = 'member_of'
 ORDER BY ae.source_name
+LIMIT ?
+```
+
+### 8b. collaborators_direct (NEW)
+
+Supports filtering by collaboration type: `featured`, `production`, `writing`
+
+```sql
+-- Find direct artist collaborations (not via shared bands)
+-- Relationship types: vocal, instrumental, producer, composer, lyricist, etc.
+SELECT DISTINCT
+    target_mbid as mbid,
+    target_name as name,
+    'artist' as node_type,
+    relationship_type,
+    attributes,
+    begin_date,
+    end_date,
+    source_mbid as via_mbid,
+    source_name as via_name
+FROM artist_edges
+WHERE source_mbid IN (?, ?, ...)
+  AND relationship_type NOT IN ('member of band', 'member_of', 'band_member', 'subgroup')
+  AND target_type = 'Person'  -- Person-to-person only
+  -- Optional: filter by collaboration category
+  -- AND relationship_type IN ('vocal', 'instrumental', 'guest')  -- featured
+  -- AND relationship_type IN ('producer', 'engineer', 'mix')     -- production
+  -- AND relationship_type IN ('composer', 'lyricist', 'arranger') -- writing
+ORDER BY target_name
 LIMIT ?
 ```
 
@@ -703,4 +745,44 @@ Agent thinking:
 2. graph_connections(query_type="work_credits", mbids=["work-mbid"])
 
 Result: Composer: John Lennon, Lyricist: Paul McCartney
+```
+
+```
+User: Are there any live versions of this song?
+
+Agent thinking:
+1. Get recording MBID from current play
+2. graph_connections(query_type="covers", mbids=["rec-mbid"], version_type="live")
+
+Result: 3 live recordings found - "Hallelujah (Live at Glastonbury)", "Hallelujah (MTV Unplugged)", ...
+```
+
+```
+User: Who has covered this song?
+
+Agent thinking:
+1. Get recording MBID from current play
+2. graph_connections(query_type="covers", mbids=["rec-mbid"], version_type="cover")
+
+Result: 47 cover versions found - Jeff Buckley, k.d. lang, Rufus Wainwright, ...
+```
+
+```
+User: Who has this artist collaborated with?
+
+Agent thinking:
+1. Get artist MBID
+2. graph_connections(query_type="collaborators_direct", mbids=["artist-mbid"])
+
+Result: Direct collaborations found - featured with Alicia Keys (vocal), produced by Danger Mouse, ...
+```
+
+```
+User: What producers has this artist worked with?
+
+Agent thinking:
+1. Get artist MBID
+2. graph_connections(query_type="collaborators_direct", mbids=["artist-mbid"], collaboration_type="production")
+
+Result: Production collaborators - Rick Rubin, Danger Mouse, Nigel Godrich, ...
 ```

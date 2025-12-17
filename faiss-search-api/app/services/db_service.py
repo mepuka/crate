@@ -1458,14 +1458,36 @@ class DatabaseService:
         self,
         mbids: List[str],
         limit: int = 20,
-        include_attributes: bool = True
+        include_attributes: bool = True,
+        version_type: str = None,  # Filter: 'cover', 'live', 'medley', 'instrumental'
+        **kwargs  # Accept additional kwargs for API compatibility
     ) -> List[dict]:
-        """Get other recordings of the same work(s) - cover versions."""
+        """Get other recordings of the same work(s) - cover/live/other versions.
+
+        Args:
+            mbids: Recording MBIDs to find versions of
+            limit: Maximum results to return
+            include_attributes: Whether to include attribute array
+            version_type: Optional filter - 'cover', 'live', 'medley', 'instrumental'
+                         If None, returns all versions
+        """
         if not mbids:
             return []
 
         placeholders = ','.join('?' * len(mbids))
         cursor = self.conn.cursor()
+
+        # Build version type filter
+        version_filter = ""
+        if version_type:
+            filter_map = {
+                'cover': 'rwl.is_cover = 1',
+                'live': 'rwl.is_live = 1',
+                'medley': 'rwl.is_medley = 1',
+                'instrumental': 'rwl.is_instrumental = 1',
+            }
+            if version_type in filter_map:
+                version_filter = f"AND {filter_map[version_type]}"
 
         cursor.execute(f"""
             WITH source_works AS (
@@ -1478,28 +1500,44 @@ class DatabaseService:
                 COALESCE(r.song_title, rwl.work_title) as name,
                 rwl.attributes,
                 sw.work_mbid,
-                sw.work_title
+                sw.work_title,
+                rwl.is_cover,
+                rwl.is_live,
+                rwl.is_medley,
+                rwl.is_instrumental
             FROM recording_work_links rwl
             JOIN source_works sw ON rwl.work_mbid = sw.work_mbid
             LEFT JOIN mb_recordings r ON rwl.recording_mbid = r.recording_mbid
             WHERE rwl.recording_mbid NOT IN ({placeholders})
+            {version_filter}
             LIMIT ?
         """, [*mbids, *mbids, limit])
 
-        return [
-            {
+        results = []
+        for row in cursor.fetchall():
+            # Determine relationship type based on flags
+            rel_type = 'version'  # default
+            if row[5]:  # is_cover
+                rel_type = 'cover'
+            elif row[6]:  # is_live
+                rel_type = 'live'
+            elif row[7]:  # is_medley
+                rel_type = 'medley'
+            elif row[8]:  # is_instrumental
+                rel_type = 'instrumental'
+
+            results.append({
                 'mbid': row[0],
                 'name': row[1] or 'Unknown',
                 'node_type': 'recording',
-                'relationship_type': 'cover',
+                'relationship_type': rel_type,
                 'attributes': json.loads(row[2]) if row[2] and include_attributes else None,
                 'begin_date': None,
                 'end_date': None,
                 'via_mbid': row[3],
                 'via_name': row[4]
-            }
-            for row in cursor.fetchall()
-        ]
+            })
+        return results
 
     def query_artist_origin(
         self,
@@ -1678,6 +1716,100 @@ class DatabaseService:
                 'end_date': row[4],
                 'via_mbid': row[5],
                 'via_name': row[6]
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def query_collaborators_direct(
+        self,
+        mbids: List[str],
+        limit: int = 20,
+        include_attributes: bool = True,
+        collaboration_type: str = None,  # Filter: 'featured', 'production', 'writing'
+        **kwargs  # Accept additional kwargs for API compatibility
+    ) -> List[dict]:
+        """Get direct artist collaborations (not via shared band membership).
+
+        Finds artists who have direct relationships like:
+        - Featured performances (vocal, instrumental)
+        - Production relationships (producer, engineer, mix)
+        - Writing collaborations (composer, lyricist, arranger)
+        - Direct collaborations
+
+        Args:
+            mbids: Artist MBIDs to find collaborators for
+            limit: Maximum results
+            include_attributes: Include relationship attributes
+            collaboration_type: Optional filter - 'featured', 'production', 'writing', 'all'
+        """
+        if not mbids:
+            return []
+
+        placeholders = ','.join('?' * len(mbids))
+        cursor = self.conn.cursor()
+
+        # Define collaboration relationship types by category
+        # These exclude band membership relationships
+        collaboration_types = {
+            'featured': ['vocal', 'vocals', 'instrumental', 'performer', 'guest'],
+            'production': ['producer', 'engineer', 'mix', 'mastering', 'recording'],
+            'writing': ['composer', 'lyricist', 'arranger', 'orchestrator', 'writer'],
+            'other': ['collaboration', 'tribute', 'personal relationship'],
+        }
+
+        # Build type filter
+        type_filter = ""
+        if collaboration_type and collaboration_type in collaboration_types:
+            types = collaboration_types[collaboration_type]
+            type_placeholders = ','.join('?' * len(types))
+            type_filter = f"AND relationship_type IN ({type_placeholders})"
+            type_params = types
+        else:
+            # All non-band relationships
+            type_params = []
+
+        # Exclude band membership relationships
+        exclude_types = ['member of band', 'member_of', 'band_member', 'subgroup']
+
+        cursor.execute(f"""
+            SELECT DISTINCT
+                target_mbid,
+                target_name,
+                relationship_type,
+                attributes,
+                begin_date,
+                end_date,
+                source_mbid,
+                source_name,
+                target_type
+            FROM artist_edges
+            WHERE source_mbid IN ({placeholders})
+              AND relationship_type NOT IN ('member of band', 'member_of', 'band_member', 'subgroup')
+              AND target_type = 'Person'  -- Only person-to-person collaborations
+              {type_filter}
+            ORDER BY target_name
+            LIMIT ?
+        """, [*mbids, *type_params, limit] if type_params else [*mbids, limit])
+
+        # Map relationship types to categories for display
+        def categorize_relationship(rel_type: str) -> str:
+            rel_lower = rel_type.lower()
+            for category, types in collaboration_types.items():
+                if any(t in rel_lower for t in types):
+                    return category
+            return 'collaboration'
+
+        return [
+            {
+                'mbid': row[0],
+                'name': row[1] or 'Unknown',
+                'node_type': 'artist',
+                'relationship_type': row[2],  # Keep original type
+                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
+                'begin_date': row[4],
+                'end_date': row[5],
+                'via_mbid': row[6],  # Source artist
+                'via_name': row[7],  # Source artist name
             }
             for row in cursor.fetchall()
         ]

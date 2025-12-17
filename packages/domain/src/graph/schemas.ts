@@ -304,9 +304,38 @@ export const GraphQueryType = Schema.Literal(
   "artist_origin",
   "artists_from_area",
   "recorded_at",
-  "collaborators"
+  "collaborators",
+  // New expanded graph queries
+  "collaborators_direct",    // Direct artist collaborations (featured, production, writing)
+  "members_by_instrument",   // Band members filtered by instrument
+  "works_by_creator",        // Works composed/written by artist
+  "work_credits"             // Who composed/wrote a work
 )
 export type GraphQueryType = typeof GraphQueryType.Type
+
+/**
+ * Filter types for covers query
+ */
+export const VersionType = Schema.Literal("cover", "live", "medley", "instrumental")
+export type VersionType = typeof VersionType.Type
+
+/**
+ * Filter types for collaborators_direct query
+ */
+export const CollaborationType = Schema.Literal("featured", "production", "writing")
+export type CollaborationType = typeof CollaborationType.Type
+
+/**
+ * Filter types for members_by_instrument query
+ */
+export const InstrumentFilter = Schema.Literal("vocals", "guitar", "bass", "drums", "keys")
+export type InstrumentFilter = typeof InstrumentFilter.Type
+
+/**
+ * Filter types for works_by_creator query
+ */
+export const CreatorType = Schema.Literal("composer", "lyricist", "writer", "arranger", "orchestrator")
+export type CreatorType = typeof CreatorType.Type
 
 /**
  * Request to fetch connections for one or more MBIDs
@@ -317,7 +346,12 @@ export const GraphConnectionsRequest = Schema.Struct({
   query_type: GraphQueryType,
   mbids: Schema.Array(Schema.String),
   limit: Schema.optional(Schema.Number),
-  include_attributes: Schema.optional(Schema.Boolean)
+  include_attributes: Schema.optional(Schema.Boolean),
+  // Filter parameters for specific query types
+  version_type: Schema.optional(VersionType),           // For covers query
+  collaboration_type: Schema.optional(CollaborationType), // For collaborators_direct query
+  instrument: Schema.optional(InstrumentFilter),        // For members_by_instrument query
+  creator_type: Schema.optional(CreatorType)            // For works_by_creator query
 })
 export type GraphConnectionsRequest = typeof GraphConnectionsRequest.Type
 

@@ -31,6 +31,7 @@ QUERY_HANDLERS = {
     "artists_from_area": "query_artists_from_area",
     "recorded_at": "query_recorded_at",
     "collaborators": "query_collaborators",
+    "collaborators_direct": "query_collaborators_direct",
     # New queries
     "members_by_instrument": "query_members_by_instrument",
     "works_by_creator": "query_works_by_creator",
@@ -57,12 +58,19 @@ def get_db_service():
     - `band_members`: Get members of a band (input: band MBIDs)
     - `member_of`: Get bands an artist is member of (input: artist MBIDs)
     - `labelmates`: Get artists on same label(s) (input: artist MBIDs)
-    - `covers`: Get cover versions (input: recording MBIDs)
+    - `covers`: Get cover/live/other versions (input: recording MBIDs)
     - `artist_origin`: Get artist's origin area (input: artist MBIDs)
     - `artists_from_area`: Get artists from area (input: area MBIDs or names like "Seattle")
     - `recorded_at`: Get recordings from place (input: place MBIDs or names like "Abbey Road")
-    - `collaborators`: Get artists who shared bands (input: artist MBIDs)
+    - `collaborators`: Get artists who shared bands via 2-hop traversal (input: artist MBIDs)
+    - `collaborators_direct`: Get direct artist collaborations - features, production, writing (input: artist MBIDs)
     - `label_hierarchy`: Get label ownership tree (input: label MBIDs)
+
+    **Filters:**
+    - `version_type`: For `covers` query - filter by 'cover', 'live', 'medley', 'instrumental'
+    - `collaboration_type`: For `collaborators_direct` query - filter by 'featured', 'production', 'writing'
+    - `instrument`: For `members_by_instrument` query - filter by instrument
+    - `creator_type`: For `works_by_creator` query - filter by creator role
 
     **Caching:** Results cached for 1 week (deterministic graph data).
     """,
@@ -107,6 +115,10 @@ async def query_connections(
             kwargs["instrument"] = request.instrument
         if request.creator_type:
             kwargs["creator_type"] = request.creator_type
+        if request.version_type:
+            kwargs["version_type"] = request.version_type
+        if request.collaboration_type:
+            kwargs["collaboration_type"] = request.collaboration_type
 
         results = handler(**kwargs)
 

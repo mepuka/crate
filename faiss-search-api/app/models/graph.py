@@ -21,7 +21,8 @@ GraphQueryType = Literal[
     "artist_origin",     # Get artist's origin area
     "artists_from_area", # Get artists from an area (by name or MBID)
     "recorded_at",       # Get recordings made at a place
-    "collaborators",     # Get artists who shared bands
+    "collaborators",     # Get artists who shared bands (2-hop via member_of)
+    "collaborators_direct",  # Get direct artist collaborations (featured, production, writing)
     # New instrument/role queries
     "members_by_instrument", # Get band members who play specific instrument
     # New creator credit queries
@@ -43,6 +44,19 @@ CreatorType = Literal[
     "writer",
     "arranger",
     "orchestrator",
+]
+
+VersionType = Literal[
+    "cover",
+    "live",
+    "medley",
+    "instrumental",
+]
+
+CollaborationType = Literal[
+    "featured",     # Vocal, instrumental features
+    "production",   # Producer, engineer, mix
+    "writing",      # Composer, lyricist, arranger
 ]
 
 NodeType = Literal[
@@ -90,6 +104,14 @@ class GraphConnectionsRequest(BaseModel):
     creator_type: Optional[CreatorType] = Field(
         default=None,
         description="Filter by creator type (for works_by_creator)"
+    )
+    version_type: Optional[VersionType] = Field(
+        default=None,
+        description="Filter by version type (for covers): cover, live, medley, instrumental"
+    )
+    collaboration_type: Optional[CollaborationType] = Field(
+        default=None,
+        description="Filter by collaboration type (for collaborators_direct): featured, production, writing"
     )
 
 
