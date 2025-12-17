@@ -29,8 +29,13 @@ import {
   InsightSessionService,
   faissPlayToKexpPlay,
 } from "./services/index.js";
+import {
+  parallelResearch,
+  createResearchContext,
+  type ParallelResearchDeps,
+} from "./orchestration/ParallelResearch.js";
 import { CrateToolkit } from "./tools/definitions.js";
-import { CrateToolsLive, AnthropicModelLive } from "./layers.js";
+import { CrateToolsLive, AnthropicModelLive, ServicesFull } from "./layers.js";
 import {
   InsightArray,
   InsightsResponseEncoded,
@@ -254,10 +259,15 @@ const insightToSummary = (insight: Insight): InsightSummary => {
 /**
  * Requirements for MusicAgent methods
  *
- * The agent needs LanguageModel to generate insights.
- * This requirement is exposed so callers can satisfy it at the app boundary.
+ * The agent needs:
+ * - LanguageModel to generate insights
+ * - ParallelResearchDeps for pre-research phase (covers, history, graph, context)
+ *
+ * These requirements are exposed so callers can satisfy them at the app boundary.
  */
-export type MusicAgentRequirements = LanguageModel.LanguageModel;
+export type MusicAgentRequirements =
+  | LanguageModel.LanguageModel
+  | ParallelResearchDeps;
 
 export interface MusicAgentInterface {
   /**
@@ -781,6 +791,33 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   });
                 }
 
+                // 3. Run parallel pre-research to gather context before agent loop
+                // This runs covers, history, graph, and semantic context in parallel
+                const researchSessionId = yield* insightSession.getSessionId();
+                const researchContext = createResearchContext(play, researchSessionId);
+                yield* parallelResearch(researchContext).pipe(
+                  Effect.tap((result) =>
+                    Effect.logDebug(
+                      `Parallel research complete: ${result.totalDurationMs}ms, findings: ${
+                        result.covers.findings.length +
+                        result.history.findings.length +
+                        result.graph.findings.length +
+                        result.context.findings.length
+                      }`
+                    )
+                  ),
+                  Effect.tap((result) =>
+                    Effect.annotateCurrentSpan({
+                      pre_research_duration_ms: result.totalDurationMs,
+                      pre_research_covers: result.covers.resultCount,
+                      pre_research_history: result.history.resultCount,
+                      pre_research_graph: result.graph.resultCount,
+                      pre_research_context: result.context.resultCount,
+                    })
+                  ),
+                  Effect.withSpan("MusicAgent.parallelPreResearch")
+                );
+
                 // Build prompt with full context (show, time, recent insights)
                 // The prompt includes instructions for using tools and producing insights
                 // buildPromptForKexpPlay returns Prompt.Prompt object from CratePrompt
@@ -1068,7 +1105,9 @@ export const MusicAgentLive = MusicAgent.Default;
  * Complete MusicAgent layer with Anthropic model included
  *
  * This is a fully self-contained layer for production use.
- * It provides both MusicAgent service and satisfies the LanguageModel requirement.
+ * It provides both MusicAgent service and satisfies the LanguageModel requirement,
+ * plus all services needed for parallel pre-research (GraphConnections, SearchPlays,
+ * SemanticSearch, InsightSession).
  *
  * @example
  * ```ts
@@ -1078,7 +1117,8 @@ export const MusicAgentLive = MusicAgent.Default;
  * }).pipe(Effect.provide(MusicAgentWithAnthropicLive))
  * ```
  */
-export const MusicAgentWithAnthropicLive = Layer.merge(
+export const MusicAgentWithAnthropicLive = Layer.mergeAll(
   MusicAgentLive,
-  AnthropicModelLive
+  AnthropicModelLive,
+  ServicesFull // Provides ParallelResearchDeps for pre-research phase
 );
