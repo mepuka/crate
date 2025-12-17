@@ -1636,29 +1636,35 @@ export function formatPlayData(play: PlayContext): string {
  *
  * Token count: ~8,500 tokens (85% of total system prompt)
  *
- * Section Order:
+ * Section Order (optimized for comprehension):
  * 1. Core Identity & Philosophy (who you are)
- * 2. KEXP Culture (context you need)
- * 3. Data Model (what you're working with)
- * 4. MBID Instructions (technical)
- * 5. Graph Instructions (technical)
- * 6. Insight Types (what to produce)
- * 7. Tools (how to research)
- * 8. Insight Continuity (session coherence)
- * 9. Research Process (methodology)
- * 10. Guidelines & Constraints (rules)
+ * 2. Tone (voice guidelines)
+ * 3. KEXP Culture (context you need) ← Cultural context BEFORE storytelling
+ * 4. Storytelling (narrative voice) ← Applied AFTER understanding KEXP culture
+ * 5. Data Model (what you're working with)
+ * 6. MBID Instructions (technical)
+ * 7. Graph Instructions (technical)
+ * 8. Insight Types (what to produce)
+ * 9. Tools (how to research)
+ * 10. Insight Continuity (session coherence)
+ * 11. Research Process (methodology)
+ * 12. Guidelines & Constraints (rules)
  */
 export const STATIC_SYSTEM_PROMPT = [
   // === IDENTITY (who you are) ===
   CORE_IDENTITY,
   PHILOSOPHY,
   TONE,
-  STORYTELLING,
 
   // === KEXP CONTEXT (what you need to know) ===
+  // Cultural context comes BEFORE storytelling so agent understands
+  // KEXP's voice before applying narrative guidelines
   KEXP_CULTURE,
   KEXP_DJ_COMMENT_PATTERNS,
   KEXP_ROTATION,
+
+  // === STORYTELLING (after cultural context) ===
+  STORYTELLING,
 
   // === DATA MODEL (what you're working with) ===
   DATA_MODEL,
@@ -1791,12 +1797,16 @@ export function buildSystemPrompt(ctx: PromptContext): string {
   sections.push(CORE_IDENTITY);
   sections.push(PHILOSOPHY);
   sections.push(TONE);
-  sections.push(STORYTELLING);
 
   // === KEXP CONTEXT (what you need to know) ===
+  // Cultural context comes BEFORE storytelling so agent understands
+  // KEXP's voice before applying narrative guidelines
   sections.push(KEXP_CULTURE);
   sections.push(KEXP_DJ_COMMENT_PATTERNS);
   sections.push(KEXP_ROTATION);
+
+  // === STORYTELLING (after cultural context) ===
+  sections.push(STORYTELLING);
 
   // === DATA MODEL (what you're working with) ===
   sections.push(DATA_MODEL);
