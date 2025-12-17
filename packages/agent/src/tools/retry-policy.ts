@@ -8,25 +8,34 @@
  */
 
 import { Effect, Schedule, Duration, pipe } from "effect";
-import type { ToolError } from "../services/errors.js";
 
 // =============================================================================
 // Retry Configuration
 // =============================================================================
 
 /**
+ * Retry configuration type
+ */
+export interface RetryConfig {
+  /** Maximum number of retry attempts */
+  readonly maxRetries: number
+  /** Initial delay before first retry */
+  readonly initialDelay: Duration.Duration
+  /** Maximum delay between retries */
+  readonly maxDelay: Duration.Duration
+  /** Factor for exponential backoff */
+  readonly factor: number
+}
+
+/**
  * Default retry configuration
  */
-export const DEFAULT_RETRY_CONFIG = {
-  /** Maximum number of retry attempts */
+export const DEFAULT_RETRY_CONFIG: RetryConfig = {
   maxRetries: 3,
-  /** Initial delay before first retry */
   initialDelay: Duration.millis(200),
-  /** Maximum delay between retries */
   maxDelay: Duration.seconds(10),
-  /** Factor for exponential backoff */
   factor: 2,
-} as const;
+};
 
 // =============================================================================
 // Retryable Error Detection
@@ -130,7 +139,7 @@ const getErrorMessage = (error: unknown): string => {
  * Jitter adds ±25% randomization to prevent thundering herd
  */
 export const makeRetrySchedule = (
-  config: typeof DEFAULT_RETRY_CONFIG = DEFAULT_RETRY_CONFIG
+  config: RetryConfig = DEFAULT_RETRY_CONFIG
 ): Schedule.Schedule<number, unknown, never> =>
   pipe(
     // Exponential backoff starting at initialDelay
@@ -162,9 +171,9 @@ export const makeRetrySchedule = (
  */
 export const withRetry = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
-  config: Partial<typeof DEFAULT_RETRY_CONFIG> = {}
+  config: Partial<RetryConfig> = {}
 ): Effect.Effect<A, E, R> => {
-  const fullConfig = { ...DEFAULT_RETRY_CONFIG, ...config };
+  const fullConfig: RetryConfig = { ...DEFAULT_RETRY_CONFIG, ...config };
 
   return pipe(
     effect,
@@ -195,7 +204,7 @@ export const withRetry = <A, E, R>(
 export const withRetryOrDefault = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   defaultValue: A,
-  config: Partial<typeof DEFAULT_RETRY_CONFIG> = {}
+  config: Partial<RetryConfig> = {}
 ): Effect.Effect<A, never, R> =>
   pipe(
     withRetry(effect, config),
@@ -214,7 +223,7 @@ export const withRetryOrDefault = <A, E, R>(
 /**
  * Retry configuration for different tool categories
  */
-export const TOOL_RETRY_CONFIGS = {
+export const TOOL_RETRY_CONFIGS: Record<string, RetryConfig> = {
   /** Search tools - slightly more retries since they're critical */
   search: {
     maxRetries: 4,
@@ -243,4 +252,4 @@ export const TOOL_RETRY_CONFIGS = {
     maxDelay: Duration.seconds(3),
     factor: 2,
   },
-} as const;
+};

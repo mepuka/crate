@@ -306,10 +306,9 @@ export class GraphStats extends Schema.Class<GraphStats>("GraphStats")({
  * - `recorded_at` - Get recordings from a place
  * - `collaborators` - Get artists who shared bands (2-hop)
  *
- * **Extended queries (4):**
- * - `collaborators_direct` - Direct collaborations (supports collaboration_type)
- * - `members_by_instrument` - Band members by instrument (supports instrument)
- * - `works_by_creator` - Works by composer/lyricist (supports creator_type)
+ * **Extended queries (3):**
+ * - `members_by_instrument` - Band members by instrument (supports instrument filter)
+ * - `works_by_creator` - Works by composer/lyricist (supports creator_type filter)
  * - `work_credits` - Who composed/wrote a work
  */
 export const GraphQueryType = Schema.Literal(
@@ -322,8 +321,7 @@ export const GraphQueryType = Schema.Literal(
   "artists_from_area",
   "recorded_at",
   "collaborators",
-  // New expanded graph queries
-  "collaborators_direct",    // Direct artist collaborations (featured, production, writing)
+  // Extended graph queries
   "members_by_instrument",   // Band members filtered by instrument
   "works_by_creator",        // Works composed/written by artist
   "work_credits"             // Who composed/wrote a work
@@ -337,14 +335,7 @@ export type GraphQueryType = typeof GraphQueryType.Type
 export const VersionType = Schema.Literal("cover", "live", "medley", "instrumental")
 export type VersionType = typeof VersionType.Type
 
-/**
- * Filter types for `collaborators_direct` query - specifies collaboration category.
- * - "featured" - Guest appearances on tracks
- * - "production" - Producer/engineer credits
- * - "writing" - Co-writing credits
- */
-export const CollaborationType = Schema.Literal("featured", "production", "writing")
-export type CollaborationType = typeof CollaborationType.Type
+// Note: CollaborationType was planned for collaborators_direct query but not implemented in API
 
 /**
  * Filter types for `members_by_instrument` query - specifies instrument category.
@@ -376,7 +367,6 @@ export const GraphConnectionsRequest = Schema.Struct({
   include_attributes: Schema.optional(Schema.Boolean),
   // Filter parameters for specific query types
   version_type: Schema.optional(VersionType),           // For covers query
-  collaboration_type: Schema.optional(CollaborationType), // For collaborators_direct query
   instrument: Schema.optional(InstrumentFilter),        // For members_by_instrument query
   creator_type: Schema.optional(CreatorType)            // For works_by_creator query
 })

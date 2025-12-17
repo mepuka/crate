@@ -421,8 +421,7 @@ export const GraphQueryType = Schema.Literal(
   "artists_from_area",
   "recorded_at",
   "collaborators",
-  // New expanded graph queries
-  "collaborators_direct",    // Direct artist collaborations (featured, production, writing)
+  // Extended graph queries
   "members_by_instrument",   // Band members filtered by instrument
   "works_by_creator",        // Works composed/written by artist
   "work_credits"             // Who composed/wrote a work
@@ -435,11 +434,7 @@ export type GraphQueryType = typeof GraphQueryType.Type
 export const VersionType = Schema.Literal("cover", "live", "medley", "instrumental")
 export type VersionType = typeof VersionType.Type
 
-/**
- * Filter types for collaborators_direct query
- */
-export const CollaborationType = Schema.Literal("featured", "production", "writing")
-export type CollaborationType = typeof CollaborationType.Type
+// Note: CollaborationType was planned for collaborators_direct query but not implemented in API
 
 /**
  * Filter types for members_by_instrument query
@@ -474,9 +469,6 @@ export const GraphConnectionsParams = Schema.Struct({
   // Filter parameters for specific query types
   version_type: Schema.optional(VersionType).annotations({
     description: "For 'covers' query: filter by version type (cover, live, medley, instrumental)"
-  }),
-  collaboration_type: Schema.optional(CollaborationType).annotations({
-    description: "For 'collaborators_direct' query: filter by collaboration type (featured, production, writing)"
   }),
   instrument: Schema.optional(InstrumentFilter).annotations({
     description: "For 'members_by_instrument' query: filter by instrument (vocals, guitar, bass, drums, keys)"

@@ -22,7 +22,7 @@ import type {
   EvalContext,
   ToolCallRecord,
 } from "@crate/domain/faiss/schemas";
-import { TokenUsage, calculateCost } from "@crate/domain/faiss/enrichment.js";
+import { TokenUsage, calculateCost } from "@crate/domain/faiss/enrichment";
 import {
   PromptBuilderService,
   PromptBuilderServiceFull,
@@ -487,6 +487,21 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                     }
                   );
 
+                  // Log tool calls to session for observability and handoff
+                  yield* Effect.forEach(
+                    newToolCalls,
+                    (tc) =>
+                      insightSession.logToolCall({
+                        toolName: tc.tool_name,
+                        params: tc.parameters,
+                        resultSummary: tc.result_summary ?? "no result",
+                        resultCount: tc.result_count,
+                        durationMs: tc.duration_ms ?? 0,
+                        iteration: tc.iteration,
+                      }),
+                    { discard: true }
+                  );
+
                   yield* Effect.annotateCurrentSpan({
                     tool_call_count: toolCallCount,
                   });
@@ -694,6 +709,9 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
 
                 // Reset per-play session to avoid leaking insights between plays
                 yield* insightSession.reset();
+
+                // Track this play ID in the session
+                yield* insightSession.addPlayId(play.id);
 
                 // 1. Fetch CONTEXT insights from same show window (±3 hours)
                 // This gives the agent awareness of what's been discussed on the show
