@@ -24,7 +24,9 @@
     "smoke:graph": "bun --env-file=.env src/scripts/smoke-test-graph.ts",
     "smoke:music-graph": "bun --env-file=.env src/scripts/smoke-test-music-graph.ts",
     "enrich": "bun --env-file=.env src/examples/run-enrichment.ts",
-    "enrich:debug": "DEBUG=1 bun --env-file=.env src/examples/run-enrichment.ts"
+    "enrich:debug": "DEBUG=1 bun --env-file=.env src/examples/run-enrichment.ts",
+    "verify:cloud": "bun --env-file=.env src/scripts/verify-cloud.ts",
+    "test:cloud": "vitest run test/cloud-verification.test.ts"
   },
   "dependencies": {
     "@crate/api": "workspace:^",

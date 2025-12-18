@@ -1,0 +1,163 @@
+name: Agent CI/CD
+
+on:
+  push:
+    branches: [adjunct_new, main]
+    paths:
+      - "packages/agent/**"
+      - "packages/domain/**"
+      - ".github/workflows/agent-ci.yml"
+  pull_request:
+    paths:
+      - "packages/agent/**"
+      - "packages/domain/**"
+      - ".github/workflows/agent-ci.yml"
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build domain package
+        run: pnpm --filter @crate/domain build
+
+      - name: Build agent package
+        run: pnpm --filter @crate/agent build
+
+      - name: Type check
+        run: pnpm --filter @crate/agent check
+
+      - name: Run unit tests
+        run: pnpm --filter @crate/agent exec vitest run --reporter=verbose
+        env:
+          FAISS_API_URL: https://cratemusic.duckdns.org
+
+  cloud-run-deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/adjunct_new'
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker gcr.io
+
+      - name: Build and push container
+        run: |
+          docker build \
+            -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/crate-agent:${{ github.sha }} \
+            -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/crate-agent:latest \
+            -f packages/agent/Dockerfile \
+            .
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/crate-agent:${{ github.sha }}
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/crate-agent:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy crate-agent \
+            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/crate-agent:${{ github.sha }} \
+            --region us-west1 \
+            --platform managed \
+            --no-allow-unauthenticated \
+            --service-account ${{ secrets.CLOUD_RUN_SERVICE_ACCOUNT }} \
+            --memory 1536Mi \
+            --cpu 1 \
+            --concurrency 1 \
+            --min-instances 1 \
+            --max-instances 8 \
+            --set-secrets ANTHROPIC_API_KEY=anthropic-api-key:latest \
+            --set-env-vars FAISS_API_URL=https://cratemusic.duckdns.org \
+            --timeout 900s
+
+      - name: Get Cloud Run URL
+        id: cloud_run
+        run: |
+          SERVICE_URL=$(gcloud run services describe crate-agent --region us-west1 --format='value(status.url)')
+          echo "url=$SERVICE_URL" >> $GITHUB_OUTPUT
+
+      - name: Wait for deployment
+        run: sleep 30
+
+      - name: Run health check
+        run: |
+          # Get auth token for Cloud Run
+          TOKEN=$(gcloud auth print-identity-token)
+
+          # Health check
+          HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            ${{ steps.cloud_run.outputs.url }}/health)
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::Cloud Run health check failed with status $HTTP_STATUS"
+            exit 1
+          fi
+
+          echo "Cloud Run health check passed!"
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::Agent Cloud Run deployment failed!"
+
+  verify-integration:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/adjunct_new'
+    runs-on: ubuntu-latest
+    needs: [cloud-run-deploy]
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: |
+          pnpm --filter @crate/domain build
+          pnpm --filter @crate/agent build
+
+      - name: Run cloud integration tests
+        run: pnpm --filter @crate/agent exec vitest run test/cloud-verification.test.ts --reporter=verbose
+        env:
+          FAISS_API_URL: https://cratemusic.duckdns.org
+          CLOUD_RUN_URL: ${{ needs.cloud-run-deploy.outputs.url }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}

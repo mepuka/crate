@@ -85,6 +85,11 @@ export {
   makeInsightSessionServiceTestWithData,
   type InsightSessionServiceInterface,
   type GetRecentInsightsResponse,
+  type SessionExport,
+  type SessionMode,
+  type ToolCallLogEntry,
+  type ResearchStep,
+  type EntityFacts,
 } from "./InsightSessionService.js"
 
 // MbidResolverService
@@ -130,3 +135,30 @@ export {
   type GraphNode as MusicGraphNode,
   type GraphEdgeData as MusicGraphEdgeData
 } from "./MusicGraphService.js"
+
+// Agent checkpoint service (persistent session storage)
+export {
+  AgentCheckpointService,
+  AgentCheckpointServiceLive,
+  AgentCheckpointServiceTest,
+  CheckpointError,
+  type AgentCheckpointServiceInterface,
+  type RunStatus,
+  type AgentRunSummary,
+  type AgentRunDetail,
+  type ListCheckpointsFilter,
+} from "./AgentCheckpointService.js"
+
+// Cloud verification service (health checks & smoke tests)
+export {
+  CloudVerificationService,
+  CloudVerificationServiceLive,
+  CloudVerificationServiceWithDefaults,
+  CloudVerificationConfig,
+  HealthCheckError,
+  SmokeTestError,
+  type CloudVerificationServiceInterface,
+  type ServiceHealth,
+  type SmokeTestResult,
+  type VerificationReport,
+} from "./CloudVerificationService.js"
