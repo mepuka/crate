@@ -21,7 +21,7 @@ from .services.hybrid_search_service import HybridSearchService
 from .models import (
     SearchRequest, SearchResponse, HealthResponse, PlayResult, TimelineResponse,
     EnrichmentRequest, EnrichmentResponse, BatchPlaysResponse,
-    EnrichmentData, GetEnrichmentsResponse, PlayCountResponse,
+    EnrichmentData, GetEnrichmentsResponse, PlayCountResponse, UnprocessedPlaysResponse,
     HybridSearchRequest, HybridSearchResponse, HybridPlayResult,
     StreamingLinksRequest, StreamingLinksResponse, StreamingLink
 )
@@ -881,6 +881,82 @@ async def get_play_count(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Play count query failed: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/plays/unprocessed",
+    response_model=UnprocessedPlaysResponse,
+    tags=["plays"],
+    summary="Get plays without insights",
+    description="""
+    Find plays that haven't been enriched with insights yet.
+
+    Used by Cloud Scheduler to trigger batch enrichment jobs.
+    Supports different selection strategies for varied processing patterns.
+
+    **Strategies:**
+    - `oldest_first` (default): Process oldest unprocessed plays first
+    - `newest_first`: Process most recent unprocessed plays first
+    - `random`: Random sample for varied coverage
+
+    **Example Cloud Scheduler usage:**
+    ```
+    GET /api/plays/unprocessed?limit=10&strategy=oldest_first
+    ```
+    """,
+    responses={
+        200: {"description": "Unprocessed plays retrieved successfully"},
+        500: {"description": "Query failed"}
+    }
+)
+async def get_unprocessed_plays(
+    limit: int = 50,
+    strategy: str = "oldest_first",
+    min_play_id: Optional[int] = None,
+    db_svc: DatabaseService = Depends(get_db_service)
+) -> UnprocessedPlaysResponse:
+    """
+    Get plays that don't have any insights yet.
+
+    Returns play IDs for use with the agent /enrich-batch endpoint.
+    """
+    if strategy not in ["oldest_first", "newest_first", "random"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid strategy: {strategy}. Must be one of: oldest_first, newest_first, random"
+        )
+
+    if limit < 1 or limit > 500:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Limit must be between 1 and 500"
+        )
+
+    try:
+        start_time = time.time()
+
+        result = db_svc.get_unprocessed_plays(
+            limit=limit,
+            strategy=strategy,
+            min_play_id=min_play_id
+        )
+
+        query_time = (time.time() - start_time) * 1000
+
+        return UnprocessedPlaysResponse(
+            play_ids=result['play_ids'],
+            count=result['count'],
+            total_unprocessed=result['total_unprocessed'],
+            strategy=result['strategy'],
+            query_time_ms=query_time
+        )
+
+    except Exception as e:
+        logger.error(f"Unprocessed plays query failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unprocessed plays query failed: {str(e)}"
         )
 
 

@@ -2454,6 +2454,86 @@ class DatabaseService:
 
         return result
 
+    # =========================================================================
+    # Unprocessed Plays (for Cloud Scheduler enrichment)
+    # =========================================================================
+
+    def get_unprocessed_plays(
+        self,
+        limit: int = 50,
+        strategy: str = "oldest_first",
+        min_play_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Get plays that don't have any insights yet.
+
+        Uses LEFT JOIN to find plays without corresponding insights records.
+        Supports different selection strategies for Cloud Scheduler jobs.
+
+        Args:
+            limit: Maximum number of plays to return
+            strategy: Selection strategy
+                - "oldest_first": Oldest plays without insights (default)
+                - "newest_first": Most recent plays without insights
+                - "random": Random sample of unprocessed plays
+            min_play_id: Optional minimum play ID filter (for incremental processing)
+
+        Returns:
+            Dict with:
+                - play_ids: List of play IDs to enrich
+                - count: Number of plays returned
+                - total_unprocessed: Total count of unprocessed plays
+                - strategy: The strategy used
+        """
+        cursor = self.conn.cursor()
+
+        # Build base query - find plays without any insights
+        base_where = "WHERE i.id IS NULL"
+        params = []
+
+        if min_play_id is not None:
+            base_where += " AND fp.id >= ?"
+            params.append(min_play_id)
+
+        # Get total unprocessed count first
+        count_query = f"""
+            SELECT COUNT(*)
+            FROM fact_plays fp
+            LEFT JOIN insights i ON fp.id = i.play_id AND i.deleted_at IS NULL
+            {base_where}
+        """
+        cursor.execute(count_query, params)
+        total_unprocessed = cursor.fetchone()[0]
+
+        # Build order clause based on strategy
+        if strategy == "newest_first":
+            order_clause = "ORDER BY fp.id DESC"
+        elif strategy == "random":
+            order_clause = "ORDER BY RANDOM()"
+        else:  # oldest_first (default)
+            order_clause = "ORDER BY fp.id ASC"
+
+        # Get the play IDs
+        query = f"""
+            SELECT fp.id
+            FROM fact_plays fp
+            LEFT JOIN insights i ON fp.id = i.play_id AND i.deleted_at IS NULL
+            {base_where}
+            {order_clause}
+            LIMIT ?
+        """
+        cursor.execute(query, params + [limit])
+        play_ids = [row[0] for row in cursor.fetchall()]
+
+        logger.info(f"Found {len(play_ids)} unprocessed plays (total: {total_unprocessed}, strategy: {strategy})")
+
+        return {
+            'play_ids': play_ids,
+            'count': len(play_ids),
+            'total_unprocessed': total_unprocessed,
+            'strategy': strategy
+        }
+
     def close(self):
         """Close database connection."""
         if self._conn:

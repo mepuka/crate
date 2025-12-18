@@ -15,6 +15,7 @@ import { MusicAgent } from "./MusicAgent.js";
 import { EnrichmentTrigger } from "@crate/domain/faiss/schemas";
 import { PubSubConfig } from "./config.js";
 import { PubSubAuthError, PubSubDecodeError } from "./services/errors.js";
+import { FaissClient } from "./FaissClient.js";
 
 const PubSubEnvelope = Schema.Struct({
   message: Schema.Struct({
@@ -161,5 +162,75 @@ export const router = HttpRouter.empty.pipe(
     Effect.gen(function* () {
       return yield* HttpServerResponse.json({ status: "ok" });
     })
+  ),
+  // Cloud Scheduler endpoint - auto-select and enrich unprocessed plays
+  HttpRouter.post(
+    "/enrich-batch",
+    Effect.gen(function* () {
+      // Parse optional query params from request
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const url = new URL(request.url, "http://localhost");
+      const limitParam = url.searchParams.get("limit");
+      const strategyParam = url.searchParams.get("strategy");
+
+      const limit = limitParam ? parseInt(limitParam, 10) : 10;
+      const strategy = (strategyParam as "oldest_first" | "newest_first" | "random") || "oldest_first";
+
+      // Validate limit
+      if (isNaN(limit) || limit < 1 || limit > 50) {
+        return yield* HttpServerResponse.json(
+          { status: "error", message: "Limit must be between 1 and 50" },
+          { status: 400 }
+        );
+      }
+
+      yield* Effect.logInfo(
+        `Enrich batch: fetching up to ${limit} unprocessed plays (strategy: ${strategy})`
+      );
+
+      // Get unprocessed plays from FAISS API
+      const faiss = yield* FaissClient;
+      const unprocessedResult = yield* faiss.getUnprocessedPlays(limit, strategy);
+
+      if (unprocessedResult.count === 0) {
+        yield* Effect.logInfo("No unprocessed plays found");
+        return yield* HttpServerResponse.json({
+          status: "completed",
+          message: "No unprocessed plays to enrich",
+          count: 0,
+          total_unprocessed: unprocessedResult.total_unprocessed,
+        });
+      }
+
+      yield* Effect.logInfo(
+        `Found ${unprocessedResult.count} unprocessed plays (total pending: ${unprocessedResult.total_unprocessed})`
+      );
+
+      // Run enrichment on the selected plays
+      const agent = yield* MusicAgent;
+      const result = yield* agent.enrichPlays([...unprocessedResult.play_ids]);
+
+      yield* Effect.logInfo(
+        `Batch enrichment complete: processed ${result.count} plays`
+      );
+
+      return yield* HttpServerResponse.json({
+        status: "completed",
+        play_ids: [...unprocessedResult.play_ids],
+        count: result.count,
+        total_unprocessed: unprocessedResult.total_unprocessed - unprocessedResult.count,
+        strategy: unprocessedResult.strategy,
+      });
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.gen(function* () {
+          yield* Effect.logError(`Batch enrichment failed: ${error}`);
+          return yield* HttpServerResponse.json(
+            { status: "error", message: "Batch enrichment failed" },
+            { status: 500 }
+          );
+        })
+      )
+    )
   )
 );

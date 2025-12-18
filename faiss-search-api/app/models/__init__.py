@@ -16,6 +16,7 @@ from .base import (
     EnrichmentData,
     GetEnrichmentsResponse,
     PlayCountResponse,
+    UnprocessedPlaysResponse,
     HybridSearchRequest,
     HybridSearchResponse,
     HybridPlayResult,
@@ -81,6 +82,7 @@ __all__ = [
     "EnrichmentData",
     "GetEnrichmentsResponse",
     "PlayCountResponse",
+    "UnprocessedPlaysResponse",
     "HybridSearchRequest",
     "HybridSearchResponse",
     "HybridPlayResult",
@@ -132,6 +134,21 @@ __all__ = [
     "GraphConnectionsRequest",
     "ConnectionNode",
     "GraphConnectionsResponse",
+
+    # Agent run models
+    "RunStatus",
+    "SessionMode",
+    "ToolCallLogEntry",
+    "ResearchStep",
+    "EntityFacts",
+    "AgentInsightSummary",
+    "SaveAgentRunRequest",
+    "ListAgentRunsParams",
+    "SaveAgentRunResponse",
+    "AgentRunSummary",
+    "AgentRunDetail",
+    "ListAgentRunsResponse",
+    "DeleteAgentRunResponse",
 ]
 
 # Re-export graph models
@@ -141,4 +158,21 @@ from .graph import (
     GraphConnectionsRequest,
     ConnectionNode,
     GraphConnectionsResponse,
+)
+
+# Re-export agent run models
+from .agent_runs import (
+    RunStatus,
+    SessionMode,
+    ToolCallLogEntry,
+    ResearchStep,
+    EntityFacts,
+    InsightSummary as AgentInsightSummary,
+    SaveAgentRunRequest,
+    ListAgentRunsParams,
+    SaveAgentRunResponse,
+    AgentRunSummary,
+    AgentRunDetail,
+    ListAgentRunsResponse,
+    DeleteAgentRunResponse,
 )

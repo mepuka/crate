@@ -264,3 +264,13 @@ class PlayCountResponse(BaseModel):
     entity_type: Optional[str] = Field(None, description="Type of entity filtered (artist, recording, etc)")
     mbid: Optional[str] = Field(None, description="MBID that was filtered")
     query_time_ms: float = Field(description="Query execution time in milliseconds")
+
+
+class UnprocessedPlaysResponse(BaseModel):
+    """Response for unprocessed plays query (Cloud Scheduler integration)."""
+
+    play_ids: List[int] = Field(description="List of play IDs without insights")
+    count: int = Field(description="Number of play IDs returned")
+    total_unprocessed: int = Field(description="Total count of plays without insights")
+    strategy: str = Field(description="Selection strategy used (oldest_first, newest_first, random)")
+    query_time_ms: float = Field(description="Query execution time in milliseconds")

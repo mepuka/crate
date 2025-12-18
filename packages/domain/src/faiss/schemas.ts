@@ -192,6 +192,20 @@ export class BatchPlaysResponse extends Schema.Class<BatchPlaysResponse>("BatchP
   plays: Schema.Array(PlayResult)
 }) {}
 
+/**
+ * UnprocessedPlaysResponse schema - matches FastAPI backend UnprocessedPlaysResponse model.
+ *
+ * Response for unprocessed plays query (Cloud Scheduler integration).
+ * Returns play IDs that don't have any insights yet.
+ */
+export class UnprocessedPlaysResponse extends Schema.Class<UnprocessedPlaysResponse>("UnprocessedPlaysResponse")({
+  play_ids: Schema.Array(Schema.Number),
+  count: Schema.Number,
+  total_unprocessed: Schema.Number,
+  strategy: Schema.String,
+  query_time_ms: Schema.Number
+}) {}
+
 // Export parameter schemas
 export * from "./params.js"
 

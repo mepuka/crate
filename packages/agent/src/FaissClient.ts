@@ -32,6 +32,7 @@ import {
   EvalContext,
   HybridSearchParams,
   HybridSearchResponse as HybridSearchResponseSchema,
+  UnprocessedPlaysResponse,
 } from "@crate/domain/faiss/schemas";
 import type { Insight } from "./prompts/insights.js";
 import { FaissConfig } from "./config.js";
@@ -407,6 +408,45 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                 })
             )
           )
+        ),
+
+      /**
+       * GET plays without insights (for Cloud Scheduler batch enrichment)
+       * Protected by circuit breaker
+       *
+       * Returns play IDs that haven't been enriched with insights yet.
+       * Used by Cloud Scheduler to trigger periodic batch enrichment jobs.
+       *
+       * @param limit - Maximum number of play IDs to return (default 50, max 500)
+       * @param strategy - Selection strategy: "oldest_first" (default), "newest_first", or "random"
+       * @param minPlayId - Optional minimum play ID filter for incremental processing
+       */
+      getUnprocessedPlays: (
+        limit: number = 50,
+        strategy: "oldest_first" | "newest_first" | "random" = "oldest_first",
+        minPlayId?: number
+      ) =>
+        withProtection(
+          client
+            .get(`/api/plays/unprocessed`, {
+              urlParams: {
+                limit: limit.toString(),
+                strategy,
+                ...(minPlayId !== undefined && { min_play_id: minPlayId.toString() }),
+              },
+            })
+            .pipe(
+              Effect.flatMap(
+                HttpClientResponse.schemaBodyJson(UnprocessedPlaysResponse)
+              ),
+              Effect.mapError(
+                (error) =>
+                  new FaissApiError({
+                    message: `Get unprocessed plays failed`,
+                    cause: error,
+                  })
+              )
+            )
         ),
 
       /**
