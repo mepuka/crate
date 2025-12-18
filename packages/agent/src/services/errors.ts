@@ -79,7 +79,7 @@ export class HybridSearchError extends Data.TaggedError("HybridSearchError")<{
  */
 export class MbidResolveError extends Data.TaggedError("MbidResolveError")<{
   readonly message: string
-  readonly entityType?: "artist" | "recording" | "release" | "release_group" | "label" | "place" | undefined
+  readonly entityType?: "artist" | "recording" | "release" | "release_group" | "label" | "place" | "work" | undefined
   readonly query?: string
   readonly mbid?: string
   readonly cause?: unknown

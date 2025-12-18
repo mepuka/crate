@@ -3,9 +3,12 @@
  *
  * HTTP client service for interacting with the Python FAISS search API.
  * Provides type-safe access to semantic search, timeline, and play endpoints.
+ *
+ * Includes circuit breaker protection to prevent cascading failures when
+ * the FAISS API is unavailable.
  */
 
-import { Data, Effect, Schema } from "effect";
+import { Data, Effect, Schema, Duration } from "effect";
 import {
   FetchHttpClient,
   HttpBody,
@@ -13,6 +16,7 @@ import {
   HttpClientRequest,
   HttpClientResponse,
 } from "@effect/platform";
+import * as CircuitBreaker from "./services/CircuitBreaker.js";
 import {
   BatchPlaysResponse,
   EnrichmentRequest,
@@ -49,10 +53,23 @@ export class FaissApiError extends Data.TaggedError("FaissApiError")<{
 
 /**
  * FAISS API client service
+ *
+ * Protected by circuit breaker to prevent cascading failures.
+ * Circuit opens after 5 failures, half-opens after 60s, closes after 2 successes.
  */
 export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
   effect: Effect.gen(function* () {
     const config = yield* FaissConfig;
+
+    // Create circuit breaker for FAISS API
+    const breaker = yield* CircuitBreaker.make({
+      name: "FaissAPI",
+      failureThreshold: 5,
+      successThreshold: 2,
+      resetTimeout: Duration.seconds(60),
+    });
+
+    yield* Effect.log("FaissClient: Circuit breaker initialized");
 
     // Configure HTTP client with base URL and defaults
     const client = (yield* HttpClient.HttpClient).pipe(
@@ -65,6 +82,25 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
       )
     );
 
+    /**
+     * Wrap effect with timeout and circuit breaker protection
+     */
+    const withProtection = <A, E, R>(
+      effect: Effect.Effect<A, E, R>
+    ): Effect.Effect<A, E | FaissApiError | CircuitBreaker.CircuitOpenError, R> =>
+      breaker.protect(
+        effect.pipe(
+          Effect.timeoutFail({
+            duration: config.timeout,
+            onTimeout: () =>
+              new FaissApiError({
+                message: "FAISS request timed out",
+              }),
+          })
+        )
+      );
+
+    // Legacy withTimeout for backwards compatibility (no circuit breaker)
     const withTimeout = <A, E, R>(
       effect: Effect.Effect<A, E, R>
     ): Effect.Effect<A, E | FaissApiError, R> =>
@@ -81,9 +117,10 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
     return {
       /**
        * Perform semantic search for music tracks
+       * Protected by circuit breaker
        */
       search: (request: SearchParams) =>
-        withTimeout(
+        withProtection(
           client
             .post("/api/search", {
               body: HttpBody.unsafeJson(request),
@@ -104,9 +141,10 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
 
       /**
        * Perform hybrid search (FTS5 + FAISS with RRF)
+       * Protected by circuit breaker
        */
       hybridSearch: (request: typeof HybridSearchParams.Type) =>
-        withTimeout(
+        withProtection(
           client
             .post("/api/search/hybrid", {
               body: HttpBody.unsafeJson(request),
@@ -127,9 +165,10 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
 
       /**
        * Get timeline of plays with cursor-based pagination
+       * Protected by circuit breaker
        */
       timeline: (request: TimelineParams) =>
-        withTimeout(
+        withProtection(
           client
             .get("/api/plays/timeline", {
               urlParams: request,
@@ -150,9 +189,10 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
 
       /**
        * Get a single play by ID
+       * Protected by circuit breaker
        */
       getPlay: (id: number) =>
-        withTimeout(
+        withProtection(
           client.get(`/api/plays/${id}`).pipe(
             Effect.flatMap(HttpClientResponse.schemaBodyJson(PlayResultSchema)),
             Effect.mapError(
@@ -166,7 +206,7 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
         ),
 
       /**
-       * Health check
+       * Health check (not protected by circuit breaker - used to test service)
        */
       health: () =>
         withTimeout(
@@ -190,9 +230,10 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
 
       /**
        * Fetch multiple plays by IDs
+       * Protected by circuit breaker
        */
       getPlaysBatch: (playIds: number[]) =>
-        withTimeout(
+        withProtection(
           client
             .get("/api/plays/batch", {
               urlParams: { play_ids: playIds.join(",") },
@@ -213,9 +254,10 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
 
       /**
        * POST enrichments back to FAISS API (legacy untyped endpoint)
+       * Protected by circuit breaker
        */
       postEnrichments: (request: EnrichmentRequest) =>
-        withTimeout(
+        withProtection(
           client
             .post("/api/enrichments", {
               body: HttpBody.unsafeJson(request),
@@ -236,6 +278,7 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
 
       /**
        * POST typed insights to FAISS API
+       * Protected by circuit breaker
        *
        * This endpoint provides type-safe storage with:
        * - Pydantic validation of insight structure
@@ -247,7 +290,7 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
         insights: readonly Insight[],
         evalContext?: typeof EvalContext.Type
       ) =>
-        withTimeout(
+        withProtection(
           client
             .post("/api/insights", {
               body: HttpBody.unsafeJson({
@@ -256,11 +299,23 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
               }),
           })
           .pipe(
-            Effect.flatMap(HttpClientResponse.schemaBodyJson(InsightsResponse)),
+            Effect.flatMap((response) => {
+              // For successful responses, parse as InsightsResponse
+              if (response.status >= 200 && response.status < 300) {
+                return HttpClientResponse.schemaBodyJson(InsightsResponse)(response);
+              }
+              // For error responses, read body and fail with descriptive error
+              return Effect.gen(function* () {
+                const errorBody = yield* response.text;
+                return yield* Effect.fail(
+                  new Error(`HTTP ${response.status}: ${errorBody}`)
+                );
+              });
+            }),
             Effect.mapError(
               (error) =>
                 new FaissApiError({
-                  message: "Post insights failed",
+                  message: error instanceof Error ? error.message : "Post insights failed",
                   cause: error,
                 })
             )
@@ -269,12 +324,13 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
 
       /**
        * GET insights for a specific play
+       * Protected by circuit breaker
        *
        * Fetches all previously generated insights for a play from the database.
        * Used to pre-seed session context so the agent can see its own past work.
        */
       getInsightsForPlay: (playId: number) =>
-        withTimeout(
+        withProtection(
           client.get(`/api/insights/plays/${playId}`).pipe(
             Effect.flatMap(
               HttpClientResponse.schemaBodyJson(PlayInsightsResponse)
@@ -291,13 +347,14 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
 
       /**
        * GET recent insights across all plays (temporal context)
+       * Protected by circuit breaker
        *
        * Fetches the most recent N insights from the database.
        * Used to seed session with temporal context so the agent can
        * see what it has been producing recently.
        */
       getRecentInsights: (limit: number = 20) =>
-        withTimeout(
+        withProtection(
           client.get(`/api/insights?limit=${limit}`).pipe(
             Effect.flatMap(
               HttpClientResponse.schemaBodyJson(GetInsightsResponse)
@@ -314,6 +371,7 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
 
       /**
        * GET insights from plays within a time window (same show context)
+       * Protected by circuit breaker
        *
        * Fetches insights for plays aired within ±windowHours of the given play.
        * This provides temporal context from the same DJ show, enabling the agent
@@ -328,7 +386,7 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
         windowHours: number = 3,
         limit: number = 20
       ) =>
-        withTimeout(
+        withProtection(
           client
             .get(`/api/insights/context`, {
               urlParams: {
@@ -350,10 +408,18 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
             )
           )
         ),
+
+      /**
+       * Get circuit breaker state (for monitoring)
+       */
+      getCircuitState: breaker.getState,
     };
   }),
   dependencies: [FaissConfig.Default, FetchHttpClient.layer],
 }) {}
+
+// Re-export CircuitOpenError for callers to handle
+export { CircuitOpenError } from "./services/CircuitBreaker.js";
 
 /**
  * Complete FAISS client layer with all dependencies

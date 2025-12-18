@@ -27,7 +27,8 @@ export const MbEntityType = Schema.Literal(
   "release",
   "release_group",
   "label",
-  "place"
+  "place",
+  "work"
 )
 export type MbEntityType = typeof MbEntityType.Type
 

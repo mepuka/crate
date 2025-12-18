@@ -7,7 +7,7 @@
  * @module
  */
 
-import { Context, Effect, Layer, Schema, Ref, Duration } from "effect";
+import { Context, Effect, Layer, Schema, Ref, Duration, Schedule } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
@@ -213,6 +213,19 @@ const MbPlaceSearchResult = Schema.Struct({
 });
 
 /**
+ * Work search result from MusicBrainz (compositions)
+ */
+const MbWorkSearchResult = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  disambiguation: Schema.optional(Schema.String),
+  score: Schema.Number,
+  type: Schema.optional(Schema.String),
+  language: Schema.optional(Schema.String),
+  iswcs: Schema.optional(Schema.Array(Schema.String)),
+});
+
+/**
  * Artist search response
  */
 const MbArtistSearchResponse = Schema.Struct({
@@ -252,6 +265,13 @@ const MbLabelSearchResponse = Schema.Struct({
  */
 const MbPlaceSearchResponse = Schema.Struct({
   places: Schema.Array(MbPlaceSearchResult),
+});
+
+/**
+ * Work search response
+ */
+const MbWorkSearchResponse = Schema.Struct({
+  works: Schema.Array(MbWorkSearchResult),
 });
 
 // =============================================================================
@@ -440,6 +460,21 @@ const makeMbidResolverService = Effect.gen(function* () {
     }));
 
   /**
+   * Parse work search results into MbEntityResult array
+   */
+  const parseWorkResults = (
+    response: typeof MbWorkSearchResponse.Type
+  ): ReadonlyArray<MbEntityResult> =>
+    response.works.map((work) => ({
+      mbid: work.id,
+      name: work.title,
+      type: "work" as const,
+      disambiguation: work.disambiguation ?? work.type,
+      score: work.score,
+      country: work.language,
+    }));
+
+  /**
    * Search for entities matching a query
    */
   const resolve = (
@@ -459,12 +494,22 @@ const makeMbidResolverService = Effect.gen(function* () {
       const mbEntityType = entityTypeToEndpoint(params.entity_type);
       const endpoint = `/${mbEntityType}/?query=${searchQuery}&fmt=json&limit=10`;
 
+      // Retry schedule: 3 attempts with exponential backoff (1s, 2s, 4s)
+      // This helps with transient network issues (common in Cloud Run -> MusicBrainz)
+      const retrySchedule = Schedule.exponential(Duration.seconds(1)).pipe(
+        Schedule.intersect(Schedule.recurs(2)) // 2 retries = 3 total attempts
+      );
+
       const response = yield* client.get(endpoint).pipe(
         Effect.timeout(Duration.seconds(30)),
+        Effect.tapError((error) =>
+          Effect.logWarning(`MusicBrainz request failed (will retry): ${error}`)
+        ),
+        Effect.retry(retrySchedule),
         Effect.mapError(
           (error) =>
             new MbidResolveError({
-              message: `MusicBrainz search failed: ${error}`,
+              message: `MusicBrainz search failed after retries: ${error}`,
               entityType: params.entity_type,
               query: params.query,
               cause: error,
@@ -511,6 +556,12 @@ const makeMbidResolverService = Effect.gen(function* () {
             )(response);
             return parsePlaceResults(data);
           }
+          case "work": {
+            const data = yield* HttpClientResponse.schemaBodyJson(
+              MbWorkSearchResponse
+            )(response);
+            return parseWorkResults(data);
+          }
         }
       }).pipe(
         Effect.mapError(
@@ -545,12 +596,21 @@ const makeMbidResolverService = Effect.gen(function* () {
       const mbEntityType = entityTypeToEndpoint(entityType);
       const endpoint = `/${mbEntityType}/${mbid}?fmt=json`;
 
+      // Retry schedule: 3 attempts with exponential backoff (1s, 2s, 4s)
+      const retrySchedule = Schedule.exponential(Duration.seconds(1)).pipe(
+        Schedule.intersect(Schedule.recurs(2)) // 2 retries = 3 total attempts
+      );
+
       const response = yield* client.get(endpoint).pipe(
         Effect.timeout(Duration.seconds(30)),
+        Effect.tapError((error) =>
+          Effect.logWarning(`MusicBrainz lookup failed (will retry): ${error}`)
+        ),
+        Effect.retry(retrySchedule),
         Effect.mapError(
           (error) =>
             new MbidResolveError({
-              message: `MusicBrainz lookup failed: ${error}`,
+              message: `MusicBrainz lookup failed after retries: ${error}`,
               entityType: entityType,
               mbid,
               cause: error,
@@ -750,6 +810,31 @@ const makeMbidResolverService = Effect.gen(function* () {
               sortName: undefined,
               beginDate: data["life-span"]?.begin ?? undefined,
               endDate: data["life-span"]?.end ?? undefined,
+              artistCredit: undefined,
+              firstReleaseDate: undefined,
+            } satisfies MbEntityDetails;
+          }
+          case "work": {
+            const data = yield* HttpClientResponse.schemaBodyJson(
+              Schema.Struct({
+                id: Schema.String,
+                title: Schema.String,
+                disambiguation: NullishString,
+                type: NullishString,
+                language: NullishString,
+                iswcs: Schema.optional(Schema.Array(Schema.String)),
+              })
+            )(response);
+            return {
+              mbid: data.id,
+              name: data.title,
+              type: "work" as const,
+              disambiguation: data.disambiguation ?? data.type ?? undefined,
+              country: data.language ?? undefined,
+              area: undefined,
+              sortName: undefined,
+              beginDate: undefined,
+              endDate: undefined,
               artistCredit: undefined,
               firstReleaseDate: undefined,
             } satisfies MbEntityDetails;

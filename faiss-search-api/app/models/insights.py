@@ -141,11 +141,15 @@ class SampleInsight(BaseInsight):
 # =============================================================================
 
 class PlayHistoryInsight(BaseInsight):
-    """Play history insight for an entity."""
+    """Play history insight for an entity.
+
+    Note: entityMbid is optional to handle cases where an entity
+    (artist, recording, etc.) has play history but no resolved MBID.
+    """
     model_config = {"populate_by_name": True}
 
     tag: Literal["PlayHistory"] = Field("PlayHistory", alias="_tag")
-    entityMbid: str
+    entityMbid: Optional[str] = None  # Nullable - entity may not have resolved MBID
     entityType: EntityType
     totalPlays: int
     firstPlay: Optional[PlayReference] = None
