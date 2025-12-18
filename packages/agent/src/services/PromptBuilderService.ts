@@ -112,18 +112,18 @@ export const builtPromptToAiPrompt = (prompt: BuiltPrompt): Prompt.Prompt =>
   ]);
 
 /**
- * Extract the system prompt text from a Prompt object
+ * Extract the system prompt text from a Prompt object.
+ *
+ * IMPORTANT: Concatenates ALL system messages, not just the first one.
+ * This is critical because CratePrompt.buildSystemPrompt() returns
+ * two system messages (static + dynamic) for prompt caching.
  */
 const extractSystemText = (prompt: Prompt.Prompt): string => {
-  const systemMsg = prompt.content.find((m) => m.role === "system");
-  if (
-    systemMsg &&
-    "content" in systemMsg &&
-    typeof systemMsg.content === "string"
-  ) {
-    return systemMsg.content;
-  }
-  return "";
+  return prompt.content
+    .filter((m) => m.role === "system")
+    .map((m) => ("content" in m && typeof m.content === "string" ? m.content : ""))
+    .filter(Boolean)
+    .join("\n\n");
 };
 
 /**

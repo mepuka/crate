@@ -183,9 +183,10 @@ const researchHistory = (
       )
 
     const findings: string[] = []
-    const totalPlays = result.total_count ?? 0
+    // total_count may be missing for paginated queries - fall back to results length
+    const totalPlays = result.total_count ?? result.results.length
     if (totalPlays > 0) {
-      findings.push(`${totalPlays} plays of ${context.play.artist} on KEXP`)
+      findings.push(`${totalPlays}+ plays of ${context.play.artist} on KEXP`)
 
       // Find unique songs played (other than current)
       const otherSongs = new Set(
@@ -202,7 +203,7 @@ const researchHistory = (
       source: "history" as const,
       findings,
       entityMbids: [],
-      resultCount: result.total_count ?? result.results.length,
+      resultCount: totalPlays,  // Use same calculation as above
       durationMs: Date.now() - startTime,
       ...("_error" in result && result._error ? { error: result._error } : {}),
     }

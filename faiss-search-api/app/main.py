@@ -29,6 +29,11 @@ from .models.insights import (
     CreateInsightsRequest, InsightsResponse, GetInsightsResponse,
     Insight, extract_referenced_mbids, generate_summary
 )
+from .models.agent_runs import (
+    SaveAgentRunRequest, SaveAgentRunResponse,
+    ListAgentRunsResponse, AgentRunSummary, AgentRunDetail,
+    DeleteAgentRunResponse
+)
 from .config import settings
 from .routes import embeddings, graph
 import json
@@ -1481,8 +1486,9 @@ async def image_proxy(url: str):
     allowed = domain in ALLOWED_IMAGE_DOMAINS
     if not allowed:
         # Check if it's a subdomain of an allowed domain
+        # SECURITY: Must use '.' prefix to prevent evilarchive.org from matching archive.org
         for allowed_domain in ALLOWED_IMAGE_DOMAINS:
-            if domain.endswith('.' + allowed_domain) or domain.endswith('archive.org'):
+            if domain.endswith('.' + allowed_domain):
                 allowed = True
                 break
 
@@ -1542,4 +1548,240 @@ async def image_proxy(url: str):
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to fetch image: {str(e)}"
+        )
+
+
+# =============================================================================
+# Agent Runs API - Session persistence for crash recovery and observability
+# =============================================================================
+
+@app.post(
+    "/api/agent-runs",
+    response_model=SaveAgentRunResponse,
+    tags=["agent-runs"],
+    summary="Save agent run checkpoint",
+    description="""
+    Save or update an agent session checkpoint.
+
+    Used for:
+    - Crash recovery: Resume interrupted sessions
+    - Multi-agent handoff: Pass session state between agents
+    - Observability: Audit trail of agent activity
+
+    **Status Values:**
+    - `running`: Session in progress
+    - `completed`: Finished successfully
+    - `failed`: Terminated with error
+    - `paused`: Manually paused for handoff
+    """,
+    responses={
+        200: {"description": "Checkpoint saved successfully"},
+        401: {"description": "Invalid API key"},
+        500: {"description": "Failed to save checkpoint"}
+    }
+)
+async def save_agent_run(
+    request: SaveAgentRunRequest,
+    x_api_key: str = Header(None)
+):
+    """Save or update an agent run checkpoint."""
+    global db_service
+
+    # API key check (if configured)
+    api_key = os.getenv("FAISS_API_KEY")
+    if api_key and x_api_key != api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        # Convert Pydantic model to dict
+        run_data = request.model_dump(by_alias=False)
+
+        session_id, was_created = db_service.save_agent_run(run_data)
+
+        logger.info(
+            f"{'Created' if was_created else 'Updated'} agent run: {session_id} "
+            f"({len(run_data.get('insights', []))} insights, "
+            f"{len(run_data.get('toolCalls', []))} tool calls)"
+        )
+
+        return SaveAgentRunResponse(
+            status="created" if was_created else "updated",
+            session_id=session_id,
+            insight_count=len(run_data.get('insights', [])),
+            tool_call_count=len(run_data.get('toolCalls', []))
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to save agent run: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save agent run: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/agent-runs/incomplete",
+    response_model=ListAgentRunsResponse,
+    tags=["agent-runs"],
+    summary="Find incomplete runs for recovery",
+    description="Find agent runs with status='running' that may need recovery after a crash.",
+    responses={
+        200: {"description": "List of incomplete runs"},
+        500: {"description": "Failed to fetch incomplete runs"}
+    }
+)
+async def get_incomplete_agent_runs():
+    """Find incomplete agent runs for crash recovery."""
+    global db_service
+
+    try:
+        runs = db_service.get_incomplete_agent_runs()
+
+        return ListAgentRunsResponse(
+            runs=[AgentRunSummary(**r) for r in runs],
+            total=len(runs),
+            limit=100,
+            offset=0
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to fetch incomplete runs: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch incomplete runs: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/agent-runs/{session_id}",
+    response_model=AgentRunDetail,
+    tags=["agent-runs"],
+    summary="Get agent run by session ID",
+    description="Retrieve full agent run data including insights, tool calls, and entities.",
+    responses={
+        200: {"description": "Agent run data"},
+        404: {"description": "Session not found"},
+        500: {"description": "Failed to fetch agent run"}
+    }
+)
+async def get_agent_run(session_id: str):
+    """Get a single agent run by session ID."""
+    global db_service
+
+    try:
+        run = db_service.get_agent_run(session_id)
+
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+
+        return AgentRunDetail(**run)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch agent run: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch agent run: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/agent-runs",
+    response_model=ListAgentRunsResponse,
+    tags=["agent-runs"],
+    summary="List agent runs",
+    description="""
+    List agent runs with optional filters.
+
+    **Filters:**
+    - `status`: running, completed, failed, paused
+    - `mode`: enrich, discover
+    - `play_id`: Find runs that processed a specific play
+    - `since`/`until`: Date range (ISO format)
+    """,
+    responses={
+        200: {"description": "List of agent runs"},
+        500: {"description": "Failed to list agent runs"}
+    }
+)
+async def list_agent_runs(
+    status: Optional[str] = None,
+    mode: Optional[str] = None,
+    play_id: Optional[int] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
+):
+    """List agent runs with optional filters."""
+    global db_service
+
+    try:
+        runs, total = db_service.list_agent_runs(
+            status=status,
+            mode=mode,
+            play_id=play_id,
+            since=since,
+            until=until,
+            limit=min(limit, 100),
+            offset=offset
+        )
+
+        return ListAgentRunsResponse(
+            runs=[AgentRunSummary(**r) for r in runs],
+            total=total,
+            limit=limit,
+            offset=offset
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to list agent runs: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list agent runs: {str(e)}"
+        )
+
+
+@app.delete(
+    "/api/agent-runs/{session_id}",
+    response_model=DeleteAgentRunResponse,
+    tags=["agent-runs"],
+    summary="Delete agent run",
+    description="Delete an agent run by session ID.",
+    responses={
+        200: {"description": "Agent run deleted"},
+        401: {"description": "Invalid API key"},
+        404: {"description": "Session not found"},
+        500: {"description": "Failed to delete agent run"}
+    }
+)
+async def delete_agent_run(
+    session_id: str,
+    x_api_key: str = Header(None)
+):
+    """Delete an agent run."""
+    global db_service
+
+    # API key check (if configured)
+    api_key = os.getenv("FAISS_API_KEY")
+    if api_key and x_api_key != api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        deleted = db_service.delete_agent_run(session_id)
+
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+
+        logger.info(f"Deleted agent run: {session_id}")
+        return DeleteAgentRunResponse(status="deleted", session_id=session_id)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete agent run: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete agent run: {str(e)}"
         )

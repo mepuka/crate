@@ -69,11 +69,19 @@ class NotableComment(BaseModel):
 
 Confidence = Literal["high", "medium", "low"]
 SourceType = Literal["extraction", "database", "external"]
-InsightType = Literal["Concert", "Cover", "Sample", "PlayHistory", "Connection", "Link"]
+InsightType = Literal[
+    "Concert", "Cover", "Sample", "PlayHistory", "Connection", "Link",
+    "DiscoveryArc", "LocalScene", "DJRecommendation"  # Phase 2 culture insights
+]
 EntityType = Literal["recording", "artist", "release", "release_group"]
 ConnectionType = Literal["labelmate", "collaborator", "member_of", "same_release_group"]
 LinkType = Literal["bandcamp", "wikipedia", "discogs", "article", "video", "social", "other"]
 SampleDirection = Literal["samples", "sampled_by"]
+
+# Phase 2: Culture insight type literals
+RotationStatus = Literal["Heavy Rotation", "Medium Rotation", "Light Rotation", "Library", "R/N"]
+SceneType = Literal["venue", "label", "geographic", "studio"]
+RecommendationType = Literal["personal_story", "emotional_connection", "similar_artist", "genre_bridge"]
 
 
 # =============================================================================
@@ -159,6 +167,62 @@ class ConnectionInsight(BaseInsight):
 
 
 # =============================================================================
+# Phase 2: Culture Insights (discovery arc, local scene, DJ recommendations)
+# =============================================================================
+
+class RotationPhase(BaseModel):
+    """A phase in the rotation journey."""
+    status: RotationStatus
+    firstDate: str  # ISO date
+    lastDate: str   # ISO date
+    playCount: int
+
+
+class DiscoveryArcInsight(BaseInsight):
+    """Discovery Arc - Track's journey from debut to KEXP staple."""
+    model_config = {"populate_by_name": True}
+
+    tag: Literal["DiscoveryArc"] = Field("DiscoveryArc", alias="_tag")
+    artist: ArtistRef
+    entityMbid: Optional[str] = None
+    entityType: EntityType
+    firstPlay: PlayReference
+    totalPlays: int
+    rotationJourney: List[RotationPhase]
+    currentStatus: RotationStatus
+    peakStatus: Optional[RotationStatus] = None
+    breakthroughPlay: Optional[PlayReference] = None
+    narrative: str
+
+
+class LocalSceneInsight(BaseInsight):
+    """Local Scene - Celebrate Seattle/PNW artists."""
+    model_config = {"populate_by_name": True}
+
+    tag: Literal["LocalScene"] = Field("LocalScene", alias="_tag")
+    artist: ArtistRef
+    sceneType: SceneType
+    localContext: str  # "Seattle", "Pacific Northwest", etc.
+    labelName: Optional[str] = None
+    venueName: Optional[str] = None
+    sceneArtists: Optional[List[ArtistRef]] = None
+    sceneConnection: Optional[str] = None
+    narrative: str
+
+
+class DJRecommendationInsight(BaseInsight):
+    """DJ Recommendation - Personal DJ stories and recommendations."""
+    model_config = {"populate_by_name": True}
+
+    tag: Literal["DJRecommendation"] = Field("DJRecommendation", alias="_tag")
+    recommendationType: RecommendationType
+    narrative: str
+    relatedArtist: Optional[ArtistRef] = None
+    emotionalContext: Optional[str] = None
+    sourceQuote: str
+
+
+# =============================================================================
 # External Insights (from links/web)
 # =============================================================================
 
@@ -186,7 +250,11 @@ Insight = Annotated[
         SampleInsight,
         PlayHistoryInsight,
         ConnectionInsight,
-        LinkInsight
+        LinkInsight,
+        # Phase 2: Culture insights
+        DiscoveryArcInsight,
+        LocalSceneInsight,
+        DJRecommendationInsight,
     ],
     Field(discriminator="tag")
 ]
@@ -348,6 +416,27 @@ def extract_referenced_mbids(insight: Insight) -> dict:
             elif isinstance(entity, ReleaseRef):
                 mbids["referenced_release_mbid"] = entity.mbid
 
+    # Phase 2: Culture insights
+    elif tag == "DiscoveryArc":
+        if hasattr(insight, 'artist') and insight.artist:
+            mbids["referenced_artist_mbid"] = insight.artist.mbid
+        # Also index entityMbid based on entityType
+        entity_type = insight.entityType if hasattr(insight, 'entityType') else None
+        entity_mbid = insight.entityMbid if hasattr(insight, 'entityMbid') else None
+        if entity_mbid:
+            if entity_type == "recording":
+                mbids["referenced_recording_mbid"] = entity_mbid
+            elif entity_type in ("release", "release_group"):
+                mbids["referenced_release_mbid"] = entity_mbid
+
+    elif tag == "LocalScene":
+        if hasattr(insight, 'artist') and insight.artist:
+            mbids["referenced_artist_mbid"] = insight.artist.mbid
+
+    elif tag == "DJRecommendation":
+        if hasattr(insight, 'relatedArtist') and insight.relatedArtist:
+            mbids["referenced_artist_mbid"] = insight.relatedArtist.mbid
+
     return mbids
 
 
@@ -376,5 +465,17 @@ def generate_summary(insight: Insight) -> str:
 
     elif tag == "Link":
         return f"{insight.linkType}: {insight.title}"
+
+    # Phase 2: Culture insights
+    elif tag == "DiscoveryArc":
+        return f"{insight.artist.name}: {insight.totalPlays} plays, {insight.currentStatus} (debut: {insight.firstPlay.date})"
+
+    elif tag == "LocalScene":
+        label_info = f" ({insight.labelName})" if insight.labelName else ""
+        return f"{insight.artist.name}: {insight.localContext} {insight.sceneType}{label_info}"
+
+    elif tag == "DJRecommendation":
+        narrative_preview = insight.narrative[:100] + "..." if len(insight.narrative) > 100 else insight.narrative
+        return f"{insight.recommendationType}: {narrative_preview}"
 
     return "Unknown insight"

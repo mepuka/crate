@@ -73,6 +73,55 @@ export const LinkInsight = Schema.Struct({
   linkType: Schema.Literal("bandcamp", "wikipedia", "discogs", "article", "video", "social", "other")
 });
 
+// Phase 2: Culture Insights
+export const PlayReference = Schema.Struct({
+  date: Schema.String,
+  showName: Schema.String,
+  playId: Schema.Number
+});
+
+export const RotationPhase = Schema.Struct({
+  status: Schema.Literal("Heavy Rotation", "Medium Rotation", "Light Rotation", "Library", "R/N"),
+  firstDate: Schema.String,
+  lastDate: Schema.String,
+  playCount: Schema.Number
+});
+
+export const DiscoveryArcInsight = Schema.Struct({
+  _tag: Schema.Literal("DiscoveryArc"),
+  artist: ArtistRef,
+  entityMbid: Schema.NullOr(Schema.String),
+  entityType: Schema.Literal("recording", "artist", "release", "release_group"),
+  firstPlay: PlayReference,
+  totalPlays: Schema.Number,
+  rotationJourney: Schema.Array(RotationPhase),
+  currentStatus: Schema.Literal("Heavy Rotation", "Medium Rotation", "Light Rotation", "Library", "R/N"),
+  peakStatus: Schema.NullOr(Schema.Literal("Heavy Rotation", "Medium Rotation", "Light Rotation", "Library", "R/N")),
+  breakthroughPlay: Schema.NullOr(PlayReference),
+  narrative: Schema.String
+});
+
+export const LocalSceneInsight = Schema.Struct({
+  _tag: Schema.Literal("LocalScene"),
+  artist: ArtistRef,
+  sceneType: Schema.Literal("venue", "label", "geographic", "studio"),
+  localContext: Schema.String,
+  labelName: Schema.NullOr(Schema.String),
+  venueName: Schema.NullOr(Schema.String),
+  sceneArtists: Schema.NullOr(Schema.Array(ArtistRef)),
+  sceneConnection: Schema.NullOr(Schema.String),
+  narrative: Schema.String
+});
+
+export const DJRecommendationInsight = Schema.Struct({
+  _tag: Schema.Literal("DJRecommendation"),
+  recommendationType: Schema.Literal("personal_story", "emotional_connection", "similar_artist", "genre_bridge"),
+  narrative: Schema.String,
+  relatedArtist: Schema.NullOr(ArtistRef),
+  emotionalContext: Schema.NullOr(Schema.String),
+  sourceQuote: Schema.String
+});
+
 // Discriminated Union
 export const Insight = Schema.Union(
   ConcertInsight,
@@ -80,7 +129,11 @@ export const Insight = Schema.Union(
   SampleInsight,
   PlayHistoryInsight,
   ConnectionInsight,
-  LinkInsight
+  LinkInsight,
+  // Phase 2: Culture insights
+  DiscoveryArcInsight,
+  LocalSceneInsight,
+  DJRecommendationInsight
 );
 
 export type Insight = typeof Insight.Type;

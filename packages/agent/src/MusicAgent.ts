@@ -28,6 +28,7 @@ import {
   PromptBuilderServiceFull,
   InsightSessionService,
   faissPlayToKexpPlay,
+  AgentCheckpointService,
 } from "./services/index.js";
 import {
   parallelResearch,
@@ -135,7 +136,16 @@ const insightRecordToSummary = (
 ): InsightSummary => {
   // Extract artist and track from the stored data or fall back to play info
   const data = record.data as Record<string, unknown>;
-  const artist = (data?.artist as string) || play.artist || "Unknown";
+
+  // Artist field can be a string or an object { name, mbid } depending on insight type
+  // Concert, Connection, LocalScene, DiscoveryArc use object format
+  const artistField = data?.artist;
+  const artist = typeof artistField === 'string'
+    ? artistField
+    : (artistField && typeof artistField === 'object' && 'name' in artistField)
+      ? (artistField as { name: string }).name
+      : play.artist || "Unknown";
+
   const track = (data?.song as string) || play.song || "Unknown";
 
   // Collect all referenced MBIDs
@@ -696,6 +706,32 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             play_ids: playIds.join(","),
           });
 
+          // Get optional checkpoint service for session persistence
+          const checkpointService = yield* Effect.serviceOption(AgentCheckpointService);
+
+          // Helper to save checkpoint if service available
+          const saveCheckpoint = (status: "running" | "completed" | "failed", error?: Error) =>
+            checkpointService._tag === "Some"
+              ? insightSession.exportSession().pipe(
+                  Effect.flatMap((session) =>
+                    checkpointService.value.saveCheckpoint(
+                      session,
+                      status,
+                      error ? { message: error.message, ...(error.stack ? { stack: error.stack } : {}) } : undefined
+                    )
+                  ),
+                  Effect.tap((res) =>
+                    Effect.logDebug(`Checkpoint saved: ${res.status} (${res.sessionId})`)
+                  ),
+                  Effect.catchAll((err) =>
+                    Effect.logWarning(`Failed to save checkpoint: ${err}`)
+                  )
+                )
+              : Effect.void;
+
+          // Save initial checkpoint (status: running)
+          yield* saveCheckpoint("running");
+
           // NOTE: We no longer seed with global recent insights here.
           // Instead, each play gets context-based seeding (insights from same show window)
           // This is done per-play in processPlay() below.
@@ -1070,8 +1106,30 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             plays_processed: plays.length,
           });
 
+          // Save final checkpoint (status: completed)
+          yield* saveCheckpoint("completed");
+
           return { count: totalPosted };
         }),
+        // On error, save failed checkpoint before propagating
+        Effect.tapError((error) =>
+          Effect.gen(function* () {
+            const checkpointService = yield* Effect.serviceOption(AgentCheckpointService);
+            if (checkpointService._tag === "Some") {
+              const session = yield* insightSession.exportSession();
+              const errorObj = error instanceof Error
+                ? { message: error.message, ...(error.stack ? { stack: error.stack } : {}) }
+                : { message: String(error) };
+              yield* checkpointService.value
+                .saveCheckpoint(session, "failed", errorObj)
+                .pipe(
+                  Effect.catchAll((err) =>
+                    Effect.logWarning(`Failed to save error checkpoint: ${err}`)
+                  )
+                );
+            }
+          })
+        ),
         Effect.withSpan("MusicAgent.enrichPlays")
       );
 
