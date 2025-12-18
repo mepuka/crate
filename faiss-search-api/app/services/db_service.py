@@ -1470,6 +1470,9 @@ class DatabaseService:
             include_attributes: Whether to include attribute array
             version_type: Optional filter - 'cover', 'live', 'medley', 'instrumental'
                          If None, returns all versions
+
+        Note: The attributes column stores a JSON array like ["cover"], ["live"], etc.
+              We use LIKE queries to filter since SQLite JSON functions may not be available.
         """
         if not mbids:
             return []
@@ -1477,17 +1480,15 @@ class DatabaseService:
         placeholders = ','.join('?' * len(mbids))
         cursor = self.conn.cursor()
 
-        # Build version type filter
+        # Build version type filter using JSON array pattern matching
+        # attributes column contains JSON arrays like '["cover"]', '["live"]', '["cover", "live"]'
         version_filter = ""
-        if version_type:
-            filter_map = {
-                'cover': 'rwl.is_cover = 1',
-                'live': 'rwl.is_live = 1',
-                'medley': 'rwl.is_medley = 1',
-                'instrumental': 'rwl.is_instrumental = 1',
-            }
-            if version_type in filter_map:
-                version_filter = f"AND {filter_map[version_type]}"
+        params = [*mbids, *mbids]
+        if version_type and version_type in ['cover', 'live', 'medley', 'instrumental']:
+            # Match the type anywhere in the JSON array
+            version_filter = f'AND rwl.attributes LIKE ?'
+            params.append(f'%"{version_type}"%')
+        params.append(limit)
 
         cursor.execute(f"""
             WITH source_works AS (
@@ -1500,30 +1501,34 @@ class DatabaseService:
                 COALESCE(r.song_title, rwl.work_title) as name,
                 rwl.attributes,
                 sw.work_mbid,
-                sw.work_title,
-                rwl.is_cover,
-                rwl.is_live,
-                rwl.is_medley,
-                rwl.is_instrumental
+                sw.work_title
             FROM recording_work_links rwl
             JOIN source_works sw ON rwl.work_mbid = sw.work_mbid
             LEFT JOIN mb_recordings r ON rwl.recording_mbid = r.recording_mbid
             WHERE rwl.recording_mbid NOT IN ({placeholders})
             {version_filter}
             LIMIT ?
-        """, [*mbids, *mbids, limit])
+        """, params)
 
         results = []
         for row in cursor.fetchall():
-            # Determine relationship type based on flags
+            # Parse attributes JSON to determine relationship type
+            attrs = []
+            if row[2]:
+                try:
+                    attrs = json.loads(row[2])
+                except json.JSONDecodeError:
+                    attrs = []
+
+            # Determine relationship type based on attributes
             rel_type = 'version'  # default
-            if row[5]:  # is_cover
+            if 'cover' in attrs:
                 rel_type = 'cover'
-            elif row[6]:  # is_live
+            elif 'live' in attrs:
                 rel_type = 'live'
-            elif row[7]:  # is_medley
+            elif 'medley' in attrs:
                 rel_type = 'medley'
-            elif row[8]:  # is_instrumental
+            elif 'instrumental' in attrs:
                 rel_type = 'instrumental'
 
             results.append({
@@ -1531,7 +1536,7 @@ class DatabaseService:
                 'name': row[1] or 'Unknown',
                 'node_type': 'recording',
                 'relationship_type': rel_type,
-                'attributes': json.loads(row[2]) if row[2] and include_attributes else None,
+                'attributes': attrs if include_attributes else None,
                 'begin_date': None,
                 'end_date': None,
                 'via_mbid': row[3],
@@ -2143,6 +2148,311 @@ class DatabaseService:
             'unvalidated': row[2] or 0,
             'stale': row[3] or 0
         }
+
+    # =========================================================================
+    # Agent Runs Methods
+    # =========================================================================
+
+    def save_agent_run(self, run_data: Dict[str, Any]) -> Tuple[str, bool]:
+        """
+        Save or update an agent run.
+
+        Args:
+            run_data: Agent run data with sessionId, mode, status, etc.
+
+        Returns:
+            Tuple of (session_id, was_created)
+        """
+        cursor = self.conn.cursor()
+        session_id = run_data['sessionId']
+
+        # Serialize JSON columns
+        play_ids_json = json.dumps(run_data.get('playIds', []))
+        insights_json = json.dumps(run_data.get('insights', []))
+        tool_calls_json = json.dumps(run_data.get('toolCalls', []))
+        research_steps_json = json.dumps(run_data.get('researchSteps', []))
+        entities_json = json.dumps(run_data.get('entities', []))
+
+        # Compute counts
+        insight_count = len(run_data.get('insights', []))
+        tool_call_count = len(run_data.get('toolCalls', []))
+        research_step_count = len(run_data.get('researchSteps', []))
+        entity_count = len(run_data.get('entities', []))
+
+        # Compute duration if completed
+        duration_ms = None
+        if run_data.get('completedAt') and run_data.get('startedAt'):
+            duration_ms = run_data['completedAt'] - run_data['startedAt']
+
+        # Check if exists
+        cursor.execute("SELECT 1 FROM agent_runs WHERE session_id = ?", (session_id,))
+        exists = cursor.fetchone() is not None
+
+        if exists:
+            # Update existing
+            cursor.execute("""
+                UPDATE agent_runs SET
+                    mode = ?,
+                    started_at = ?,
+                    completed_at = ?,
+                    status = ?,
+                    play_ids = ?,
+                    insights = ?,
+                    tool_calls = ?,
+                    research_steps = ?,
+                    entities = ?,
+                    error_message = ?,
+                    error_stack = ?,
+                    insight_count = ?,
+                    tool_call_count = ?,
+                    research_step_count = ?,
+                    entity_count = ?,
+                    duration_ms = ?,
+                    updated_at = datetime('now')
+                WHERE session_id = ?
+            """, (
+                run_data['mode'],
+                run_data['startedAt'],
+                run_data.get('completedAt'),
+                run_data['status'],
+                play_ids_json,
+                insights_json,
+                tool_calls_json,
+                research_steps_json,
+                entities_json,
+                run_data.get('errorMessage'),
+                run_data.get('errorStack'),
+                insight_count,
+                tool_call_count,
+                research_step_count,
+                entity_count,
+                duration_ms,
+                session_id
+            ))
+        else:
+            # Insert new
+            cursor.execute("""
+                INSERT INTO agent_runs (
+                    session_id, mode, started_at, completed_at, status,
+                    play_ids, insights, tool_calls, research_steps, entities,
+                    error_message, error_stack,
+                    insight_count, tool_call_count, research_step_count, entity_count,
+                    duration_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                session_id,
+                run_data['mode'],
+                run_data['startedAt'],
+                run_data.get('completedAt'),
+                run_data['status'],
+                play_ids_json,
+                insights_json,
+                tool_calls_json,
+                research_steps_json,
+                entities_json,
+                run_data.get('errorMessage'),
+                run_data.get('errorStack'),
+                insight_count,
+                tool_call_count,
+                research_step_count,
+                entity_count,
+                duration_ms
+            ))
+
+        # Update junction table for play lookups
+        cursor.execute("DELETE FROM agent_run_plays WHERE session_id = ?", (session_id,))
+        play_ids = run_data.get('playIds', [])
+        if play_ids:
+            cursor.executemany(
+                "INSERT INTO agent_run_plays (session_id, play_id) VALUES (?, ?)",
+                [(session_id, pid) for pid in play_ids]
+            )
+
+        self.conn.commit()
+        return session_id, not exists
+
+    def get_agent_run(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a single agent run by session ID.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Agent run dict or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT
+                session_id, mode, started_at, completed_at, status,
+                play_ids, insights, tool_calls, research_steps, entities,
+                error_message, error_stack,
+                insight_count, tool_call_count, research_step_count, entity_count,
+                duration_ms, created_at, updated_at
+            FROM agent_runs
+            WHERE session_id = ?
+        """, (session_id,))
+        row = cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return self._agent_run_row_to_dict(row, include_full_data=True)
+
+    def list_agent_runs(
+        self,
+        status: Optional[str] = None,
+        mode: Optional[str] = None,
+        play_id: Optional[int] = None,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """
+        List agent runs with optional filters.
+
+        Args:
+            status: Filter by status
+            mode: Filter by mode
+            play_id: Filter by play ID
+            since: Filter runs started after this ISO date
+            until: Filter runs started before this ISO date
+            limit: Max results
+            offset: Pagination offset
+
+        Returns:
+            Tuple of (runs list, total count)
+        """
+        cursor = self.conn.cursor()
+
+        conditions = []
+        params: List[Any] = []
+
+        if status:
+            conditions.append("ar.status = ?")
+            params.append(status)
+
+        if mode:
+            conditions.append("ar.mode = ?")
+            params.append(mode)
+
+        if play_id:
+            conditions.append("ar.session_id IN (SELECT session_id FROM agent_run_plays WHERE play_id = ?)")
+            params.append(play_id)
+
+        if since:
+            # Convert ISO date to Unix timestamp (ms)
+            since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+            since_ts = int(since_dt.timestamp() * 1000)
+            conditions.append("ar.started_at >= ?")
+            params.append(since_ts)
+
+        if until:
+            until_dt = datetime.fromisoformat(until.replace('Z', '+00:00'))
+            until_ts = int(until_dt.timestamp() * 1000)
+            conditions.append("ar.started_at <= ?")
+            params.append(until_ts)
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        # Get total count
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM agent_runs ar WHERE {where_clause}
+        """, params)
+        total = cursor.fetchone()[0]
+
+        # Get paginated results
+        cursor.execute(f"""
+            SELECT
+                ar.session_id, ar.mode, ar.started_at, ar.completed_at, ar.status,
+                ar.play_ids, ar.error_message,
+                ar.insight_count, ar.tool_call_count, ar.research_step_count, ar.entity_count,
+                ar.duration_ms, ar.created_at
+            FROM agent_runs ar
+            WHERE {where_clause}
+            ORDER BY ar.started_at DESC
+            LIMIT ? OFFSET ?
+        """, params + [limit, offset])
+
+        runs = []
+        for row in cursor.fetchall():
+            runs.append(self._agent_run_row_to_dict(row, include_full_data=False))
+
+        return runs, total
+
+    def delete_agent_run(self, session_id: str) -> bool:
+        """
+        Delete an agent run.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            True if deleted, False if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM agent_runs WHERE session_id = ?", (session_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_incomplete_agent_runs(self) -> List[Dict[str, Any]]:
+        """
+        Get agent runs with status='running' for recovery.
+
+        Returns:
+            List of incomplete runs ordered by most recent first
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT
+                session_id, mode, started_at, completed_at, status,
+                play_ids, error_message,
+                insight_count, tool_call_count, research_step_count, entity_count,
+                duration_ms, created_at
+            FROM agent_runs
+            WHERE status = 'running'
+            ORDER BY started_at DESC
+        """)
+
+        runs = []
+        for row in cursor.fetchall():
+            runs.append(self._agent_run_row_to_dict(row, include_full_data=False))
+
+        return runs
+
+    def _agent_run_row_to_dict(self, row: sqlite3.Row, include_full_data: bool = False) -> Dict[str, Any]:
+        """Convert agent_runs row to dictionary."""
+        # Parse play_ids JSON
+        play_ids_raw = row['play_ids'] if 'play_ids' in row.keys() else '[]'
+        play_ids = json.loads(play_ids_raw) if play_ids_raw else []
+
+        result = {
+            'sessionId': row['session_id'],
+            'mode': row['mode'],
+            'startedAt': row['started_at'],
+            'completedAt': row['completed_at'],
+            'status': row['status'],
+            'playIds': play_ids,
+            'insightCount': row['insight_count'],
+            'toolCallCount': row['tool_call_count'],
+            'researchStepCount': row['research_step_count'] if 'research_step_count' in row.keys() else 0,
+            'entityCount': row['entity_count'] if 'entity_count' in row.keys() else 0,
+            'durationMs': row['duration_ms'],
+            'errorMessage': row['error_message'] if 'error_message' in row.keys() else None,
+            'createdAt': row['created_at'],
+        }
+
+        if include_full_data:
+            # Parse full JSON columns
+            result['insights'] = json.loads(row['insights'] or '[]')
+            result['toolCalls'] = json.loads(row['tool_calls'] or '[]')
+            result['researchSteps'] = json.loads(row['research_steps'] or '[]')
+            result['entities'] = json.loads(row['entities'] or '[]')
+            result['errorStack'] = row['error_stack']
+            result['updatedAt'] = row['updated_at']
+
+        return result
 
     def close(self):
         """Close database connection."""

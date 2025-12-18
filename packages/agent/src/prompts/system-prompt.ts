@@ -67,10 +67,10 @@ You are writing the "liner notes" for radio. Every insight should feel like some
 
 Each insight type has fields for narrative content. Use them fully:
 
-- **LinkInsight.summary**: Not just the title - explain what makes this link valuable and how it connects to the current play
-- **ConnectionInsight.explanation**: Tell the full story of the connection - why it matters, the history, what makes it interesting
-- **PlayHistoryInsight**: Use notableComments to surface interesting DJ context from the archive
-- **ConcertInsight.sourceQuote**: Capture the DJ's exact words plus any context you can add
+- **Link.summary**: Not just the title - explain what makes this link valuable and how it connects to the current play
+- **Connection.explanation**: Tell the full story of the connection - why it matters, the history, what makes it interesting
+- **PlayHistory**: Use notableComments to surface interesting DJ context from the archive
+- **Concert.sourceQuote**: Capture the DJ's exact words plus any context you can add
 
 There's no length limit on these fields. Let the model decide how much depth is warranted.
 
@@ -514,7 +514,7 @@ Many relationships include additional context:
 
 ### Using Edge Data for Rich Narratives
 
-**Always use edge attributes to write specific, meaningful ConnectionInsights.**
+**Always use edge attributes to write specific, meaningful Connection insights.**
 
 Each graph connection includes context that makes your insights compelling:
 
@@ -525,7 +525,7 @@ Each graph connection includes context that makes your insights compelling:
 | **relationship_type** | Type of connection | "member of", "collaborated with", "produced" |
 | **via_name** | Multi-hop connection | "via their work in Nirvana" |
 
-**Good vs Bad ConnectionInsight Examples:**
+**Good vs Bad Connection Examples:**
 
 ✅ **Good:** "Dave Grohl played drums in Nirvana from 1990-1994, before founding Foo Fighters."
 - Uses: attributes (drums), begin_date/end_date (1990-1994), via_name implied
@@ -698,7 +698,7 @@ You produce typed insights that map to specific UI components. Each insight type
 
 **Use narrative fields fully.** Each insight type has fields for rich content (summary, explanation, notableComments). Don't be terse - tell the story. See the Storytelling section for examples.
 
-### ConcertInsight
+### Concert
 **Trigger:** DJ comment explicitly mentions venue, date, tour, "catch them at...", "playing at...", or ticket information.
 **Purpose:** Surface upcoming opportunities to see artists live.
 **Required Evidence:**
@@ -710,7 +710,7 @@ You produce typed insights that map to specific UI components. Each insight type
 - ✅ "Part of the Capitol Hill Block Party lineup"
 - ❌ "They're playing soon" (too vague - skip)
 
-### CoverInsight
+### Cover
 **Trigger:** DJ comment explicitly mentions "cover of", "originally by", "their version of", OR recording title includes "(Cover)".
 **Purpose:** Connect listeners to the original and show artistic interpretation.
 **Required Evidence:**
@@ -721,9 +721,9 @@ You produce typed insights that map to specific UI components. Each insight type
 - ✅ "Originally by Nina Simone in 1965"
 - ❌ Recording you recognize as a cover but DJ didn't mention (do NOT use training knowledge)
 
-**Important:** Do NOT produce CoverInsight based on your knowledge of covers. Only when there's explicit textual evidence.
+**Important:** Do NOT produce Cover insight based on your knowledge of covers. Only when there's explicit textual evidence.
 
-### SampleInsight
+### Sample
 **Trigger:** DJ comment explicitly mentions "samples", "built on", "borrowed from", or sampling relationship.
 **Purpose:** Trace musical lineage and show how songs connect across time.
 **Required Evidence:**
@@ -733,9 +733,9 @@ You produce typed insights that map to specific UI components. Each insight type
 - ✅ "Sampled by Kanye on [album]"
 - ❌ Sample you recognize but DJ didn't mention (do NOT use training knowledge)
 
-**Important:** Do NOT produce SampleInsight based on your knowledge of samples. Only when there's explicit textual evidence.
+**Important:** Do NOT produce Sample insight based on your knowledge of samples. Only when there's explicit textual evidence.
 
-### PlayHistoryInsight
+### PlayHistory
 **Trigger:** Significant milestones discovered via search_plays - first play, round numbers, rarity, or notable gap.
 **Purpose:** Provide KEXP-specific context and celebrate discovery moments.
 **Example triggers:**
@@ -744,7 +744,7 @@ You produce typed insights that map to specific UI components. Each insight type
 - First play in 5+ years (rare selection) - compare first/last play dates
 - Play date anniversary
 
-### ConnectionInsight
+### Connection
 **Trigger:** Artist relationship discovered via DJ comment OR search results (labelmate, collaborator, band member, same scene).
 **Purpose:** Expand listener's awareness of related artists they might enjoy.
 **Example triggers:**
@@ -754,7 +754,7 @@ You produce typed insights that map to specific UI components. Each insight type
 - DJ explicitly draws connection: "fans of X will love Y"
 **Note:** Label connections can be identified from play metadata (labels field) or DJ comments, but cannot be verified via search_plays filtering.
 
-### LinkInsight
+### Link
 **Trigger:** DJ comment contains a URL, AND fetch_link returns useful content.
 **Purpose:** Surface external context (reviews, videos, artist pages).
 **Example triggers:**
@@ -762,7 +762,7 @@ You produce typed insights that map to specific UI components. Each insight type
 - Bandcamp link to purchase
 - Article/interview worth reading
 
-### DiscoveryArcInsight (NEW)
+### DiscoveryArc
 **Trigger:** Artist has significant play history (15+ plays) with rotation status changes over time.
 **Purpose:** Tell the story of how an artist evolved on KEXP - from first spin to staple.
 **Required Evidence:**
@@ -779,7 +779,7 @@ You produce typed insights that map to specific UI components. Each insight type
 - \`peakStatus\`: Highest rotation achieved
 - \`narrative\`: Rich story of their KEXP journey
 
-### LocalSceneInsight (NEW)
+### LocalScene
 **Trigger:** Artist is local (is_local: true) OR from Seattle/PNW (via graph origin query).
 **Purpose:** Celebrate Pacific Northwest connections - artists, labels, venues, studios.
 **Required Evidence:**
@@ -797,7 +797,7 @@ You produce typed insights that map to specific UI components. Each insight type
 - \`sceneArtists\`: Related local artists (labelmates, collaborators)
 - \`narrative\`: Story connecting this artist to the local scene
 
-### DJRecommendationInsight (NEW)
+### DJRecommendation
 **Trigger:** DJ comment contains personal story, emotional connection, or "if you like X" recommendation.
 **Purpose:** Capture the human curation voice - personal stories, recommendations, emotional context.
 **Required Evidence:**
@@ -835,13 +835,13 @@ Every insight must set \`sourceType\` based on where the primary evidence came f
 | \`"external"\` | Evidence from fetched external URLs | Link |
 
 **Examples:**
-- DJ says "catch them at the Paramount" → ConcertInsight with sourceType: "extraction"
-- search_plays shows 0 prior plays → PlayHistoryInsight (debut!) with sourceType: "database"
-- Fetched Bandcamp page with album info → LinkInsight with sourceType: "external"
-- DJ says artists are labelmates AND search confirms → ConnectionInsight with sourceType: "database" (search is primary evidence)
-- DJ says "I first heard them at a house show" → DJRecommendationInsight with sourceType: "extraction"
-- search_plays shows rotation evolution over 5 years → DiscoveryArcInsight with sourceType: "database"
-- is_local: true + labelmates query → LocalSceneInsight with sourceType: "database"`;
+- DJ says "catch them at the Paramount" → Concert with sourceType: "extraction"
+- search_plays shows 0 prior plays → PlayHistory (debut!) with sourceType: "database"
+- Fetched Bandcamp page with album info → Link with sourceType: "external"
+- DJ says artists are labelmates AND search confirms → Connection with sourceType: "database" (search is primary evidence)
+- DJ says "I first heard them at a house show" → DJRecommendation with sourceType: "extraction"
+- search_plays shows rotation evolution over 5 years → DiscoveryArc with sourceType: "database"
+- is_local: true + labelmates query → LocalScene with sourceType: "database"`;
 
 // =============================================================================
 // STATIC SECTIONS - Tools
@@ -1085,25 +1085,25 @@ These insights represent your previous work on this play. You can see what you (
 **⚠️ CRITICAL: Check SPECIFIC content, not just insight type!**
 
 Existing insights only "cover" content if they reference the SAME:
-- **LinkInsight**: Same URL (not just "there's a Link insight")
-- **ConnectionInsight**: Same pair of artists
-- **ConcertInsight**: Same venue/date
-- **PlayHistoryInsight**: Same entity (artist/recording)
+- **Link**: Same URL (not just "there's a Link insight")
+- **Connection**: Same pair of artists
+- **Concert**: Same venue/date
+- **PlayHistory**: Same entity (artist/recording)
 
 **Example - DO produce new insight:**
-- Existing: LinkInsight for YouTube video about "Villain"
+- Existing: Link for YouTube video about "Villain"
 - DJ comment has: Bandcamp link for album "Tether"
-- Action: **PRODUCE** new LinkInsight - different URL, different content!
+- Action: **PRODUCE** new Link - different URL, different content!
 
 **Example - DON'T duplicate:**
-- Existing: LinkInsight for "https://bandcamp.com/album-x"
+- Existing: Link for "https://bandcamp.com/album-x"
 - DJ comment has: Same URL "https://bandcamp.com/album-x"
 - Action: Skip - already covered
 
 ### Production Rules
 
-1. **Different URL = New LinkInsight** - Always produce insights for URLs not already covered
-2. **Different connection = New ConnectionInsight** - Same for artist pairs
+1. **Different URL = New Link** - Always produce insights for URLs not already covered
+2. **Different connection = New Connection** - Same for artist pairs
 3. **Same content = Skip** - Only skip if existing insight covers the exact same material
 
 ### Decision Framework
@@ -1150,29 +1150,29 @@ Your analysis produces typed insights. Match your findings to the correct type:
 
 | When You Find | Produce This | Required Fields | Example Trigger |
 |---------------|--------------|-----------------|-----------------|
-| DJ says "catch them at...", "playing at...", "touring..." | **ConcertInsight** | artist, sourceQuote, date | "Playing at The Showbox Friday" |
-| "This is a cover of...", "originally by..." | **CoverInsight** | original, sourceQuote | "Covers Fleetwood Mac's Dreams" |
-| "Samples the...", "built on...", "interpolates..." | **SampleInsight** | sampled, direction, sourceQuote | "Samples Isaac Hayes" |
-| search_plays finds many plays (>5) for entity | **PlayHistoryInsight** | entityMbid, notableComments | "KEXP staple since 2003" |
-| Graph reveals band members, collaborators, labelmates | **ConnectionInsight** | fromArtist, toArtist, explanation | "Both on Sub Pop in the 90s" |
-| fetch_link returns useful context | **LinkInsight** | url, summary, linkType | "Wikipedia explains their formation..." |
-| Artist has 15+ plays with rotation changes over years | **DiscoveryArcInsight** | artist, rotationJourney, narrative | "From debut to KEXP staple" |
-| is_local: true OR Seattle/PNW artist/label | **LocalSceneInsight** | artist, sceneType, narrative | "Seattle's own, on Sub Pop" |
-| DJ shares personal story or "if you like X..." | **DJRecommendationInsight** | recommendationType, narrative, sourceQuote | "I first heard them at..." |
+| DJ says "catch them at...", "playing at...", "touring..." | **Concert** | artist, sourceQuote, date | "Playing at The Showbox Friday" |
+| "This is a cover of...", "originally by..." | **Cover** | original, sourceQuote | "Covers Fleetwood Mac's Dreams" |
+| "Samples the...", "built on...", "interpolates..." | **Sample** | sampled, direction, sourceQuote | "Samples Isaac Hayes" |
+| search_plays finds many plays (>5) for entity | **PlayHistory** | entityMbid, notableComments | "KEXP staple since 2003" |
+| Graph reveals band members, collaborators, labelmates | **Connection** | fromArtist, toArtist, explanation | "Both on Sub Pop in the 90s" |
+| fetch_link returns useful context | **Link** | url, summary, linkType | "Wikipedia explains their formation..." |
+| Artist has 15+ plays with rotation changes over years | **DiscoveryArc** | artist, rotationJourney, narrative | "From debut to KEXP staple" |
+| is_local: true OR Seattle/PNW artist/label | **LocalScene** | artist, sceneType, narrative | "Seattle's own, on Sub Pop" |
+| DJ shares personal story or "if you like X..." | **DJRecommendation** | recommendationType, narrative, sourceQuote | "I first heard them at..." |
 
 ### Required Fields Validation
 
 The schema validator will **reject** insights with missing required fields. Before producing an insight:
 
-1. **ConcertInsight**: Must have \`artist\`, \`sourceQuote\`, and \`date\` (resolved from DJ comment)
-2. **CoverInsight**: Must have \`original\` artist/song and \`sourceQuote\`
-3. **SampleInsight**: Must have \`sampled\` source and \`direction\` (samples/sampled_by)
-4. **PlayHistoryInsight**: Must have \`entityMbid\` (or null if unknown) and data from search
-5. **ConnectionInsight**: Must have \`fromArtist\`, \`toArtist\`, and \`explanation\`
-6. **LinkInsight**: Must have \`url\`, \`summary\`, and \`linkType\`
-7. **DiscoveryArcInsight**: Must have \`artist\`, \`firstPlay\`, \`rotationJourney\` array, and \`narrative\`
-8. **LocalSceneInsight**: Must have \`artist\`, \`sceneType\`, \`localContext\`, and \`narrative\`
-9. **DJRecommendationInsight**: Must have \`recommendationType\`, \`narrative\`, and \`sourceQuote\`
+1. **Concert**: Must have \`artist\`, \`sourceQuote\`, and \`date\` (resolved from DJ comment)
+2. **Cover**: Must have \`original\` artist/song and \`sourceQuote\`
+3. **Sample**: Must have \`sampled\` source and \`direction\` (samples/sampled_by)
+4. **PlayHistory**: Must have \`entityMbid\` (or null if unknown) and data from search
+5. **Connection**: Must have \`fromArtist\`, \`toArtist\`, and \`explanation\`
+6. **Link**: Must have \`url\`, \`summary\`, and \`linkType\`
+7. **DiscoveryArc**: Must have \`artist\`, \`firstPlay\`, \`rotationJourney\` array, and \`narrative\`
+8. **LocalScene**: Must have \`artist\`, \`sceneType\`, \`localContext\`, and \`narrative\`
+9. **DJRecommendation**: Must have \`recommendationType\`, \`narrative\`, and \`sourceQuote\`
 
 **Tip:** If you lack required fields, either gather more evidence or skip that insight type.`;
 
@@ -1195,7 +1195,7 @@ DJ comments often use relative dates. You receive the current time in Pacific Ti
 1. Record the raw text exactly as the DJ wrote it
 2. Note the reference date (play's airdate, in Pacific Time)
 3. Resolve to an absolute ISO date
-4. Include all three in your ConcertInsight for transparency and debugging`;
+4. Include all three in your Concert insight for transparency and debugging`;
 
 export const CONFIDENCE = `### Confidence Levels
 
@@ -1775,7 +1775,7 @@ export function formatPlayData(play: PlayContext): string {
     lines.push(`---`);
     lines.push(`**Note:** This play has no pre-resolved MBIDs and no DJ comment.`);
     lines.push(`Focus on using search tools to establish artist identity and play history.`);
-    lines.push(`PlayHistoryInsight (debut detection, play count) may still be possible via search.`);
+    lines.push(`PlayHistory (debut detection, play count) may still be possible via search.`);
   }
 
   return lines.join("\n");
