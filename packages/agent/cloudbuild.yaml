@@ -40,11 +40,14 @@ steps:
       - '--concurrency'
       - '${_CONCURRENCY}'
       - '--min-instances'
-      - '0'
+      - '${_MIN_INSTANCES}'
       - '--max-instances'
       - '${_MAX_INSTANCES}'
       - '--set-env-vars'
       - 'FAISS_API_URL=${_FAISS_API_URL},FAISS_API_KEY=${_FAISS_API_KEY},PUBSUB_INVOKER_EMAIL=${_PUBSUB_INVOKER_EMAIL}'
+      # Use Secret Manager for ANTHROPIC_API_KEY (create secret first: gcloud secrets create anthropic-api-key --data-file=-)
+      - '--set-secrets'
+      - 'ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest'
       - '--timeout'
       - '${_TIMEOUT}'
 
@@ -55,11 +58,13 @@ images:
 substitutions:
   _FAISS_API_URL: 'https://cratemusic.duckdns.org'
   _FAISS_API_KEY: 'placeholder'  # Override with --substitutions flag
+  # ANTHROPIC_API_KEY is now loaded from Secret Manager (see --set-secrets above)
   _REGION: 'us-west1'
-  _SERVICE_ACCOUNT_EMAIL: 'pubsub-invoker@gen-lang-client-0874846742.iam.gserviceaccount.com'
+  _SERVICE_ACCOUNT_EMAIL: '211636922435-compute@developer.gserviceaccount.com'
   _PUBSUB_INVOKER_EMAIL: 'pubsub-invoker@gen-lang-client-0874846742.iam.gserviceaccount.com'
-  _MAX_INSTANCES: '3'
+  _MIN_INSTANCES: '1'
+  _MAX_INSTANCES: '8'
   _CONCURRENCY: '1'
   _CPU: '1'
-  _MEMORY: '1Gi'
+  _MEMORY: '1536Mi'
   _TIMEOUT: '900s'
