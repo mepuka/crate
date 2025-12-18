@@ -51,18 +51,22 @@ logger = logging.getLogger(__name__)
 search_service: Optional[FAISSSearchService] = None
 hybrid_search_service: Optional[HybridSearchService] = None
 db_service: Optional[DatabaseService] = None
-db_service: Optional[DatabaseService] = None
 startup_time: float = 0
 persistence_task: Optional[asyncio.Task] = None
 
 async def background_persistence_loop():
-    """Background task to persist index periodically."""
+    """Background task to persist index periodically.
+
+    Uses asyncio.to_thread() to run sync persistence in thread pool,
+    preventing event loop stalls as persistence data grows.
+    """
     logger.info("Starting background persistence loop")
     while True:
         try:
             await asyncio.sleep(60)  # Check every minute
             if search_service:
-                search_service.persist_if_needed()
+                # Run sync persistence in thread pool to avoid blocking event loop
+                await asyncio.to_thread(search_service.persist_if_needed)
         except asyncio.CancelledError:
             logger.info("Persistence loop cancelled")
             break

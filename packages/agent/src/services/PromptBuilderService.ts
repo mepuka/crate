@@ -278,6 +278,7 @@ export interface PromptBuilderServiceInterface {
     options?: {
       show?: Kexp.KexpShow;
       recentInsights?: InsightSummary[];
+      preResearchFindings?: string;
     }
   ) => Effect.Effect<BuiltPrompt, PromptBuildError>;
 
@@ -289,6 +290,7 @@ export interface PromptBuilderServiceInterface {
     options?: {
       show?: Kexp.KexpShow;
       recentInsights?: InsightSummary[];
+      preResearchFindings?: string;
     }
   ) => Effect.Effect<Prompt.Prompt, PromptBuildError>;
 
@@ -416,6 +418,7 @@ const makePromptBuilderService = Effect.gen(function* () {
     options: {
       show?: Kexp.KexpShow;
       recentInsights?: InsightSummary[];
+      preResearchFindings?: string;
     } = {}
   ): Effect.Effect<BuiltPrompt, PromptBuildError> =>
     Effect.try({
@@ -434,6 +437,9 @@ const makePromptBuilderService = Effect.gen(function* () {
           ...(showContext ? { showContext } : {}),
           ...(options.recentInsights
             ? { recentInsights: options.recentInsights }
+            : {}),
+          ...(options.preResearchFindings
+            ? { preResearchFindings: options.preResearchFindings }
             : {}),
         };
 
@@ -479,6 +485,7 @@ const makePromptBuilderService = Effect.gen(function* () {
     options: {
       show?: Kexp.KexpShow;
       recentInsights?: InsightSummary[];
+      preResearchFindings?: string;
     } = {}
   ): Effect.Effect<Prompt.Prompt, PromptBuildError> =>
     pipe(
@@ -498,6 +505,9 @@ const makePromptBuilderService = Effect.gen(function* () {
             ...(showContext ? { showContext } : {}),
             ...(options.recentInsights
               ? { recentInsights: options.recentInsights }
+              : {}),
+            ...(options.preResearchFindings
+              ? { preResearchFindings: options.preResearchFindings }
               : {}),
           };
 

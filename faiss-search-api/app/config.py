@@ -1,7 +1,11 @@
 """Application configuration using Pydantic settings."""
+import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -49,6 +53,33 @@ class Settings(BaseSettings):
     # FAISS
     FAISS_NLIST: int = 1024  # Number of clusters for IVF
     FAISS_NPROBE: int = 10   # Number of clusters to probe
+
+    # Pub/Sub configuration for enrichment triggers
+    PUBSUB_ENABLED: bool = False  # Opt-in: set to True to enable publishing
+    # GCP_PROJECT_ID: Required when PUBSUB_ENABLED=True. No default to prevent
+    # accidental cross-environment publishing.
+    GCP_PROJECT_ID: Optional[str] = None
+    PUBSUB_TOPIC: str = "new-plays"  # Topic name (not full path)
+    PUBSUB_TIMEOUT_SECONDS: int = 30
+
+    @model_validator(mode='after')
+    def validate_pubsub_config(self) -> 'Settings':
+        """Validate Pub/Sub config when enabled."""
+        if self.PUBSUB_ENABLED:
+            if not self.GCP_PROJECT_ID:
+                raise ValueError(
+                    "GCP_PROJECT_ID is required when PUBSUB_ENABLED=True. "
+                    "Set GCP_PROJECT_ID environment variable to your GCP project."
+                )
+            logger.info(f"Pub/Sub enabled for project: {self.GCP_PROJECT_ID}")
+        return self
+
+    @property
+    def pubsub_topic_path(self) -> str:
+        """Full Pub/Sub topic path."""
+        if not self.GCP_PROJECT_ID:
+            raise ValueError("GCP_PROJECT_ID not set - cannot construct topic path")
+        return f"projects/{self.GCP_PROJECT_ID}/topics/{self.PUBSUB_TOPIC}"
 
 
 settings = Settings()

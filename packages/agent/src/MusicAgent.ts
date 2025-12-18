@@ -450,6 +450,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                               mode: "required" as const,
                               oneOf: [
                                 "get_recent_insights",
+                                "hybrid_search",
                                 "search_plays",
                                 "semantic_search",
                                 "resolve_mbid",
@@ -849,7 +850,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                 // This runs covers, history, graph, and semantic context in parallel
                 const researchSessionId = yield* insightSession.getSessionId();
                 const researchContext = createResearchContext(play, researchSessionId);
-                yield* parallelResearch(researchContext).pipe(
+                const preResearchResult = yield* parallelResearch(researchContext).pipe(
                   Effect.tap((result) =>
                     Effect.logDebug(
                       `Parallel research complete: ${result.totalDurationMs}ms, findings: ${
@@ -872,11 +873,13 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   Effect.withSpan("MusicAgent.parallelPreResearch")
                 );
 
-                // Build prompt with full context (show, time, recent insights)
+                // Build prompt with full context (show, time, recent insights, pre-research)
                 // The prompt includes instructions for using tools and producing insights
                 // buildPromptForKexpPlay returns Prompt.Prompt object from CratePrompt
                 const prompt = yield* promptBuilder
-                  .buildPromptForKexpPlay(play)
+                  .buildPromptForKexpPlay(play, {
+                    preResearchFindings: preResearchResult.summary,
+                  })
                   .pipe(
                     Effect.mapError(
                       (error) =>
