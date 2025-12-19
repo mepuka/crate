@@ -2059,6 +2059,7 @@ class DatabaseService:
             SELECT id, image_uri, thumbnail_uri, image_validated_at
             FROM fact_plays
             WHERE image_uri IS NOT NULL
+              AND image_uri != ''
               AND (
                 image_validated_at IS NULL
                 OR datetime(image_validated_at) < datetime('now', ?)
@@ -2139,7 +2140,7 @@ class DatabaseService:
                 SUM(CASE WHEN image_validated_at IS NULL THEN 1 ELSE 0 END) as unvalidated,
                 SUM(CASE WHEN datetime(image_validated_at) < datetime('now', '-7 days') THEN 1 ELSE 0 END) as stale
             FROM fact_plays
-            WHERE image_uri IS NOT NULL
+            WHERE image_uri IS NOT NULL AND image_uri != ''
         """)
         row = cursor.fetchone()
         return {

@@ -500,8 +500,8 @@ class PlaySyncService:
             play.airdate.isoformat(),
             play.show,
             play.show_uri,
-            play.image_uri,
-            play.thumbnail_uri,
+            play.image_uri or None,  # Convert empty string to NULL
+            play.thumbnail_uri or None,  # Convert empty string to NULL
             play.song if isinstance(play, TrackPlay) else "",
             str(play.track_id) if isinstance(play, TrackPlay) and play.track_id else None,
             str(play.recording_id) if isinstance(play, TrackPlay) and play.recording_id else None,
