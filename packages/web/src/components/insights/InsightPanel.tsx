@@ -20,6 +20,12 @@ interface InsightPanelProps {
   rotationStatus?: string | null | undefined;
   isLocal?: boolean | undefined;
   airdate?: Date | undefined;
+  // Album palette for dynamic theming
+  albumPalette?: {
+    dominant: string;
+    accent: string;
+    temperature: "warm" | "cool" | "neutral";
+  } | undefined;
 }
 
 export const InsightPanel = ({
@@ -29,18 +35,35 @@ export const InsightPanel = ({
   rotationStatus,
   isLocal,
   airdate,
+  albumPalette,
 }: InsightPanelProps) => {
   // Reading the atom triggers the fetch automatically via TimelineRuntime.atom
   const result = useAtomValue(insightsAtom(playId));
 
+  // Default palette if none provided
+  const palette = albumPalette ?? {
+    dominant: "#E8825B",
+    accent: "#4ECDC4",
+    temperature: "warm" as const,
+  };
+
   return (
-    <div className="mt-3 border-t border-border/40 pt-3">
-      <div className="flex items-center justify-between mb-3 px-1">
-        <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+    <div
+      className="mt-4 pt-4 transition-colors duration-500"
+      style={{ borderTop: `1px solid ${palette.dominant}20` }}
+    >
+      <div className="flex items-center justify-between mb-4 px-1">
+        <h4
+          className="text-[10px] font-semibold uppercase tracking-[0.2em] transition-colors"
+          style={{ color: `${palette.dominant}90` }}
+        >
           Living Liner Notes
         </h4>
         {Result.isWaiting(result) && (
-          <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+          <Loader2
+            className="w-3 h-3 animate-spin transition-colors"
+            style={{ color: palette.accent }}
+          />
         )}
       </div>
 
@@ -53,6 +76,7 @@ export const InsightPanel = ({
             rotationStatus={rotationStatus}
             isLocal={isLocal}
             airdate={airdate}
+            albumPalette={albumPalette}
           />
         ),
         onSuccess: (success) => (
@@ -63,6 +87,7 @@ export const InsightPanel = ({
             rotationStatus={rotationStatus}
             isLocal={isLocal}
             airdate={airdate}
+            albumPalette={albumPalette}
           />
         ),
         onError: () => (
@@ -73,6 +98,7 @@ export const InsightPanel = ({
             rotationStatus={rotationStatus}
             isLocal={isLocal}
             airdate={airdate}
+            albumPalette={albumPalette}
           />
         ),
         onDefect: () => (
@@ -83,6 +109,7 @@ export const InsightPanel = ({
             rotationStatus={rotationStatus}
             isLocal={isLocal}
             airdate={airdate}
+            albumPalette={albumPalette}
           />
         ),
       })}

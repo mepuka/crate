@@ -105,7 +105,7 @@ export const InsightStream = ({
           className="animate-insight-appear"
           style={{ animationDelay: `${(i + narrativeInsights.length + (comment ? 1 : 0)) * 50 + 100}ms` }}
         >
-          <InsightBlock insight={insight} />
+          <InsightBlock insight={insight} albumPalette={albumPalette} />
         </div>
       ))}
 

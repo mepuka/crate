@@ -178,10 +178,13 @@ User → crate-web → faiss-search-api
 
 | Resource | Type | Purpose |
 |----------|------|---------|
-| crate-agent | Cloud Run | AI agent service |
-| batch-enrichment | Cloud Scheduler | Daily batch enrichment |
+| crate-agent | Cloud Run (us-west1) | AI agent service |
+| enrich-unprocessed | Cloud Scheduler | Hourly batch enrichment (0 * * * *) |
 | new-plays | Pub/Sub Topic | Play enrichment triggers |
 | new-plays-to-agent | Pub/Sub Subscription | Push to agent /pubsub |
+| scheduler-invoker | Service Account | Invokes Cloud Run (Scheduler + PubSub) |
+
+**Authentication:** See [INFRASTRUCTURE_RUNBOOK.md](./INFRASTRUCTURE_RUNBOOK.md) for IAM details.
 
 ### Digital Ocean
 
@@ -271,6 +274,7 @@ See `.env.example` files in each package.
 
 ## Related Documentation
 
+- [Infrastructure Runbook](./INFRASTRUCTURE_RUNBOOK.md) - Operational guide, troubleshooting, auth details
 - [faiss-search-api README](../faiss-search-api/README.md)
 - [Agent README](../packages/agent/README.md)
 - [Art Pipeline Design](../packages/agent/docs/ART_PIPELINE_DESIGN.md)
