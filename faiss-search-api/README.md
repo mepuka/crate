@@ -17,15 +17,10 @@ Production-ready FastAPI service for semantic search over 2.2M KEXP music plays 
 
 ## Documentation
 
-📚 **[Complete Documentation Index](DOCUMENTATION_INDEX.md)** - Full documentation by topic and role
-
-**Quick Links:**
-- **[Database Schema](DATABASE_SCHEMA.md)** - Complete database schema and table documentation
-- **[Enrichment Pipeline](ENRICHMENT_PIPELINE.md)** - Enrichment scripts, schedules, and workflows
-- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Production deployment and operations
-- **[Timeline API](TIMELINE_API.md)** - Timeline browsing and navigation
-- **[Embedding Endpoints](EMBEDDING_ENDPOINTS.md)** - Embedding generation and integration
-- **[MBID Filtering](MBID_FILTERING.md)** - MusicBrainz entity filtering and play counts
+- **[Database Schema](DATABASE_SCHEMA.md)** - Complete database schema and tables
+- **[Enrichment Pipeline](ENRICHMENT_PIPELINE.md)** - Enrichment scripts and workflows
+- **[Deployment](DEPLOYMENT.md)** - Production deployment guide
+- **[Quick Reference](QUICK_REFERENCE.md)** - API quick reference
 
 ---
 
@@ -135,21 +130,20 @@ conn.close()
 
 ### Core Endpoints
 
-| Endpoint | Method | Description | Documentation |
-|----------|--------|-------------|---------------|
-| `/api/search` | POST | Semantic search over plays | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) |
-| `/api/plays/timeline` | GET | Browse plays chronologically | [TIMELINE_API.md](TIMELINE_API.md) |
-| `/api/plays/{id}` | GET | Get single play by ID | - |
-| `/api/plays/count` | GET | Get play counts by entity | [MBID_FILTERING.md](MBID_FILTERING.md) |
-| `/api/health` | GET | Health check | - |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/search` | POST | Semantic search over plays |
+| `/api/plays/timeline` | GET | Browse plays chronologically |
+| `/api/plays/{id}` | GET | Get single play by ID |
+| `/api/plays/count` | GET | Get play counts by entity |
+| `/api/health` | GET | Health check |
 
 ### Embedding Endpoints
 
-| Endpoint | Method | Description | Documentation |
-|----------|--------|-------------|---------------|
-| `/api/embeddings/pending` | GET | Get plays needing embeddings | [EMBEDDING_ENDPOINTS.md](EMBEDDING_ENDPOINTS.md) |
-| `/api/embeddings/add` | POST | Add embeddings to FAISS index | [EMBEDDING_ENDPOINTS.md](EMBEDDING_ENDPOINTS.md) |
-| `/api/embeddings/pca-model` | GET | Download PCA transformer (legacy) | [EMBEDDING_ENDPOINTS.md](EMBEDDING_ENDPOINTS.md) |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/embeddings/pending` | GET | Get plays needing embeddings |
+| `/api/embeddings/add` | POST | Add embeddings to FAISS index |
 
 ### Example: Semantic Search
 
@@ -444,9 +438,6 @@ See parent project LICENSE
 
 ## References
 
-- [Database Schema Documentation](DATABASE_SCHEMA.md)
-- [Enrichment Pipeline Documentation](ENRICHMENT_PIPELINE.md)
-- [Timeline API Documentation](TIMELINE_API.md)
-- [Embedding Endpoints Documentation](EMBEDDING_ENDPOINTS.md)
-- Design Doc: `docs/plans/2025-11-11-faiss-search-api-design.md`
-- Notebook: `analysis/notebooks/03_faiss_search_exploration.ipynb`
+- [Database Schema](DATABASE_SCHEMA.md)
+- [Enrichment Pipeline](ENRICHMENT_PIPELINE.md)
+- [System Architecture](../docs/ARCHITECTURE.md)

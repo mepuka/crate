@@ -1,176 +1,170 @@
 # @crate/agent
 
-AI agent for querying the KEXP FAISS search API using Effect AI.
+AI agent for music enrichment, visual art generation, and knowledge graph queries.
 
 ## Overview
 
-This package provides an Effect-based AI agent that can query the FAISS semantic search API for music recommendations, timeline browsing, and play information. Designed to run in Google Cloud containers for scheduled enrichment tasks and data processing.
+The Crate agent enriches KEXP play data with AI-generated insights, visual assets, and graph connections. It runs on Google Cloud Run, triggered by Pub/Sub events for new plays or Cloud Scheduler for batch processing.
 
 ## Architecture
 
 ```
-MusicAgent (Effect AI + tools)
-    ↓ depends on
-FaissClient (Node HTTP client)
-    ↓ depends on
-FaissConfig | NodeHttpClient
+┌─────────────────────────────────────────────────────────────────┐
+│                         MusicAgent                               │
+│  (Orchestrates enrichment pipeline)                              │
+└─────────────────────────────────────────────────────────────────┘
+        │                    │                    │
+        ▼                    ▼                    ▼
+┌───────────────┐  ┌─────────────────┐  ┌─────────────────────────┐
+│ AI Insights   │  │ Visual Assets   │  │ Graph Connections       │
+│ (Claude)      │  │ (Gemini)        │  │ (MusicBrainz)           │
+└───────────────┘  └─────────────────┘  └─────────────────────────┘
 ```
 
-### Key Components
+## Services
 
-- **FaissClient**: Type-safe HTTP client for the Python FAISS search API
-- **MusicAgent**: AI agent service using Effect AI to answer music queries
-- **FaissConfig**: Configuration service reading from environment variables
+### Core Services
+
+| Service | Purpose |
+|---------|---------|
+| `MusicAgent` | Main orchestrator for enrichment pipeline |
+| `InsightSessionService` | Claude-powered narrative insight generation |
+| `PromptBuilderService` | Type-safe prompt construction |
+
+### Art Generation Services
+
+| Service | Purpose |
+|---------|---------|
+| `LinerNoteGenerationService` | Era-aware visual liner notes from album art |
+| `AlbumArtEnhancementService` | Album art variations and enhancements |
+| `CharacterGenerationService` | Crate Cat mascot generation |
+| `DerivedAssetGenerator` | Derived assets (thumbnails, crops) |
+| `ArtCurationService` | Curates and validates generated art |
+| `DesignDirectiveService` | Visual design prompts and directives |
+| `CanonicalReferenceService` | Canonical reference images for characters |
+| `GeneratedAssetRepository` | Persistence for generated assets |
+
+### Graph Services
+
+| Service | Purpose |
+|---------|---------|
+| `MusicGraphService` | Knowledge graph queries |
+| `GraphConnectionsService` | Artist/album relationship discovery |
+| `MbidResolverService` | MusicBrainz ID resolution |
+
+### Infrastructure Services
+
+| Service | Purpose |
+|---------|---------|
+| `SemanticSearchService` | FAISS semantic search integration |
+| `SearchPlaysService` | Play search and retrieval |
+| `LinkFetcherService` | External link content extraction |
+| `CircuitBreaker` | Resilience for external APIs |
+
+## Art Generation Pipeline
+
+The agent uses Gemini's "Nano Banana Pro" model (`gemini-3-pro-image-preview`) for visual asset generation.
+
+### Era Visual System
+
+Visual styling is based on album release year:
+
+| Era | Years | Style |
+|-----|-------|-------|
+| pre-vinyl | < 1950 | Sepia, art deco, heavy weathering |
+| golden-age | 1950-1969 | Blue Note, Reid Miles, vinyl ring wear |
+| classic-rock | 1970-1979 | Gatefold, Hipgnosis, analog warmth |
+| new-wave | 1980-1989 | Factory Records, bold color blocks |
+| grunge | 1990-1999 | DIY zine, high contrast, Sub Pop |
+| digital | 2000-2009 | Clean digital, transitional |
+| streaming | 2010-2019 | Minimal, square format |
+| contemporary | 2020+ | Pristine, fresh |
+
+### Liner Note Generation
+
+```typescript
+import { LinerNoteGenerationService, generateLinerNote } from "@crate/agent"
+
+const linerNote = yield* generateLinerNote({
+  playId: 12345,
+  albumArtBase64: "...",
+  releaseYear: 1973,
+  title: "The Dark Side Story",
+  narrative: "Pink Floyd's masterpiece...",
+  artistName: "Pink Floyd",
+  albumName: "The Dark Side of the Moon",
+  style: "art-forward"
+})
+// Returns: { imageBase64, mimeType, era, modelNotes, generatedAt }
+```
+
+### Styles
+
+- `art-forward` - Text overlaid on abstracted album art atmosphere
+- `editorial` - Magazine pull-quote card, Pitchfork aesthetic
+- `archival` - Catalog card, library index, vintage press clipping
+- `collage` - Zine collage, mixed media cut-out, punk DIY
 
 ## Configuration
 
-The agent is configured via environment variables:
-
-- `FAISS_API_URL`: URL of the FAISS search API (default: `http://localhost:8000`)
-
-## Usage
-
-### Local Development
-
-```typescript
-import { Effect } from "effect"
-import { NodeRuntime } from "@effect/platform-node"
-import { AgentAppLive, MusicAgent } from "@crate/agent"
-
-const program = Effect.gen(function* () {
-  const agent = yield* MusicAgent
-  const response = yield* agent.ask("Find me some psychedelic rock")
-  console.log(response)
-})
-
-NodeRuntime.runMain(program.pipe(Effect.provide(AgentAppLive)))
-```
-
-## Google Cloud Deployment
-
-This package is designed to run in Google Cloud containers, providing on-demand and scheduled AI agents for music data enrichment.
-
-### Deployment Targets
-
-- **Cloud Run**: On-demand HTTP endpoint or scheduled triggers
-- **Cloud Scheduler**: Periodic enrichment tasks
-- **Pub/Sub**: Event-driven processing
-
-### Prerequisites
-
-1. **Google Cloud Project** with billing enabled
-2. **gcloud CLI** installed and authenticated:
-   ```bash
-   gcloud auth login
-   gcloud config set project YOUR_PROJECT_ID
-   ```
-3. **Enable required APIs**:
-   ```bash
-   gcloud services enable cloudbuild.googleapis.com
-   gcloud services enable run.googleapis.com
-   gcloud services enable containerregistry.googleapis.com
-   ```
-
 ### Environment Variables
 
-Set these before deploying:
-
 ```bash
-export GCP_PROJECT_ID="your-project-id"
-export GCP_REGION="us-central1"
-export FAISS_API_URL="https://your-faiss-api.example.com"
+# Required
+ANTHROPIC_API_KEY=...           # Claude API key
+GOOGLE_AI_API_KEY=...           # Gemini API key
+FAISS_API_URL=https://...       # FAISS search API URL
+
+# Optional
+ART_PROVIDER=gemini             # gemini | dalle | stable-diffusion
+ART_CACHE_ENABLED=true          # Enable asset caching
+ART_MAX_CONCURRENT=3            # Max parallel generations
 ```
 
-### Deploy to Google Cloud Run
+## Deployment
 
-#### Option 1: Using the Deploy Script
+### Cloud Run
+
+The agent runs on Cloud Run, deployed via Cloud Build:
 
 ```bash
-# From the repository root
-./packages/agent/deploy.sh
+# Deploy
+gcloud builds submit --config cloudbuild.yaml .
+
+# View logs
+gcloud run logs read crate-agent --region us-west1 --tail
 ```
 
-#### Option 2: Using Cloud Build Manually
+### Pub/Sub Trigger
 
-```bash
-# From the repository root
-gcloud builds submit \
-  --config packages/agent/cloudbuild.yaml \
-  --substitutions _FAISS_API_URL="https://your-faiss-api.example.com" \
-  .
+New plays with DJ comments trigger enrichment via the `/pubsub` endpoint:
+
+```
+KEXP API → sync_plays.py → Pub/Sub (new-plays) → /pubsub → enrichPlays()
 ```
 
-#### Option 3: Local Docker Build (for testing)
+### Batch Enrichment
+
+Cloud Scheduler triggers daily batch enrichment via `/batch-enrich`.
+
+## Development
 
 ```bash
-# Build locally
-./packages/agent/deploy.sh local
+# Install dependencies
+pnpm install
+
+# Build
+pnpm build
 
 # Run locally
-docker run -e FAISS_API_URL=http://localhost:8000 crate-agent:local
+pnpm dev
+
+# Test art generation
+pnpm tsx src/scripts/test-liner-notes.ts
 ```
 
-### Cloud Build Configuration
+## Documentation
 
-The `cloudbuild.yaml` file defines a multi-step build process:
-
-1. **Build Docker image** from multi-stage Dockerfile
-2. **Push to Container Registry** with commit SHA and `latest` tags
-3. **Deploy to Cloud Run** with environment variables
-
-### Dockerfile Structure
-
-The Dockerfile uses a multi-stage build for optimal image size:
-
-1. **Builder stage**: Installs dependencies and builds TypeScript
-2. **Production stage**: Copies only built artifacts and production dependencies
-
-### Cost Optimization
-
-- **Cloud Run** charges only for request time (pay-per-use)
-- Set **minimum instances to 0** for cost savings when idle
-- Use **Cloud Scheduler** for periodic tasks instead of constantly running containers
-- Consider **concurrency settings** to handle multiple requests per instance
-
-### Monitoring and Logs
-
-View logs in Google Cloud Console:
-```bash
-# Stream logs
-gcloud run logs read crate-agent --region us-central1 --tail
-
-# View in Cloud Console
-open "https://console.cloud.google.com/run/detail/${GCP_REGION}/crate-agent/logs"
-```
-
-### Updating the Deployment
-
-After making changes, redeploy:
-
-```bash
-./packages/agent/deploy.sh
-```
-
-Cloud Build will automatically build and deploy the new version.
-
-### Environment-Specific Configuration
-
-For multiple environments (dev, staging, prod), use Cloud Build substitutions:
-
-```bash
-# Development
-gcloud builds submit \
-  --config packages/agent/cloudbuild.yaml \
-  --substitutions _FAISS_API_URL="https://dev-faiss.example.com" \
-  .
-
-# Production
-gcloud builds submit \
-  --config packages/agent/cloudbuild.yaml \
-  --substitutions _FAISS_API_URL="https://prod-faiss.example.com" \
-  .
-```
-
-## License
-
-MIT
+- [Art Pipeline Design](./docs/ART_PIPELINE_DESIGN.md) - Detailed art generation architecture
+- [Semantic Image Store Design](./docs/SEMANTIC_IMAGE_STORE_DESIGN.md) - Asset storage design
+- [System Architecture](../../docs/ARCHITECTURE.md) - Overall system architecture
