@@ -444,11 +444,24 @@ class PlaySyncService:
                 self._log_info(f"Enriched {enrichment_stats['enriched']} plays with cover art")
 
             # Publish enrichment trigger to Pub/Sub for AI insights
+            # Only trigger for plays that have DJ comments (richer content for insights)
             pubsub_published = False
+            comment_play_ids = []
             if inserted_ids:
-                pubsub_published = publish_enrichment_trigger(inserted_ids)
-                if pubsub_published:
-                    self._log_info(f"Published enrichment trigger for {len(inserted_ids)} plays")
+                # Build set of play IDs that have non-empty comments
+                plays_with_comments = {
+                    play.id for play in new_plays
+                    if play.comment and play.comment.strip()
+                }
+                # Filter to only inserted plays that have comments
+                comment_play_ids = [pid for pid in inserted_ids if pid in plays_with_comments]
+
+                if comment_play_ids:
+                    pubsub_published = publish_enrichment_trigger(comment_play_ids)
+                    if pubsub_published:
+                        self._log_info(f"Published enrichment trigger for {len(comment_play_ids)} plays with DJ comments (of {len(inserted_ids)} total)")
+                else:
+                    self._log_info(f"No plays with DJ comments in batch of {len(inserted_ids)} - skipping enrichment trigger")
 
             # TODO: Update alignment file when embedding generation is implemented
             # Skipping play_ids.npy update to avoid mismatch with embeddings
@@ -461,6 +474,7 @@ class PlaySyncService:
 
             return {
                 "new_plays": len(inserted_ids),
+                "plays_with_comments": len(comment_play_ids),
                 "enriched": enrichment_stats["enriched"],
                 "pubsub_published": pubsub_published,
                 "last_id": new_last_id,
