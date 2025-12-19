@@ -162,3 +162,124 @@ export {
   type SmokeTestResult,
   type VerificationReport,
 } from "./CloudVerificationService.js"
+
+// Art curation service (album art style extraction)
+export {
+  ArtCurationService,
+  ArtCurationServiceLive,
+  ArtCurationServiceTest,
+  ArtCurationServiceGemini,
+  ArtCurationServiceGeminiWithConfig,
+  makeArtCurationService,
+  ArtCurationError,
+  ArtContext,
+  ArtAnalysis,
+  ColorPalette,
+  DerivedAssets,
+  CurationResult,
+  analyzeAlbumArtTool,
+  curate,
+  type ArtCurationServiceInterface,
+} from "./ArtCurationService.js"
+
+// Character generation service (Crate Cat variants in album style)
+export {
+  CharacterGenerationService,
+  CharacterGenerationServiceLive,
+  CharacterGenerationServiceTest,
+  CharacterGenerationError,
+  CharacterConfig,
+  CharacterGenerationRequest,
+  CharacterGenerationResponse,
+  generate as generateCharacter,
+  refine as refineCharacter,
+  loadConfig as loadCharacterConfig,
+  type CharacterGenerationServiceInterface,
+} from "./CharacterGenerationService.js"
+
+// Derived asset generator (SVG overlays from curation)
+export {
+  DerivedAssetGenerator,
+  DerivedAssetGeneratorLive,
+  AssetGenerationError,
+  generateAssets,
+  type DerivedAssetGeneratorInterface,
+  type GeneratedAsset,
+  type GeneratedAssetBundle,
+} from "./DerivedAssetGenerator.js"
+
+// Design directive service (design school-informed art direction)
+export {
+  DesignDirectiveService,
+  DesignDirectiveServiceLive,
+  DirectiveError,
+  DesignContext,
+  DesignDirective,
+  getDesignDirective,
+  generateDesignPromptAddendum,
+  LABEL_AESTHETICS,
+  ERA_AESTHETICS,
+  JAPANESE_AESTHETICS,
+  type DesignDirectiveServiceInterface,
+} from "./DesignDirectiveService.js"
+
+// Canonical reference service (folder-based, like skills)
+export {
+  // Service
+  CanonicalReferenceService,
+  CanonicalReferenceServiceLive,
+  CanonicalReferenceServiceTest,
+  CanonicalReferenceServiceLayer,
+  type CanonicalReferenceServiceInterface,
+  // Errors
+  CanonicalNotFoundError,
+  ConfigParseError,
+  VariantNotFoundError,
+  // Schemas
+  CanonicalCategory,
+  RenderStyle,
+  StyleGuide,
+  VariantConfig,
+  CanonicalConfig,
+  SelectionContext,
+  // Types
+  type LoadedCanonical,
+  type LoadedVariant,
+  // Convenience accessors
+  loadAllCanonicals,
+  getCanonical,
+  getCanonicalsByCategory,
+  getVariantForContext,
+  getCanonicalImage,
+  listCanonicals,
+  reloadCanonicals,
+} from "./CanonicalReferenceService.js"
+
+// Liner note generation service (era-aware visual liner notes)
+export {
+  LinerNoteGenerationService,
+  LinerNoteGenerationServiceLive,
+  LinerNoteGenerationError,
+  LinerNoteStyle,
+  LinerNoteRequest,
+  LinerNoteResponse,
+  generateLinerNote,
+  extractGraphContext,
+  buildGraphContextForArtist,
+  type LinerNoteGenerationServiceInterface,
+  type GraphContext as LinerNoteGraphContext,
+} from "./LinerNoteGenerationService.js"
+
+// Generated asset repository (persistence for AI-generated images)
+export {
+  GeneratedAssetRepository,
+  GeneratedAssetRepositoryLive,
+  AssetRepositoryError,
+  AssetType,
+  GeneratedAssetRecord,
+  hashParams,
+  type GeneratedAssetRepositoryInterface,
+  type StoreAssetInput,
+  type StoreAssetResult,
+  type GenerationParams,
+} from "./GeneratedAssetRepository.js"
