@@ -45,6 +45,9 @@ import type {
   SummarizeRelationshipsResponse,
   AnalyzeTimePeriodParams,
   AnalyzeTimePeriodResponse,
+  // Art curation schemas
+  AnalyzeAlbumArtParams,
+  AnalyzeAlbumArtResponse,
 } from "./schemas.js";
 import { toCompactPlayResult, toCompactConnection } from "../services/http-utils.js";
 
@@ -56,6 +59,7 @@ import {
   LinkFetcherService,
   GraphConnectionsService,
   MusicGraphService,
+  ArtCurationService,
   type SearchPlaysServiceInterface,
   type SemanticSearchServiceInterface,
   type InsightSessionServiceInterface,
@@ -63,6 +67,7 @@ import {
   type LinkFetcherServiceInterface,
   type GraphConnectionsServiceInterface,
   type MusicGraphServiceInterface,
+  type ArtCurationServiceInterface,
 } from "../services/index.js";
 
 // =============================================================================
@@ -93,7 +98,8 @@ export type CrateToolServices =
   | LinkFetcherService
   | InsightSessionService
   | GraphConnectionsService
-  | MusicGraphService;
+  | MusicGraphService
+  | ArtCurationService;
 
 /**
  * Handler type extracted from CrateToolkit
@@ -1077,6 +1083,102 @@ const makeAnalyzeTimePeriodHandler =
     );
 
 // =============================================================================
+// Art Curation Handler
+// =============================================================================
+
+/**
+ * Create handler for analyze_album_art tool
+ *
+ * Wires to ArtCurationService.curate() and transforms response.
+ * The agent creatively analyzes album art while staying grounded in
+ * the source aesthetic. Original art is SACRED - we enhance, never replace.
+ */
+const makeAnalyzeAlbumArtHandler =
+  (service: ArtCurationServiceInterface) =>
+  (params: AnalyzeAlbumArtParams): Effect.Effect<AnalyzeAlbumArtResponse> =>
+    pipe(
+      Effect.gen(function* () {
+        yield* Effect.logDebug("Executing analyze_album_art tool");
+        yield* Effect.annotateCurrentSpan({
+          tool: "analyze_album_art",
+          image_url: params.imageUrl,
+          has_context: params.context ? "true" : "false",
+          artist: params.context?.artistName ?? "unknown",
+          album: params.context?.albumTitle ?? "unknown",
+        });
+
+        // Call the art curation service with retry for transient failures
+        const result = yield* withRetry(
+          service.curate(params.imageUrl, params.context),
+          TOOL_RETRY_CONFIGS.fetch // Use fetch config - this involves external API calls
+        ).pipe(
+          // Map service error to success with error field for tool robustness
+          Effect.catchAll((error) =>
+            Effect.gen(function* () {
+              yield* Effect.logWarning(`analyze_album_art tool error after retries: ${error.reason}`);
+              yield* Effect.annotateCurrentSpan({
+                error: error.reason,
+                error_type: "ArtCurationError",
+              });
+              // Return a minimal valid response with error indicator
+              return {
+                analysis: {
+                  creativeDescription: "Analysis unavailable",
+                  interestingElements: [],
+                  moodAtmosphere: "unknown",
+                  eraAesthetic: "unknown",
+                },
+                palette: {
+                  dominant: "#808080",
+                  colors: ["#808080"],
+                  temperature: "neutral" as const,
+                },
+                derivedAssets: {
+                  glowColor: "#808080",
+                  gradientCss: "linear-gradient(180deg, #808080 0%, #404040 100%)",
+                  textureRecommendation: "none" as const,
+                  reasoning: `Analysis failed: ${error.reason}`,
+                },
+                _error: error.reason,
+              };
+            })
+          )
+        );
+
+        yield* Effect.annotateCurrentSpan({
+          palette_temperature: result.palette.temperature,
+          texture: result.derivedAssets.textureRecommendation,
+          dominant_color: result.palette.dominant,
+        });
+        yield* Effect.logDebug(
+          `analyze_album_art completed: ${result.palette.temperature} palette, ${result.derivedAssets.textureRecommendation} texture`
+        );
+
+        return {
+          analysis: {
+            creativeDescription: result.analysis.creativeDescription,
+            interestingElements: [...result.analysis.interestingElements],
+            moodAtmosphere: result.analysis.moodAtmosphere,
+            eraAesthetic: result.analysis.eraAesthetic,
+          },
+          palette: {
+            dominant: result.palette.dominant,
+            colors: [...result.palette.colors],
+            temperature: result.palette.temperature,
+          },
+          derivedAssets: {
+            glowColor: result.derivedAssets.glowColor,
+            gradientCss: result.derivedAssets.gradientCss,
+            textureRecommendation: result.derivedAssets.textureRecommendation,
+            reasoning: result.derivedAssets.reasoning,
+          },
+          ...("_error" in result && result._error ? { _error: result._error } : {}),
+        } satisfies AnalyzeAlbumArtResponse;
+      }),
+      Effect.withSpan("Tool.analyze_album_art")
+    );
+
+// =============================================================================
 // Toolkit Handler Builder
 // =============================================================================
 
@@ -1099,6 +1201,7 @@ export const makeCrateToolHandlers: Effect.Effect<
   const insightSessionService = yield* InsightSessionService;
   const graphConnectionsService = yield* GraphConnectionsService;
   const musicGraphService = yield* MusicGraphService;
+  const artCurationService = yield* ArtCurationService;
 
   // Build handlers that close over the services
   return CrateToolkit.of({
@@ -1117,6 +1220,8 @@ export const makeCrateToolHandlers: Effect.Effect<
     explore_neighborhood: makeExploreNeighborhoodHandler(musicGraphService),
     summarize_relationships: makeSummarizeRelationshipsHandler(musicGraphService),
     analyze_time_period: makeAnalyzeTimePeriodHandler(musicGraphService),
+    // Art curation tool
+    analyze_album_art: makeAnalyzeAlbumArtHandler(artCurationService),
   });
 });
 
@@ -1172,4 +1277,6 @@ export {
   makeExploreNeighborhoodHandler,
   makeSummarizeRelationshipsHandler,
   makeAnalyzeTimePeriodHandler,
+  // Art curation handler
+  makeAnalyzeAlbumArtHandler,
 };

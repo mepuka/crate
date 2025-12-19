@@ -38,6 +38,9 @@ import {
   SummarizeRelationshipsResponse,
   AnalyzeTimePeriodParams,
   AnalyzeTimePeriodResponse,
+  // Art curation schemas
+  AnalyzeAlbumArtParams,
+  AnalyzeAlbumArtResponse,
 } from "./schemas.js";
 
 // =============================================================================
@@ -394,6 +397,53 @@ Then call this tool. Returns error message if graph is empty.`,
 });
 
 // =============================================================================
+// Art Curation Tool
+// =============================================================================
+
+/**
+ * Analyze album art for creative style extraction
+ *
+ * Uses vision capabilities to analyze album art and extract:
+ * - Creative description and interesting visual elements
+ * - Color palette with temperature
+ * - Derived UI assets (glows, gradients, textures)
+ *
+ * The agent is GROUNDED in the source art's aesthetic - never departing from it.
+ * KEXP culture: Embrace imperfection, documentary over marketing, vinyl den feeling.
+ */
+export const AnalyzeAlbumArtTool = Tool.make("analyze_album_art", {
+  description: `Analyze album art to extract visual style and generate derived UI assets.
+
+This tool uses vision to creatively analyze album art while staying STRICTLY grounded
+in the source artwork's aesthetic. The original art is SACRED - we enhance, never replace.
+
+**Use this tool when:**
+- You have album art URL and want to extract its visual style
+- You need derived assets (glows, gradients, textures) that complement the art
+- You want to understand the mood, era, and aesthetic of an album's visual identity
+
+**What you get back:**
+- Creative description of what's visually interesting
+- Color palette (dominant color, palette array, warm/cool/neutral temperature)
+- Derived assets: glow color, CSS gradient, texture recommendation
+- Reasoning explaining why these choices fit the source aesthetic
+
+**Context helps:**
+- Provide artist name, album title for research-informed analysis
+- Include releaseYear for era-appropriate styling
+- Set isLocal=true for Pacific Northwest artists (extra warmth, DIY aesthetic)
+
+**KEXP Culture principles:**
+- Embrace imperfection (grain, warmth, authenticity over polish)
+- Even playing field - local artists get same visual respect
+- Documentary aesthetic over marketing aesthetic
+- Pacific Northwest vinyl den feeling`,
+  parameters: AnalyzeAlbumArtParams.fields,
+  success: AnalyzeAlbumArtResponse,
+  failureMode: "return",
+});
+
+// =============================================================================
 // Toolkit
 // =============================================================================
 
@@ -417,7 +467,9 @@ export const CrateToolkit = Toolkit.make(
   AnalyzeInfluenceTool,
   ExploreNeighborhoodTool,
   SummarizeRelationshipsTool,
-  AnalyzeTimePeriodTool
+  AnalyzeTimePeriodTool,
+  // Art curation tool
+  AnalyzeAlbumArtTool
 );
 
 /**
@@ -443,3 +495,5 @@ export type AnalyzeInfluenceToolType = typeof AnalyzeInfluenceTool;
 export type ExploreNeighborhoodToolType = typeof ExploreNeighborhoodTool;
 export type SummarizeRelationshipsToolType = typeof SummarizeRelationshipsTool;
 export type AnalyzeTimePeriodToolType = typeof AnalyzeTimePeriodTool;
+// Art curation tool type
+export type AnalyzeAlbumArtToolType = typeof AnalyzeAlbumArtTool;

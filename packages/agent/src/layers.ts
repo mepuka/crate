@@ -52,6 +52,9 @@ import {
   AgentCheckpointService,
   AgentCheckpointServiceLive,
   AgentCheckpointServiceTest,
+  ArtCurationService,
+  ArtCurationServiceTest,
+  ArtCurationServiceGeminiWithConfig,
 } from "./services/index.js";
 
 // Tool handlers
@@ -103,12 +106,14 @@ export const InfraLive = Layer.mergeAll(FetchHttpClient.layer, ConfigLive);
  * - LinkFetcherService
  * - GraphConnectionsService
  * - MusicGraphService
+ * - ArtCurationService (with Gemini vision)
  *
  * Requires:
  * - HttpClient
  * - FaissConfig
  * - MusicBrainzConfig
  * - JinaConfig
+ * - GOOGLE_AI_API_KEY (for art curation)
  */
 export const ServicesLive = Layer.mergeAll(
   SearchPlaysServiceLive,
@@ -118,7 +123,9 @@ export const ServicesLive = Layer.mergeAll(
   LinkFetcherServiceLive,
   GraphConnectionsServiceFull,
   MusicGraphServiceFull,
-  AgentCheckpointServiceLive
+  AgentCheckpointServiceLive,
+  // Gemini vision for album art analysis (requires GoogleAIConfig)
+  ArtCurationServiceGeminiWithConfig.pipe(Layer.provide(GoogleAIConfig.Default))
 );
 
 /**
@@ -183,7 +190,8 @@ export const ServicesTest = Layer.mergeAll(
   InsightSessionServiceTest,
   MbidResolverServiceTest,
   LinkFetcherServiceTest,
-  AgentCheckpointServiceTest
+  AgentCheckpointServiceTest,
+  ArtCurationServiceTest
 );
 
 /**
@@ -410,7 +418,8 @@ export type CrateToolServices =
   | InsightSessionService
   | MbidResolverService
   | LinkFetcherService
-  | AgentCheckpointService;
+  | AgentCheckpointService
+  | ArtCurationService;
 
 /**
  * Type for full Crate Tools context

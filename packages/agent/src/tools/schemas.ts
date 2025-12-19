@@ -740,3 +740,86 @@ export const AnalyzeTimePeriodResponse = Schema.Struct({
   summary: Schema.String
 })
 export type AnalyzeTimePeriodResponse = typeof AnalyzeTimePeriodResponse.Type
+
+// =============================================================================
+// Art Curation Tool Schemas
+// =============================================================================
+
+/**
+ * Context for album art analysis
+ */
+export const ArtContextSchema = Schema.Struct({
+  artistName: Schema.String.annotations({
+    description: "Name of the artist"
+  }),
+  albumTitle: Schema.String.annotations({
+    description: "Title of the album"
+  }),
+  releaseYear: Schema.optional(Schema.Number).annotations({
+    description: "Year of release"
+  }),
+  genres: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description: "Genre tags for context"
+  }),
+  isLocal: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether this is a Pacific Northwest local artist"
+  })
+})
+export type ArtContext = typeof ArtContextSchema.Type
+
+/**
+ * Parameters for analyzing album art
+ */
+export const AnalyzeAlbumArtParams = Schema.Struct({
+  imageUrl: Schema.String.annotations({
+    description: "URL of the album art image to analyze"
+  }),
+  context: Schema.optional(ArtContextSchema).annotations({
+    description: "Optional context about the artist/album for informed analysis"
+  })
+})
+export type AnalyzeAlbumArtParams = typeof AnalyzeAlbumArtParams.Type
+
+/**
+ * Creative analysis of album art
+ */
+export const ArtAnalysisSchema = Schema.Struct({
+  creativeDescription: Schema.String,
+  interestingElements: Schema.Array(Schema.String),
+  moodAtmosphere: Schema.String,
+  eraAesthetic: Schema.String
+})
+export type ArtAnalysis = typeof ArtAnalysisSchema.Type
+
+/**
+ * Extracted color palette
+ */
+export const ColorPaletteSchema = Schema.Struct({
+  dominant: Schema.String,
+  colors: Schema.Array(Schema.String),
+  temperature: Schema.Literal("warm", "cool", "neutral")
+})
+export type ColorPalette = typeof ColorPaletteSchema.Type
+
+/**
+ * Derived UI assets from album art
+ */
+export const DerivedAssetsSchema = Schema.Struct({
+  glowColor: Schema.String,
+  gradientCss: Schema.String,
+  textureRecommendation: Schema.Literal("grain", "noise", "paper", "none"),
+  reasoning: Schema.String
+})
+export type DerivedAssets = typeof DerivedAssetsSchema.Type
+
+/**
+ * Complete art curation result
+ */
+export const AnalyzeAlbumArtResponse = Schema.Struct({
+  analysis: ArtAnalysisSchema,
+  palette: ColorPaletteSchema,
+  derivedAssets: DerivedAssetsSchema,
+  /** Error message if analysis failed */
+  _error: Schema.optional(Schema.String)
+})
+export type AnalyzeAlbumArtResponse = typeof AnalyzeAlbumArtResponse.Type
