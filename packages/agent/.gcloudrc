@@ -27,7 +27,7 @@ ARTIFACT_REGISTRY_REPO=crate
 ARTIFACT_IMAGE=us-west1-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPO}/crate-agent
 
 # Environment Variables for Cloud Run
-FAISS_API_URL=http://localhost:8000  # Update this with your actual FAISS API URL
+FAISS_API_URL=https://cratemusic.duckdns.org
 
 # APIs Enabled
 # ✓ Cloud Run API (run.googleapis.com)

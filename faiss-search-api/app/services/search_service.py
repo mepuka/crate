@@ -176,7 +176,9 @@ class FAISSSearchService:
         logger.info(f"Loading FAISS index from {self.index_path} (mmap)")
         # Use IO_FLAG_MMAP to map index into memory
         self.index = faiss.read_index(str(self.index_path), faiss.IO_FLAG_MMAP)
-        self.index.nprobe = self.nprobe
+        # Only set nprobe for IVF indexes (not IndexFlatIP)
+        if hasattr(self.index, 'nprobe'):
+            self.index.nprobe = self.nprobe
         logger.info(f"✓ Index loaded: {self.index.ntotal:,} vectors")
 
     def encode_query(self, query_text: str) -> np.ndarray:

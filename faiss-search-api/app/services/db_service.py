@@ -1345,7 +1345,7 @@ class DatabaseService:
                 source_mbid, source_name
             FROM artist_edges
             WHERE source_mbid IN ({placeholders})
-              AND relationship_type = 'band_member'
+              AND relationship_type = 'member of band'
             ORDER BY target_name
             LIMIT ?
         """, [*mbids, limit])
@@ -1384,7 +1384,7 @@ class DatabaseService:
                 attributes, begin_date, end_date
             FROM artist_edges
             WHERE source_mbid IN ({placeholders})
-              AND relationship_type = 'member_of'
+              AND relationship_type = 'member of band'
             ORDER BY target_name
             LIMIT ?
         """, [*mbids, limit])
@@ -1692,7 +1692,7 @@ class DatabaseService:
                 SELECT DISTINCT target_mbid as band_mbid, target_name as band_name
                 FROM artist_edges
                 WHERE source_mbid IN ({placeholders})
-                  AND relationship_type = 'member_of'
+                  AND relationship_type = 'member of band'
             )
             SELECT DISTINCT
                 ae.source_mbid,
@@ -1705,7 +1705,7 @@ class DatabaseService:
             FROM artist_edges ae
             JOIN source_bands sb ON ae.target_mbid = sb.band_mbid
             WHERE ae.source_mbid NOT IN ({placeholders})
-              AND ae.relationship_type = 'member_of'
+              AND ae.relationship_type = 'member of band'
             ORDER BY ae.source_name
             LIMIT ?
         """, [*mbids, *mbids, limit])

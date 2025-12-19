@@ -53,8 +53,8 @@
     "clean": "rm -rf dist build .tsbuildinfo"
   },
   "dependencies": {
-    "@effect/platform": "^0.93.0",
-    "effect": "^3.19.3",
+    "@effect/platform": "^0.94.0",
+    "effect": "^3.19.13",
     "fast-csv": "^5.0.2"
   },
   "devDependencies": {

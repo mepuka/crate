@@ -436,8 +436,8 @@ const makeFetchLinkHandler =
           )
         );
 
-        // Apply word truncation to prevent context bloat
-        const maxWords = Math.min(params.max_words ?? 5000, 10000);
+        // Apply word truncation - raised to support narrative depth research
+        const maxWords = Math.min(params.max_words ?? 20000, 50000);
         const truncatedContent = truncateToWords(rawResponse.content, maxWords);
         const truncatedWordCount = truncatedContent.split(/\s+/).length;
 

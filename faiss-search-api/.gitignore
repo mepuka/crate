@@ -36,3 +36,6 @@ logs/
 
 # SSL certificates and certbot data
 certbot/
+
+# GCP credentials
+secrets/

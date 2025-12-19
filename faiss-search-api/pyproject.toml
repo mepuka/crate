@@ -23,6 +23,9 @@ dependencies = [
     "httpx>=0.27.0",
     "joblib>=1.4.2",
     "orjson>=3.10.7",
+
+    # GCP Pub/Sub for enrichment triggers
+    "google-cloud-pubsub>=2.18.0",
 ]
 
 [project.optional-dependencies]

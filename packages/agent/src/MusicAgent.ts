@@ -342,6 +342,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
       readonly response: LanguageModel.GenerateTextResponse<Tools> | null;
       readonly toolCalls: readonly ToolCallRecord[];
       readonly tokenUsage: AggregatedTokenUsage;
+      readonly graphExplored: boolean; // Track if graph tools have been used
     };
 
     /**
@@ -414,6 +415,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
             response: null,
             toolCalls: [] as readonly ToolCallRecord[],
             tokenUsage: initialTokenUsage,
+            graphExplored: false, // Track graph exploration
           } as ResearchState<Tools>,
           {
             // Continue while:
@@ -438,28 +440,43 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                   const iterationStartTime = yield* Clock.currentTimeMillis;
 
                   // Use generateText with toolChoice to force tool calls
-                  // On first iteration, REQUIRE a tool call
-                  // On subsequent iterations, allow auto (model decides)
+                  // Iteration 0: REQUIRE any research tool call
+                  // Iteration 1+: If graph not yet explored, REQUIRE graph tool
+                  // After graph explored: auto (model decides when to stop)
+                  const toolChoiceForIteration = (() => {
+                    if (state.iteration === 0) {
+                      // First iteration: require any tool
+                      return {
+                        mode: "required" as const,
+                        oneOf: [
+                          "get_recent_insights",
+                          "hybrid_search",
+                          "search_plays",
+                          "semantic_search",
+                          "resolve_mbid",
+                          "fetch_link",
+                          "explore_graph",
+                          "graph_connections",
+                        ],
+                      };
+                    } else if (!state.graphExplored && state.iteration < 3) {
+                      // Graph not yet explored: strongly encourage graph tools
+                      // (don't require forever, but require for iterations 1-2)
+                      return {
+                        mode: "required" as const,
+                        oneOf: ["explore_graph", "graph_connections"],
+                      };
+                    } else {
+                      // Graph explored or iteration >= 3: model decides
+                      return "auto" as const;
+                    }
+                  })();
+
                   const response = yield* chat
                     .generateText({
                       prompt: [], // Empty - Chat maintains full history
                       toolkit,
-                      toolChoice:
-                        state.iteration === 0
-                          ? {
-                              mode: "required" as const,
-                              oneOf: [
-                                "get_recent_insights",
-                                "hybrid_search",
-                                "search_plays",
-                                "semantic_search",
-                                "resolve_mbid",
-                                "fetch_link",
-                                "explore_graph",
-                                "graph_connections",
-                              ],
-                            }
-                          : "auto",
+                      toolChoice: toolChoiceForIteration,
                     })
                     .pipe(
                       Effect.mapError(
@@ -554,12 +571,20 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                     cacheCreationTokens: state.tokenUsage.cacheCreationTokens, // Not available in standard response
                   };
 
+                  // Track if graph tools were used in this iteration
+                  const graphToolUsed = response.toolCalls.some(
+                    (tc) =>
+                      tc.name === "explore_graph" ||
+                      tc.name === "graph_connections"
+                  );
+
                   return {
                     chat,
                     iteration: state.iteration + 1,
                     response,
                     toolCalls: [...state.toolCalls, ...newToolCalls],
                     tokenUsage: updatedTokenUsage,
+                    graphExplored: state.graphExplored || graphToolUsed,
                   } as ResearchState<Tools>;
                 }),
                 Effect.withSpan("MusicAgent.researchIteration", {
@@ -591,15 +616,48 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
         // =============================================================================
         yield* Effect.logDebug("Starting output phase");
 
+        // Build explicit research summary to inject into output prompt
+        // This ensures research context flows to the output phase even if chat history is truncated
+        const researchSteps = yield* insightSession.getResearchSteps();
+        const researchFindings = researchSteps
+          .flatMap((s) => s.findings)
+          .filter((f) => f && f.length > 0)
+          .slice(0, 15) // Limit to top 15 findings
+          .map((f) => `- ${f}`)
+          .join("\n");
+
+        const discoveryFindings = researchSteps
+          .filter((s) => s.step === "graph")
+          .map((s) => s.description)
+          .slice(0, 5)
+          .join("\n- ");
+
+        const outputPromptContent = `Research complete. Here's what we discovered:
+
+## Key Findings
+${researchFindings || "No specific findings recorded"}
+
+## Graph Discoveries
+${discoveryFindings ? `- ${discoveryFindings}` : "No graph discoveries recorded"}
+
+## Research Stats
+- Tools used: ${toolsCalled.join(", ") || "None"}
+- Total tool calls: ${finalState.toolCalls.length}
+- Research iterations: ${finalState.iteration}
+
+Now produce your final insights based on this research. Return the insights JSON object.
+Focus on insight types that tell stories (Connection, DiscoveryArc, LocalScene, DJRecommendation) over bare PlayHistory stats.`;
+
+        yield* Effect.logDebug(`Output prompt has ${researchFindings.split("\n").length} findings`);
+
         // Now that research is complete, ask the model to produce structured insights
-        // based on all the tool results accumulated in chat history
+        // based on explicit research summary + tool results in chat history
         const response = yield* chat
           .generateObject({
             prompt: [
               {
                 role: "user",
-                content:
-                  "Based on your research above, now produce your final insights. Return the insights JSON object.",
+                content: outputPromptContent,
               },
             ],
             toolkit, // Include toolkit so tool results stay in context
@@ -722,7 +780,7 @@ export class MusicAgent extends Effect.Service<MusicAgent>()("MusicAgent", {
                     )
                   ),
                   Effect.tap((res) =>
-                    Effect.logDebug(`Checkpoint saved: ${res.status} (${res.sessionId})`)
+                    Effect.logDebug(`Checkpoint saved: ${res.status} (${res.session_id})`)
                   ),
                   Effect.catchAll((err) =>
                     Effect.logWarning(`Failed to save checkpoint: ${err}`)

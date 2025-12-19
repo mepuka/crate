@@ -97,8 +97,23 @@ const cacheInsights = (
 
 /**
  * Decode raw insight data from InsightRecord.data field.
+ *
+ * The API returns insights with `tag` property, but our schema uses `_tag`
+ * for the Effect discriminated union pattern. This function transforms
+ * the data before decoding.
  */
 const decodeInsightData = (data: unknown): Insights.Insight | null => {
+  // Transform `tag` to `_tag` for Effect schema compatibility
+  if (data && typeof data === "object" && "tag" in data) {
+    const transformed = {
+      ...data,
+      _tag: (data as { tag: string }).tag,
+    };
+    const result = Schema.decodeUnknownEither(Insights.Insight)(transformed);
+    return result._tag === "Right" ? result.right : null;
+  }
+
+  // Try direct decode if already has _tag
   const result = Schema.decodeUnknownEither(Insights.Insight)(data);
   return result._tag === "Right" ? result.right : null;
 };

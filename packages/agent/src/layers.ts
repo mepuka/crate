@@ -18,6 +18,7 @@
 import { Effect, Layer } from "effect";
 import { FetchHttpClient, HttpClient } from "@effect/platform";
 import { AnthropicLanguageModel, AnthropicClient } from "@effect/ai-anthropic";
+import { GoogleLanguageModel, GoogleClient } from "@effect/ai-google";
 
 // Configuration services
 import {
@@ -25,6 +26,8 @@ import {
   MusicBrainzConfig,
   JinaConfig,
   AnthropicConfig,
+  GoogleAIConfig,
+  AIModelConfig,
 } from "./config.js";
 
 // Service imports
@@ -46,6 +49,9 @@ import {
   LinkFetcherServiceTest,
   GraphConnectionsServiceFull,
   MusicGraphServiceFull,
+  AgentCheckpointService,
+  AgentCheckpointServiceLive,
+  AgentCheckpointServiceTest,
 } from "./services/index.js";
 
 // Tool handlers
@@ -111,7 +117,8 @@ export const ServicesLive = Layer.mergeAll(
   MbidResolverServiceLive,
   LinkFetcherServiceLive,
   GraphConnectionsServiceFull,
-  MusicGraphServiceFull
+  MusicGraphServiceFull,
+  AgentCheckpointServiceLive
 );
 
 /**
@@ -175,7 +182,8 @@ export const ServicesTest = Layer.mergeAll(
   SemanticSearchServiceTest,
   InsightSessionServiceTest,
   MbidResolverServiceTest,
-  LinkFetcherServiceTest
+  LinkFetcherServiceTest,
+  AgentCheckpointServiceTest
 );
 
 /**
@@ -252,6 +260,144 @@ export const AnthropicModelLive = AnthropicModelLayer.pipe(
 );
 
 // =============================================================================
+// Google AI (Gemini) Layers
+// =============================================================================
+
+/**
+ * Default model for Google AI.
+ * Using Gemini 3 Flash Preview for fast responses, large context (1M tokens), and low cost.
+ * Released December 17, 2025.
+ * Pricing: $0.50/1M input, $3/1M output
+ */
+const DEFAULT_GOOGLE_MODEL = "gemini-3-flash-preview" as const;
+
+/**
+ * Google AI LanguageModel layer
+ *
+ * Creates a fully-provided Google Gemini model layer.
+ * Requires GoogleAIConfig to be provided for the API key.
+ *
+ * Uses:
+ * - gemini-2.0-flash model (1M+ token context window)
+ * - FetchHttpClient for HTTP requests
+ * - GoogleAIConfig for API key configuration
+ */
+export const GoogleModelLayer = Layer.unwrapEffect(
+  Effect.gen(function* () {
+    const config = yield* GoogleAIConfig;
+
+    // Create Google client layer with API key and HTTP client.
+    // Use HttpClient.retryTransient to automatically retry common transient
+    // errors (rate limits, timeouts, network issues) at the HTTP layer.
+    const clientLayer = GoogleClient.layer({
+      apiKey: config.apiKey,
+      // Transform the underlying HttpClient to add transient retries
+      // for all Google AI requests.
+      transformClient: HttpClient.retryTransient({ times: 3 }),
+    }).pipe(Layer.provide(FetchHttpClient.layer));
+
+    // Create model layer and provide the client
+    return GoogleLanguageModel.model(DEFAULT_GOOGLE_MODEL).pipe(
+      Layer.provide(clientLayer)
+    );
+  })
+);
+
+/**
+ * Complete Google model layer with config resolved
+ *
+ * This is a self-contained layer that provides LanguageModel.LanguageModel
+ * after reading GOOGLE_AI_API_KEY from the environment.
+ *
+ * Key advantages over Anthropic:
+ * - 1M+ token context window (vs 200K for Claude)
+ * - Lower cost per token (~$0.15/1M vs $5/1M)
+ * - Ideal for large-context research tasks
+ */
+export const GoogleModelLive = GoogleModelLayer.pipe(
+  Layer.provide(GoogleAIConfig.Default)
+);
+
+// =============================================================================
+// Configurable Model Layer (Runtime Provider Selection)
+// =============================================================================
+
+/**
+ * Create an Anthropic model layer with a specific model name
+ */
+const makeAnthropicModelLayer = (model: string) =>
+  Layer.unwrapEffect(
+    Effect.gen(function* () {
+      const config = yield* AnthropicConfig;
+      const clientLayer = AnthropicClient.layer({
+        apiKey: config.apiKey,
+        transformClient: HttpClient.retryTransient({ times: 3 }),
+      }).pipe(Layer.provide(FetchHttpClient.layer));
+
+      return AnthropicLanguageModel.modelWithTokenizer(model).pipe(
+        Layer.provide(clientLayer)
+      );
+    })
+  );
+
+/**
+ * Create a Google model layer with a specific model name
+ */
+const makeGoogleModelLayer = (model: string) =>
+  Layer.unwrapEffect(
+    Effect.gen(function* () {
+      const config = yield* GoogleAIConfig;
+      const clientLayer = GoogleClient.layer({
+        apiKey: config.apiKey,
+        transformClient: HttpClient.retryTransient({ times: 3 }),
+      }).pipe(Layer.provide(FetchHttpClient.layer));
+
+      return GoogleLanguageModel.model(model).pipe(
+        Layer.provide(clientLayer)
+      );
+    })
+  );
+
+/**
+ * Configurable model layer that selects provider based on AI_PROVIDER env var
+ *
+ * This is the recommended layer for production use. It reads:
+ * - AI_PROVIDER: "anthropic" | "google" (default: "anthropic")
+ * - AI_MODEL: Model name override (optional)
+ *
+ * Examples:
+ *   AI_PROVIDER=google                    → Gemini 3 Flash Preview
+ *   AI_PROVIDER=google AI_MODEL=gemini-2.5-pro → Gemini 2.5 Pro
+ *   AI_PROVIDER=anthropic AI_MODEL=claude-opus-4 → Claude Opus 4
+ *   (no env vars)                         → Claude Haiku 4.5
+ *
+ * Usage:
+ * ```ts
+ * const program = myAgent.pipe(Effect.provide(ConfigurableModelLive))
+ * ```
+ */
+export const ConfigurableModelLive = Layer.unwrapEffect(
+  Effect.gen(function* () {
+    const aiConfig = yield* AIModelConfig;
+
+    // Log the selected provider/model for debugging
+    yield* Effect.logInfo(`AI Provider: ${aiConfig.provider}/${aiConfig.model}`);
+
+    if (aiConfig.provider === "google") {
+      // Google requires GoogleAIConfig
+      return makeGoogleModelLayer(aiConfig.model).pipe(
+        Layer.provide(GoogleAIConfig.Default)
+      );
+    } else {
+      // Anthropic is default
+      return makeAnthropicModelLayer(aiConfig.model).pipe(
+        Layer.provide(AnthropicConfig.Default)
+      );
+    }
+  })
+).pipe(Layer.provide(AIModelConfig.Default));
+
+// =============================================================================
 // Type Exports
 // =============================================================================
 
@@ -263,7 +409,8 @@ export type CrateToolServices =
   | SemanticSearchService
   | InsightSessionService
   | MbidResolverService
-  | LinkFetcherService;
+  | LinkFetcherService
+  | AgentCheckpointService;
 
 /**
  * Type for full Crate Tools context

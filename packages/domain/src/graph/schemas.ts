@@ -306,7 +306,8 @@ export class GraphStats extends Schema.Class<GraphStats>("GraphStats")({
  * - `recorded_at` - Get recordings from a place
  * - `collaborators` - Get artists who shared bands (2-hop)
  *
- * **Extended queries (3):**
+ * **Extended queries (4):**
+ * - `collaborators_direct` - Direct collaborations (features, production, writing)
  * - `members_by_instrument` - Band members by instrument (supports instrument filter)
  * - `works_by_creator` - Works by composer/lyricist (supports creator_type filter)
  * - `work_credits` - Who composed/wrote a work
@@ -322,6 +323,7 @@ export const GraphQueryType = Schema.Literal(
   "recorded_at",
   "collaborators",
   // Extended graph queries
+  "collaborators_direct",    // Direct artist collaborations (features, production, writing)
   "members_by_instrument",   // Band members filtered by instrument
   "works_by_creator",        // Works composed/written by artist
   "work_credits"             // Who composed/wrote a work

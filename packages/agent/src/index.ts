@@ -135,7 +135,17 @@ export {
   LinkFetcherServiceLive,
   LinkFetcherServiceFull,
   LinkFetcherServiceTest,
-  type LinkFetcherServiceInterface
+  type LinkFetcherServiceInterface,
+  // AgentCheckpoint service (session persistence)
+  AgentCheckpointService,
+  AgentCheckpointServiceLive,
+  AgentCheckpointServiceTest,
+  CheckpointError,
+  type AgentCheckpointServiceInterface,
+  type RunStatus,
+  type AgentRunSummary,
+  type AgentRunDetail,
+  type ListCheckpointsFilter,
 } from "./services/index.js"
 
 // =============================================================================

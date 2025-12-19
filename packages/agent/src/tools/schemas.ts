@@ -322,9 +322,9 @@ export const FetchLinkParams = Schema.Struct({
   extract_links: Schema.optional(Schema.Boolean).annotations({
     description: "Whether to extract and return links from the page (default false)"
   }),
-  /** Maximum words to return from content (default 5000, max 10000) */
+  /** Maximum words to return from content (default 20000, max 50000) */
   max_words: Schema.optional(Schema.Number).annotations({
-    description: "Maximum words to return (default 5000, max 10000). Long pages truncated with '[Content truncated...]'"
+    description: "Maximum words to return (default 20000, max 50000). Long pages truncated with '[Content truncated...]'"
   })
 })
 export type FetchLinkParams = typeof FetchLinkParams.Type

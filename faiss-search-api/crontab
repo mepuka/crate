@@ -1,11 +1,11 @@
 # Sync KEXP plays every 30 seconds (two offset cron jobs)
-* * * * * cd /app && /usr/local/bin/python3 /app/scripts/sync_plays.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/sync.log 2>&1
-* * * * * sleep 30 && cd /app && /usr/local/bin/python3 /app/scripts/sync_plays.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/sync.log 2>&1
+* * * * * cd /app && /opt/venv/bin/python /app/scripts/sync_plays.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/sync.log 2>&1
+* * * * * sleep 30 && cd /app && /opt/venv/bin/python /app/scripts/sync_plays.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/sync.log 2>&1
 
 # Generate embeddings for pending plays hourly (at minute 5)
-5 * * * * cd /app && /usr/local/bin/python3 /app/scripts/embed_pending.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/embed.log 2>&1
+5 * * * * cd /app && /opt/venv/bin/python /app/scripts/embed_pending.py --db-path /app/data/music_kb.sqlite --play-ids-path /app/data/play_ids.npy >> /app/logs/embed.log 2>&1
 
 # Validate image URLs daily at 3:15 AM (clear broken images, update validation timestamps)
-15 3 * * * cd /app && /usr/local/bin/python3 /app/scripts/validate_image_urls.py --db-path /app/data/music_kb.sqlite --limit 5000 >> /app/logs/image_validation.log 2>&1
+15 3 * * * cd /app && /opt/venv/bin/python /app/scripts/validate_image_urls.py --db-path /app/data/music_kb.sqlite --limit 5000 >> /app/logs/image_validation.log 2>&1
 
 # Keep a newline at end of file for cron

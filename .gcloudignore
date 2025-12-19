@@ -1,30 +1,46 @@
-# Exclude large directories first
-docs/
-docs/effect-source/
-faiss-search-api/
-data/
-.git/
-.worktrees/
-.claude/
+# =============================================================================
+# .gcloudignore - Optimized for agent deployment
+# Only include: packages/agent, packages/domain, root config files
+# =============================================================================
 
-# Exclude node_modules at root and in packages
+# Exclude ALL large directories
+/data/
+/analysis/
+/faiss-search-api/
+/docs/
+/.git/
+/.worktrees/
+/.claude/
+/.beads/
+/scratchpad/
+/scripts/
+/patches/
+
+# Exclude node_modules everywhere (installed fresh in Docker)
 node_modules/
-packages/*/node_modules/
+**/node_modules/
 
-# Exclude build artifacts
-packages/*/build/
-packages/*/dist/
-packages/*/.tsbuildinfo/
+# Exclude build artifacts (built fresh in Docker)
+**/dist/
+**/build/
+**/.tsbuildinfo/
 
-# Exclude other packages (not needed for agent)
+# Exclude all packages EXCEPT agent and domain
 packages/web/
 packages/api/
 packages/server/
 packages/shared/
 packages/claude_effect_docs/
 
-# Exclude logs and temp files
+# Exclude test files and dev artifacts
+**/*.test.ts
+**/*.spec.ts
+**/__tests__/
+**/coverage/
+
+# Exclude logs, temp, and env files
 *.log
 .DS_Store
 .env
-.env.local
+.env.*
+!.env.example

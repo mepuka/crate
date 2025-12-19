@@ -11,11 +11,15 @@ The FAISS Search API includes several enrichment scripts that fetch and process 
 ```
 KEXP API → sync_plays.py (30s) → fact_plays
                                       ↓
-                            ┌─────────┴─────────────┐
-                            ↓                       ↓
-                    embed_pending.py (1hr)    enrich_cover_art.py
-                            ↓                       ↓
-                    FAISS index + play_ids    image_uri updates
+                    ┌─────────────────┼─────────────────┐
+                    ↓                 ↓                 ↓
+           embed_pending.py    enrich_cover_art   Cloud Pub/Sub
+               (1hr)               (inline)        (new-plays)
+                    ↓                 ↓                 ↓
+           FAISS index +        image_uri        crate-agent
+             play_ids            updates         (Cloud Run)
+                                                      ↓
+                                                AI Insights
 
 fact_plays → extract_links.py → link_content + play_links
                                       ↓
@@ -39,13 +43,15 @@ mb_* tables → enrich_mb_entities.py → MusicBrainz API → enriched metadata
 2. Fetch new plays from KEXP API with pagination
 3. Insert new plays into `fact_plays` table (INSERT OR IGNORE)
 4. Inline cover art enrichment for plays without images
-5. Triggers auto-populate `master_relations` table
+5. Publish enrichment trigger to Cloud Pub/Sub (if enabled)
+6. Triggers auto-populate `master_relations` table
 
 **Features:**
 - File-based locking prevents concurrent executions
 - Exponential backoff retry for API failures
 - Structured JSON logging to stdout
 - Inline cover art enrichment from Cover Art Archive
+- Cloud Pub/Sub integration for AI insights (opt-in via `PUBSUB_ENABLED=true`)
 
 **Usage:**
 ```bash

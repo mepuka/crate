@@ -43,6 +43,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.kexp_models import TrackPlay, NonTrackPlay, Airbreak, PlayResponse
+from app.services.pubsub_publisher import publish_enrichment_trigger
 
 
 class PlaySyncService:
@@ -442,6 +443,13 @@ class PlaySyncService:
             if enrichment_stats["enriched"] > 0:
                 self._log_info(f"Enriched {enrichment_stats['enriched']} plays with cover art")
 
+            # Publish enrichment trigger to Pub/Sub for AI insights
+            pubsub_published = False
+            if inserted_ids:
+                pubsub_published = publish_enrichment_trigger(inserted_ids)
+                if pubsub_published:
+                    self._log_info(f"Published enrichment trigger for {len(inserted_ids)} plays")
+
             # TODO: Update alignment file when embedding generation is implemented
             # Skipping play_ids.npy update to avoid mismatch with embeddings
             # self.update_play_ids_alignment(inserted_ids)
@@ -454,6 +462,7 @@ class PlaySyncService:
             return {
                 "new_plays": len(inserted_ids),
                 "enriched": enrichment_stats["enriched"],
+                "pubsub_published": pubsub_published,
                 "last_id": new_last_id,
                 "duration_ms": duration_ms
             }

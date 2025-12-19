@@ -70,7 +70,7 @@ export class MusicBrainzConfig extends Effect.Service<MusicBrainzConfig>()("Musi
   effect: Effect.gen(function* () {
     const { baseUrl, userAgent, rateLimitMs } = yield* Config.all({
       baseUrl: Config.string("MUSICBRAINZ_API_URL").pipe(Config.withDefault("https://musicbrainz.org/ws/2")),
-      userAgent: Config.string("MUSICBRAINZ_USER_AGENT").pipe(Config.withDefault("Crate/1.0 (https://github.com/crate-music)")),
+      userAgent: Config.string("MUSICBRAINZ_USER_AGENT").pipe(Config.withDefault("CrateAgent/1.0 (https://github.com/crate-music; crate-music@proton.me)")),
       rateLimitMs: Config.number("MUSICBRAINZ_RATE_LIMIT_MS").pipe(Config.withDefault(1000))
     })
     return {
@@ -159,6 +159,94 @@ export class PubSubConfig extends Effect.Service<PubSubConfig>()("PubSubConfig",
 }) {}
 
 // =============================================================================
+// Google AI Configuration
+// =============================================================================
+
+/**
+ * Configuration for Google AI (Gemini) API
+ */
+export interface GoogleAIConfigShape {
+  readonly apiKey: Redacted.Redacted<string>
+}
+
+/**
+ * Google AI API configuration service
+ *
+ * Environment variables (checked in order):
+ * - GOOGLE_AI_API_KEY
+ * - GOOGLE_API_KEY
+ */
+export class GoogleAIConfig extends Effect.Service<GoogleAIConfig>()("GoogleAIConfig", {
+  effect: Effect.gen(function* () {
+    // Try GOOGLE_AI_API_KEY first, fallback to GOOGLE_API_KEY
+    const apiKey = yield* Config.redacted("GOOGLE_AI_API_KEY").pipe(
+      Config.orElse(() => Config.redacted("GOOGLE_API_KEY"))
+    )
+    return { apiKey } satisfies GoogleAIConfigShape
+  })
+}) {}
+
+// =============================================================================
+// AI Model Selection Configuration
+// =============================================================================
+
+/**
+ * Supported AI providers
+ */
+export type AIProvider = "anthropic" | "google"
+
+/**
+ * Default models per provider
+ */
+export const DEFAULT_MODELS: Record<AIProvider, string> = {
+  anthropic: "claude-haiku-4-5",
+  google: "gemini-3-flash-preview",
+} as const
+
+/**
+ * Configuration for AI model selection
+ */
+export interface AIModelConfigShape {
+  readonly provider: AIProvider
+  readonly model: string
+}
+
+/**
+ * AI Model configuration service
+ *
+ * Allows runtime selection of AI provider and model via environment variables.
+ * No code changes or redeployment needed to switch models.
+ *
+ * Environment variables:
+ * - AI_PROVIDER: "anthropic" | "google" (default: "anthropic")
+ * - AI_MODEL: Model name override (default: provider's default)
+ *
+ * Examples:
+ *   AI_PROVIDER=anthropic AI_MODEL=claude-opus-4         → Claude Opus 4
+ *   AI_PROVIDER=google AI_MODEL=gemini-2.5-pro           → Gemini 2.5 Pro
+ *   AI_PROVIDER=google                                   → Gemini 3 Flash Preview
+ *   (no env vars)                                        → Claude Haiku 4.5
+ */
+export class AIModelConfig extends Effect.Service<AIModelConfig>()("AIModelConfig", {
+  effect: Effect.gen(function* () {
+    const { provider, model } = yield* Config.all({
+      provider: Config.literal("anthropic", "google")("AI_PROVIDER").pipe(
+        Config.withDefault("anthropic" as AIProvider)
+      ),
+      model: Config.option(Config.string("AI_MODEL"))
+    })
+
+    // Use specified model or default for the provider
+    const resolvedModel = Option.getOrElse(model, () => DEFAULT_MODELS[provider])
+
+    return {
+      provider,
+      model: resolvedModel
+    } satisfies AIModelConfigShape
+  })
+}) {}
+
+// =============================================================================
 // Combined Configuration Layer
 // =============================================================================
 
@@ -171,9 +259,8 @@ export class PubSubConfig extends Effect.Service<PubSubConfig>()("PubSubConfig",
  * ```ts
  * const program = Effect.gen(function* () {
  *   const faiss = yield* FaissConfig
- *   const mb = yield* MusicBrainzConfig
- *   const jina = yield* JinaConfig
- *   const anthropic = yield* AnthropicConfig
+ *   const aiModel = yield* AIModelConfig
+ *   console.log(`Using ${aiModel.provider}/${aiModel.model}`)
  * }).pipe(Effect.provide(AgentConfigLive))
  * ```
  */
@@ -182,5 +269,8 @@ export const AgentConfigLive = Layer.mergeAll(
   MusicBrainzConfig.Default,
   JinaConfig.Default,
   AnthropicConfig.Default,
-  PubSubConfig.Default
+  PubSubConfig.Default,
+  AIModelConfig.Default
+  // Note: GoogleAIConfig.Default not included here to avoid requiring
+  // GOOGLE_AI_API_KEY when only using Anthropic. Add it explicitly when needed.
 )

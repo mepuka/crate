@@ -81,6 +81,7 @@ class BackfillService:
     def parse_artist(self, data: dict) -> dict:
         begin_area = data.get("begin-area", {})
         return {
+            "artist_name": data.get("name"),  # Include name!
             "sort_name": data.get("sort-name"),
             "country": data.get("country"),
             "artist_type": data.get("type"),
@@ -93,6 +94,7 @@ class BackfillService:
 
     def parse_label(self, data: dict) -> dict:
         return {
+            "label_name": data.get("name"),  # Include name!
             "country": data.get("country"),
             "label_type": data.get("type"),
             "disambiguation": data.get("disambiguation"),
@@ -103,6 +105,7 @@ class BackfillService:
     def parse_recording(self, data: dict) -> dict:
         isrcs = data.get("isrcs", [])
         return {
+            "song_title": data.get("title"),  # Include title!
             "length_ms": data.get("length"),
             "disambiguation": data.get("disambiguation"),
             "isrc": isrcs[0] if isrcs else None
@@ -110,6 +113,7 @@ class BackfillService:
 
     def parse_release(self, data: dict) -> dict:
         return {
+            "album_title": data.get("title"),  # Schema uses album_title
             "country": data.get("country"),
             "status": data.get("status"),
             "disambiguation": data.get("disambiguation"),
@@ -120,6 +124,7 @@ class BackfillService:
 
     def parse_release_group(self, data: dict) -> dict:
         return {
+            "album_title": data.get("title"),  # Schema uses album_title
             "primary_type": data.get("primary-type"),
             "secondary_types": json.dumps(data.get("secondary-types", [])),
             "disambiguation": data.get("disambiguation"),
@@ -139,33 +144,33 @@ class BackfillService:
         queries = {
             "artist": """
                 UPDATE mb_artists SET
-                    sort_name = ?, country = ?, artist_type = ?, disambiguation = ?,
-                    begin_area = ?, begin_date = ?, end_date = ?, urls = ?,
-                    enriched_at = ?, updated_at = ?
+                    artist_name = ?, sort_name = ?, country = ?, artist_type = ?,
+                    disambiguation = ?, begin_area = ?, begin_date = ?, end_date = ?,
+                    urls = ?, enriched_at = ?, updated_at = ?
                 WHERE artist_mbid = ?
             """,
             "label": """
                 UPDATE mb_labels SET
-                    country = ?, label_type = ?, disambiguation = ?, label_code = ?,
-                    urls = ?, enriched_at = ?, updated_at = ?
+                    label_name = ?, country = ?, label_type = ?, disambiguation = ?,
+                    label_code = ?, urls = ?, enriched_at = ?, updated_at = ?
                 WHERE label_mbid = ?
             """,
             "recording": """
                 UPDATE mb_recordings SET
-                    length_ms = ?, disambiguation = ?, isrc = ?,
+                    song_title = ?, length_ms = ?, disambiguation = ?, isrc = ?,
                     enriched_at = ?, updated_at = ?
                 WHERE recording_mbid = ?
             """,
             "release": """
                 UPDATE mb_releases SET
-                    country = ?, status = ?, disambiguation = ?, barcode = ?, asin = ?,
-                    urls = ?, enriched_at = ?, updated_at = ?
+                    album_title = ?, country = ?, status = ?, disambiguation = ?,
+                    barcode = ?, asin = ?, urls = ?, enriched_at = ?, updated_at = ?
                 WHERE release_mbid = ?
             """,
             "release_group": """
                 UPDATE mb_release_groups SET
-                    primary_type = ?, secondary_types = ?, disambiguation = ?,
-                    first_release_date = ?, urls = ?,
+                    album_title = ?, primary_type = ?, secondary_types = ?,
+                    disambiguation = ?, first_release_date = ?, urls = ?,
                     enriched_at = ?, updated_at = ?
                 WHERE release_group_mbid = ?
             """
@@ -179,30 +184,32 @@ class BackfillService:
             # Extract values in correct order based on parse function
             if entity_type == "artist":
                 vals = (
-                    data["sort_name"], data["country"], data["artist_type"], 
-                    data["disambiguation"], data["begin_area"], data["begin_date"], 
-                    data["end_date"], data["urls"]
+                    data["artist_name"], data["sort_name"], data["country"],
+                    data["artist_type"], data["disambiguation"], data["begin_area"],
+                    data["begin_date"], data["end_date"], data["urls"]
                 )
             elif entity_type == "label":
                 vals = (
-                    data["country"], data["label_type"], data["disambiguation"], 
-                    data["label_code"], data["urls"]
+                    data["label_name"], data["country"], data["label_type"],
+                    data["disambiguation"], data["label_code"], data["urls"]
                 )
             elif entity_type == "recording":
                 vals = (
-                    data["length_ms"], data["disambiguation"], data["isrc"]
+                    data["song_title"], data["length_ms"], data["disambiguation"],
+                    data["isrc"]
                 )
             elif entity_type == "release":
                 vals = (
-                    data["country"], data["status"], data["disambiguation"], 
-                    data["barcode"], data["asin"], data["urls"]
+                    data["album_title"], data["country"], data["status"],
+                    data["disambiguation"], data["barcode"], data["asin"], data["urls"]
                 )
             elif entity_type == "release_group":
                 vals = (
-                    data["primary_type"], data["secondary_types"], 
-                    data["disambiguation"], data["first_release_date"], data["urls"]
+                    data["album_title"], data["primary_type"],
+                    data["secondary_types"], data["disambiguation"],
+                    data["first_release_date"], data["urls"]
                 )
-            
+
             final_updates.append(vals + (now, now, mbid))
 
         try:
@@ -230,67 +237,85 @@ class BackfillService:
             "release_group": self.parse_release_group
         }
         parse_fn = parsers[entity_type]
-        
+
         print(f"Streaming {dump_path}...")
-        
+
         batch = []
-        
+
+        # MB dumps use hyphens, not underscores
+        dump_entity_name = entity_type.replace("_", "-")
+
+        # Use fast shell-based extraction for large xz files
+        # This is 10-20x faster than Python's tarfile for xz archives
+        import subprocess
+        import os
+
+        file_size = os.path.getsize(dump_path)
+        use_shell_extraction = file_size > 1_000_000_000  # > 1GB use shell
+
+        if use_shell_extraction:
+            print(f"Using fast shell extraction for {file_size / 1e9:.1f}GB file...")
+            # Use xz | tar pipeline which is much faster than Python's tarfile
+            cmd = f"xz -dc '{dump_path}' | tar -xO 'mbdump/{dump_entity_name}'"
+            proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            f = proc.stdout
+        else:
+            # For smaller files, use Python's tarfile (simpler)
+            tar = tarfile.open(dump_path, "r:xz")
+            member = None
+            for m in tar.getmembers():
+                if m.name.endswith(f"/{dump_entity_name}") or m.name == dump_entity_name:
+                    member = m
+                    break
+
+            if not member:
+                print(f"Could not find data file for {entity_type} in archive")
+                return
+
+            f = tar.extractfile(member)
+            if not f:
+                print("Could not extract file")
+                return
+            proc = None
+
         try:
-            # Open .tar.xz
-            with tarfile.open(dump_path, "r:xz") as tar:
-                # Find the data file (usually mbdump/entity_name)
-                member = None
-                for m in tar.getmembers():
-                    if m.name.endswith(f"/{entity_type}") or m.name == entity_type:
-                        member = m
-                        break
-                
-                if not member:
-                    print(f"Could not find data file for {entity_type} in archive")
-                    return
+            # Stream lines
+            for line in f:
+                self.stats["processed"] += 1
 
-                f = tar.extractfile(member)
-                if not f:
-                    print("Could not extract file")
-                    return
+                if self.stats["processed"] % 100000 == 0:
+                    print(f"Processed: {self.stats['processed']}, Matched: {self.stats['matched']}, Updated: {self.stats['updated']}")
 
-                # Stream lines
-                for line in f:
-                    self.stats["processed"] += 1
-                    
-                    if self.stats["processed"] % 100000 == 0:
-                        print(f"Processed: {self.stats['processed']}, Matched: {self.stats['matched']}, Updated: {self.stats['updated']}")
+                try:
+                    data = json.loads(line)
+                    mbid = data.get("id")
 
-                    try:
-                        # Optimization: Check if ID exists before full parse?
-                        # JSON parsing is expensive. But we need to parse to get ID.
-                        # Maybe simple string search for ID? No, unsafe.
-                        # Just parse.
-                        data = json.loads(line)
-                        mbid = data.get("id")
-                        
-                        if mbid in target_mbids:
-                            self.stats["matched"] += 1
-                            metadata = parse_fn(data)
-                            batch.append((mbid, metadata))
-                            
-                            if len(batch) >= self.batch_size:
-                                self.update_batch(entity_type, batch)
-                                batch = []
-                                
-                    except json.JSONDecodeError:
-                        continue
-                    except Exception as e:
-                        # print(f"Error processing line: {e}")
-                        self.stats["errors"] += 1
+                    if mbid in target_mbids:
+                        self.stats["matched"] += 1
+                        metadata = parse_fn(data)
+                        batch.append((mbid, metadata))
 
-                # Final batch
-                if batch:
-                    self.update_batch(entity_type, batch)
+                        if len(batch) >= self.batch_size:
+                            self.update_batch(entity_type, batch)
+                            batch = []
+
+                except json.JSONDecodeError:
+                    continue
+                except Exception as e:
+                    self.stats["errors"] += 1
+
+            # Final batch
+            if batch:
+                self.update_batch(entity_type, batch)
 
         except Exception as e:
             print(f"Error processing dump: {e}")
             raise
+        finally:
+            # Cleanup subprocess if used
+            if use_shell_extraction and proc:
+                proc.stdout.close()
+                proc.wait()
 
         print("\n=== Backfill Complete ===")
         print(f"Processed: {self.stats['processed']}")

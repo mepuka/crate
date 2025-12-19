@@ -1,6 +1,6 @@
 import { Play } from '@/domain'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { cn } from '@/lib/utils'
+import { cn, getEra } from '@/lib/utils'
 import { formatSemanticTime, formatRelativeTime } from '@/lib/date-utils'
 import { getNewMusicDataAttr, isNewMusic } from '@/lib/new-music-utils'
 import { forwardRef, memo, useCallback, useMemo } from 'react'
@@ -9,10 +9,10 @@ import { useAtom } from '@effect-atom/atom-react'
 import { selectedPlayIdAtom } from '@/atoms/play-details'
 import { Option } from 'effect'
 import { InsightPanel } from './insights/InsightPanel'
-// import { InsightNotch } from './insights/InsightNotch'
+import { InsightDot } from './insights/InsightGlow'
 
-// Feature flag: Disable insights until FAISS API insights endpoint is deployed
-const INSIGHTS_ENABLED = false
+// Feature flag: Enable insights panel (FAISS API insights endpoint is deployed)
+const INSIGHTS_ENABLED = true
 
 const playCardVariants = cva(
   [
@@ -95,6 +95,12 @@ export const PlayCard = memo(forwardRef<HTMLDivElement, PlayCardProps>(
       [play]
     )
 
+    // Era for temporal color coding (left border)
+    const era = useMemo(
+      () => getEra(releaseYear),
+      [releaseYear]
+    )
+
     // Memoize handlers to prevent unnecessary re-renders of children
     const handleClick = useCallback(() => {
       setSelectedId(Option.some(play.id))
@@ -121,10 +127,15 @@ export const PlayCard = memo(forwardRef<HTMLDivElement, PlayCardProps>(
         )}
         data-age={ageCategory}
         data-new-music={newMusicIndicator}
+        data-era={era}
+        style={era ? {
+          borderLeft: `3px solid hsl(var(--era-${era}))`
+        } : undefined}
         role="article" // The main card is an article
       >
-        {/* InsightNotch disabled until FAISS API insights endpoint is deployed */}
-        {/* {INSIGHTS_ENABLED && <InsightNotch playId={play.id} onClick={handleClick} />} */}
+        {/* Insight indicator dot - glows when insights available */}
+        {INSIGHTS_ENABLED && <InsightDot playId={play.id} />}
+
         {/* Clickable overlay for entire card - z-index 0 to sit behind interactive children */}
         <div
           onClick={handleClick}
