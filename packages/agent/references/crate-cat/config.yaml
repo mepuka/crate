@@ -1,0 +1,157 @@
+# Crate Cat - The Crate Mascot
+#
+# Drop your canonical image as: canonical.png (or .jpg, .svg)
+# Add variants in the variants/ folder
+#
+# The service will auto-discover images in variants/ and create
+# basic variant entries. Or define them explicitly below for
+# richer metadata (palette, style, use case).
+
+id: crate-cat
+name: Crate Cat
+description: |
+  The one true Crate Cat - a curious, music-loving feline who lives
+  in the crates and guides listeners through their discoveries.
+  Always friendly, slightly mischievous, and deeply knowledgeable
+  about music.
+
+category: mascot
+
+# The canonical source of truth image (relative to this folder)
+canonical: canonical.jpg
+
+# Style guide for consistency across all uses
+styleGuide:
+  mustPreserve:
+    - Rounded ear shape with characteristic tilt
+    - Curved, expressive tail
+    - Friendly, curious expression with round eyes
+    - Compact body proportions
+    - Overall recognizable silhouette
+  canAdapt:
+    - Color palette (to match album context)
+    - Texture and grain
+    - Pose and gesture
+    - Small accessories (headphones, vinyl, etc.)
+    - Background integration
+  neverChange:
+    - Face structure and proportions
+    - Eye style (round, warm, expressive)
+    - Core silhouette shape
+    - Friendly demeanor
+
+# Visual constraints for AI generation - numerical values for enforcement
+visualConstraints:
+  # CRITICAL: These define character identity - must be preserved
+  critical:
+    - "Rounded ear shape with 15-20 degree characteristic tilt"
+    - "Tail forms gentle S-curve, never straight or kinked"
+    - "Eyes are round, warm, positioned ~60% up face height"
+    - "Body proportions are compact, roughly 1:1.2 width:height ratio"
+    - "Silhouette must be recognizable at 32x32px thumbnail"
+
+  # FLEXIBLE: Can adapt to album context
+  flexible:
+    - "Color palette adapts entirely to album context"
+    - "Texture and rendering style match album aesthetic"
+    - "Pose varies (sitting, standing, listening, exploring)"
+    - "Accessories context-appropriate (headphones, vinyl, instruments)"
+    - "Background integration or standalone"
+
+  # FORBIDDEN: Never do these
+  forbidden:
+    - "Alter face structure or proportions"
+    - "Use realistic cat anatomy (keep stylized)"
+    - "Change expression to sad, angry, or menacing"
+    - "Distort core silhouette shape"
+    - "Add text or logos to the character"
+
+# Numerical measurements for coherence validation
+measurements:
+  earTiltDegrees: [15, 20]      # Range: min, max
+  bodyAspectRatio: [0.95, 1.25] # width/height ratio range
+  eyePositionY: 0.6             # As fraction of face height from bottom
+  minRecognitionSize: 32        # Pixels - silhouette test threshold
+
+# Prompt template for AI generation when creating new instances
+promptTemplate: |
+  Generate a NEW illustration of Crate Cat in this album's visual style.
+
+  YOU ARE CREATING, NOT TRANSFORMING.
+  The output should be a standalone character illustration.
+
+  CRITICAL - Character identity (from reference image):
+  - Rounded ears with 15-20 degree tilt
+  - Gentle S-curve tail
+  - Round, warm eyes at 60% face height
+  - Compact 1:1.2 body proportions
+  - Silhouette recognizable at thumbnail size
+
+  STYLE TRANSFER - Apply from album context:
+  - Color palette: {{PALETTE}}
+  - Mood/energy: {{MOOD}}
+  - Era/aesthetic: {{ERA}}
+  - Visual techniques: {{ELEMENTS}}
+  - Artistic style: Match the album art's rendering approach
+
+  Think: "What if this album's artist drew the Crate Cat mascot?"
+
+  OUTPUT: Square illustration, character as sole subject, styled to match album.
+
+# Explicit variant definitions (optional - auto-discovered from variants/ folder)
+# Use these for rich metadata; otherwise just drop images in variants/
+variants:
+  - name: Warm Vinyl
+    file: warm-vinyl.jpg
+    useCase: jazz, folk, acoustic, vinyl den contexts
+    palette: warm
+    style: filled
+    description: Cozy cat with vinyl records, warm amber tones
+
+  - name: Headphones
+    file: headphones.jpg
+    useCase: listening sessions, focused music discovery
+    palette: neutral
+    style: filled
+    description: Cat with headphones, music listening context
+
+  - name: Cool Blue
+    file: cool-blue.jpg
+    useCase: electronic, ambient, chill contexts
+    palette: cool
+    style: filled
+    description: Blue-toned contemplative cat
+
+# Inspirations - Reference images that inform the Crate Cat aesthetic
+# These are NOT variants - they're mood/style references for generation
+inspirations:
+  - name: Record Store Cat
+    file: inspirations/record-store-cat.jpg
+    source: pinterest
+    notes: |
+      Warm vinyl den aesthetic - cat among record crates with rich
+      browns and oranges. Shows integration of cat with music environment.
+
+  - name: Vinyl Crate Cat
+    file: inspirations/vinyl-crate-cat.jpg
+    source: pinterest
+    notes: |
+      Cozy record store scene with cat perched near vinyl. Demonstrates
+      the intimate relationship between cat and music discovery.
+
+  - name: Music Cat Illustration
+    file: inspirations/music-cat-illustration.jpg
+    source: pinterest
+    notes: |
+      Illustrated style showing cat with musical elements. Good reference
+      for stylized/illustrated versions of Crate Cat.
+
+# Additional metadata
+tags:
+  - mascot
+  - character
+  - crate-cat
+  - brand
+
+author: Crate Team
+created: "2024-01-01"
