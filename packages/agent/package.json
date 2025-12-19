@@ -37,7 +37,8 @@
     "@effect/ai-openai": "^0.37.0",
     "@effect/platform": "^0.94.0",
     "@effect/platform-node": "^0.104.0",
-    "effect": "^3.19.13"
+    "effect": "^3.19.13",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "tsx": "^4.21.0",

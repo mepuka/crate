@@ -1104,14 +1104,32 @@ Focus on insight types that tell stories (Connection, DiscoveryArc, LocalScene, 
                   yield* Effect.logDebug(
                     `Added ${insights.length} insights to session`
                   );
+
+                  // Post insights immediately after generating (don't wait for batch end)
+                  // This ensures insights are saved even if later plays fail
+                  const postResult = yield* faissClient
+                    .postInsights(insights, evalContext)
+                    .pipe(
+                      Effect.tap(() =>
+                        Effect.logInfo(`Posted ${insights.length} insights for play ${play.id}`)
+                      ),
+                      Effect.catchAll((postError) =>
+                        Effect.gen(function* () {
+                          yield* Effect.logWarning(
+                            `Failed to post insights for play ${play.id}: ${postError}`
+                          );
+                          return { count: 0 };
+                        })
+                      )
+                    );
+
+                  return { insights, evalContext, postedCount: postResult.count };
                 } else {
                   yield* Effect.logDebug(
                     "No insights produced (0 insights is valid)"
                   );
+                  return { insights, evalContext, postedCount: 0 };
                 }
-
-                // Return insights with their eval context
-                return { insights, evalContext };
               }),
               Effect.withSpan("MusicAgent.processPlay", {
                 attributes: { play_id: play.id },
@@ -1121,50 +1139,38 @@ Focus on insight types that tell stories (Connection, DiscoveryArc, LocalScene, 
           // Process plays sequentially to ensure session isolation
           // Each play clears the session then seeds with its own existing insights.
           // Sequential processing prevents race conditions on the shared session state.
-          // Future: use per-play scoped sessions to enable parallelization
-          const playResults = yield* Effect.forEach(plays, processPlay, {
-            concurrency: 1, // Sequential to maintain session isolation
-          }).pipe(
-            Effect.mapError(
-              (error) =>
-                new MusicAgentError({
-                  message: "Failed to process plays",
-                  cause: error,
+          // Insights are posted immediately after each play (not at batch end)
+          // to ensure partial success is preserved if later plays fail.
+          const processPlaySafe = (play: typeof plays[0]) =>
+            processPlay(play).pipe(
+              Effect.catchAll((error) =>
+                Effect.gen(function* () {
+                  yield* Effect.logWarning(
+                    `Play ${play.id} failed, continuing with next: ${error}`
+                  );
+                  return { insights: [], evalContext: {}, postedCount: 0, skipped: true };
                 })
-            )
-          );
+              )
+            );
 
-          // Post insights back to FAISS API per play with its own eval context
-          // This preserves accurate evaluation metadata for each play.
-          const postedCounts = yield* Effect.forEach(
-            playResults,
-            (result) =>
-              result.insights.length === 0
-                ? Effect.succeed(0)
-                : faissClient
-                    .postInsights(result.insights, result.evalContext)
-                    .pipe(
-                      Effect.mapError(
-                        (error) =>
-                          new MusicAgentError({
-                            message: "Failed to post insights",
-                            cause: error,
-                          })
-                      ),
-                      Effect.withSpan("MusicAgent.postInsights")
-                    )
-                    .pipe(Effect.map((res) => res.count)),
-            { concurrency: 1 }
-          );
+          const playResults = yield* Effect.forEach(plays, processPlaySafe, {
+            concurrency: 1, // Sequential to maintain session isolation
+          });
 
-          const totalPosted = postedCounts.reduce((sum, count) => sum + count, 0);
+          // Sum up posted counts from each play (insights already posted inline)
+          const totalPosted = playResults.reduce(
+            (sum, result) => sum + (result.postedCount || 0),
+            0
+          );
+          const skippedCount = playResults.filter((r) => "skipped" in r && r.skipped).length;
 
           yield* Effect.logInfo(
-            `Enrichment complete: ${totalPosted} insights posted from ${plays.length} plays`
+            `Enrichment complete: ${totalPosted} insights posted from ${plays.length} plays${skippedCount > 0 ? ` (${skippedCount} skipped due to errors)` : ""}`
           );
           yield* Effect.annotateCurrentSpan({
             insights_posted: totalPosted,
             plays_processed: plays.length,
+            plays_skipped: skippedCount,
           });
 
           // Save final checkpoint (status: completed)

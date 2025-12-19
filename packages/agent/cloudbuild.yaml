@@ -45,9 +45,9 @@ steps:
       - '${_MAX_INSTANCES}'
       - '--set-env-vars'
       - 'FAISS_API_URL=${_FAISS_API_URL},FAISS_API_KEY=${_FAISS_API_KEY},PUBSUB_INVOKER_EMAIL=${_PUBSUB_INVOKER_EMAIL}'
-      # Use Secret Manager for ANTHROPIC_API_KEY (create secret first: gcloud secrets create anthropic-api-key --data-file=-)
+      # Use Secret Manager for API keys
       - '--set-secrets'
-      - 'ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest'
+      - 'ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GOOGLE_AI_API_KEY=gemini-api-key:latest'
       - '--timeout'
       - '${_TIMEOUT}'
 
