@@ -209,7 +209,14 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
 
               {/* Living Liner Notes (Insights & Comments) */}
               {!isNonTrackPlay && (
-                  <InsightPanel playId={play.id} comment={play.comment} />
+                <InsightPanel
+                  playId={play.id}
+                  comment={play.comment}
+                  releaseYear={releaseYear}
+                  rotationStatus={play.rotation_status}
+                  isLocal={play.is_local}
+                  airdate={play.airdate}
+                />
               )}
 
               {/* External Links */}
@@ -217,11 +224,8 @@ function PlayDetailsContent({ playId }: PlayDetailsContentProps) {
                 <LinksByCategory playId={play.id} />
               </div>
 
-              {/* Footer - Analysis placeholder + Play ID */}
-              <div className="pt-4 border-t border-border/20 flex items-center justify-between">
-                <p className="text-xs text-muted-foreground/50">
-                  Analysis coming soon
-                </p>
+              {/* Footer - Play ID */}
+              <div className="pt-4 border-t border-border/20 flex items-center justify-end">
                 <span className="text-xs text-muted-foreground/40 font-mono">
                   #{play.id}
                 </span>

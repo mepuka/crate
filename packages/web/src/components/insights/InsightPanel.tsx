@@ -14,10 +14,22 @@ import { Insights } from "@crate/domain";
 
 interface InsightPanelProps {
   playId: number;
-  comment?: string | null;
+  comment?: string | null | undefined;
+  // Context for empty state (passed to InsightStream)
+  releaseYear?: number | null | undefined;
+  rotationStatus?: string | null | undefined;
+  isLocal?: boolean | undefined;
+  airdate?: Date | undefined;
 }
 
-export const InsightPanel = ({ playId, comment }: InsightPanelProps) => {
+export const InsightPanel = ({
+  playId,
+  comment,
+  releaseYear,
+  rotationStatus,
+  isLocal,
+  airdate,
+}: InsightPanelProps) => {
   // Reading the atom triggers the fetch automatically via TimelineRuntime.atom
   const result = useAtomValue(insightsAtom(playId));
 
@@ -34,19 +46,44 @@ export const InsightPanel = ({ playId, comment }: InsightPanelProps) => {
 
       {Result.matchWithWaiting(result, {
         onWaiting: () => (
-          <InsightStream insights={[]} comment={comment ?? null} />
+          <InsightStream
+            insights={[]}
+            comment={comment ?? null}
+            releaseYear={releaseYear}
+            rotationStatus={rotationStatus}
+            isLocal={isLocal}
+            airdate={airdate}
+          />
         ),
         onSuccess: (success) => (
           <InsightStream
             insights={success.value as Insights.Insight[]}
             comment={comment ?? null}
+            releaseYear={releaseYear}
+            rotationStatus={rotationStatus}
+            isLocal={isLocal}
+            airdate={airdate}
           />
         ),
         onError: () => (
-          <InsightStream insights={[]} comment={comment ?? null} />
+          <InsightStream
+            insights={[]}
+            comment={comment ?? null}
+            releaseYear={releaseYear}
+            rotationStatus={rotationStatus}
+            isLocal={isLocal}
+            airdate={airdate}
+          />
         ),
         onDefect: () => (
-          <InsightStream insights={[]} comment={comment ?? null} />
+          <InsightStream
+            insights={[]}
+            comment={comment ?? null}
+            releaseYear={releaseYear}
+            rotationStatus={rotationStatus}
+            isLocal={isLocal}
+            airdate={airdate}
+          />
         ),
       })}
     </div>

@@ -10,6 +10,32 @@ export default {
       fontFamily: {
         display: ['Space Grotesk', 'sans-serif'],
         body: ['IBM Plex Sans', 'sans-serif'],
+        serif: ['Libre Baskerville', 'Georgia', 'serif'],
+      },
+      // Modular typographic scale (1.25 ratio - "Major Third")
+      fontSize: {
+        'liner-xs': ['0.64rem', { lineHeight: '1.5', letterSpacing: '0.02em' }],
+        'liner-sm': ['0.8rem', { lineHeight: '1.6', letterSpacing: '0.01em' }],
+        'liner-base': ['1rem', { lineHeight: '1.7', letterSpacing: '0' }],
+        'liner-lg': ['1.25rem', { lineHeight: '1.5', letterSpacing: '-0.01em' }],
+        'liner-xl': ['1.563rem', { lineHeight: '1.35', letterSpacing: '-0.015em' }],
+        'liner-2xl': ['1.953rem', { lineHeight: '1.25', letterSpacing: '-0.02em' }],
+        'liner-3xl': ['2.441rem', { lineHeight: '1.15', letterSpacing: '-0.025em' }],
+      },
+      // Spacing based on 8px baseline grid
+      spacing: {
+        'liner-1': '0.5rem',   // 8px
+        'liner-2': '1rem',     // 16px
+        'liner-3': '1.5rem',   // 24px
+        'liner-4': '2rem',     // 32px
+        'liner-6': '3rem',     // 48px
+        'liner-8': '4rem',     // 64px
+      },
+      // Optimal line lengths for reading
+      maxWidth: {
+        'prose-tight': '45ch',
+        'prose-optimal': '65ch',
+        'prose-wide': '75ch',
       },
       borderRadius: {
         lg: 'var(--radius)',

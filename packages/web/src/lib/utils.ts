@@ -56,3 +56,56 @@ export function getEra(year: number | null | undefined): Era | null {
 export function getEraColorVar(era: Era): string {
   return `--era-${era}`;
 }
+
+/**
+ * Get a human-readable label for a year's decade.
+ * Returns "70s", "80s", etc.
+ */
+export function getDecadeLabel(year: number | null | undefined): string | null {
+  if (!year) return null;
+  const decade = Math.floor(year / 10) * 10;
+  return `${decade % 100}s`;
+}
+
+/**
+ * Get era info from a year - combines era, label, and color class
+ */
+export interface EraInfo {
+  era: Era;
+  label: string;      // "70s", "80s", etc.
+  colorVar: string;   // CSS variable name
+  bgClass: string;    // Tailwind bg class with opacity
+  textClass: string;  // Tailwind text class
+  borderClass: string; // Tailwind border class
+}
+
+export function getEraInfo(year: number | null | undefined): EraInfo | null {
+  if (!year) return null;
+
+  const era = getEra(year);
+  if (!era) return null;
+
+  const label = getDecadeLabel(year);
+  if (!label) return null;
+
+  // Map era to Tailwind color classes
+  const colorMap: Record<Era, { bg: string; text: string; border: string }> = {
+    modern: { bg: 'bg-teal-500/20', text: 'text-teal-400', border: 'border-teal-500/30' },
+    contemporary: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
+    recent: { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30' },
+    classic: { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30' },
+    vintage: { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30' },
+    golden: { bg: 'bg-yellow-600/20', text: 'text-yellow-500', border: 'border-yellow-600/30' },
+  };
+
+  const colors = colorMap[era];
+
+  return {
+    era,
+    label,
+    colorVar: getEraColorVar(era),
+    bgClass: colors.bg,
+    textClass: colors.text,
+    borderClass: colors.border,
+  };
+}
