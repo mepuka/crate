@@ -23,7 +23,8 @@ from .models import (
     EnrichmentRequest, EnrichmentResponse, BatchPlaysResponse,
     EnrichmentData, GetEnrichmentsResponse, PlayCountResponse, UnprocessedPlaysResponse,
     HybridSearchRequest, HybridSearchResponse, HybridPlayResult,
-    StreamingLinksRequest, StreamingLinksResponse, StreamingLink
+    StreamingLinksRequest, StreamingLinksResponse, StreamingLink,
+    DataHealthResponse, TableHealth
 )
 from .models.insights import (
     CreateInsightsRequest, InsightsResponse, GetInsightsResponse,
@@ -339,6 +340,118 @@ async def health_check(
         embedding_dimension=embedding_dim,
         memory_usage_mb=memory_mb,
         uptime_seconds=time.time() - startup_time
+    )
+
+
+# Critical tables with minimum expected row counts for data completeness
+CRITICAL_TABLES = {
+    "fact_plays": 2_000_000,      # ~2.2M plays - CRITICAL if empty
+    "insights": 0,                 # Grows over time, may be empty
+    "mb_artists": 50_000,          # ~68K expected
+    "mb_recordings": 100_000,      # ~163K expected
+    "play_artists": 1_500_000,     # ~1.8M expected
+}
+
+
+@app.get(
+    "/api/health/data",
+    response_model=DataHealthResponse,
+    tags=["health"],
+    summary="Data completeness check",
+    description="Verify database data completeness - row counts, recent data, critical tables"
+)
+async def data_health_check(
+    db: DatabaseService = Depends(get_db_service)
+) -> DataHealthResponse:
+    """Data completeness health check endpoint."""
+    from datetime import datetime, timedelta
+
+    warnings = []
+    errors = []
+    tables = []
+
+    # Get database file size
+    db_size = 0
+    try:
+        import os
+        db_size = os.path.getsize(db.db_path)
+    except Exception:
+        pass
+
+    # Check table row counts
+    cursor = db.conn.cursor()
+    for table_name, min_expected in CRITICAL_TABLES.items():
+        try:
+            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+            count = cursor.fetchone()[0]
+
+            if count == 0 and min_expected > 0:
+                status = "critical"
+                message = f"EMPTY (expected >= {min_expected:,})"
+                errors.append(f"Empty table: {table_name}")
+            elif count < min_expected:
+                status = "warning"
+                message = f"Below minimum ({count:,} < {min_expected:,})"
+                warnings.append(f"Low row count in {table_name}: {count:,}")
+            else:
+                status = "ok"
+                message = f"{count:,} rows"
+
+            tables.append(TableHealth(
+                name=table_name,
+                row_count=count,
+                min_expected=min_expected,
+                status=status,
+                message=message
+            ))
+        except Exception as e:
+            tables.append(TableHealth(
+                name=table_name,
+                row_count=-1,
+                min_expected=min_expected,
+                status="critical",
+                message=f"Table missing: {str(e)}"
+            ))
+            errors.append(f"Missing table: {table_name}")
+
+    # Check for recent plays (within last 7 days)
+    recent_plays_exist = False
+    latest_play_date = None
+    try:
+        cursor.execute("SELECT MAX(airdate) FROM fact_plays")
+        result = cursor.fetchone()
+        if result and result[0]:
+            latest_play_date = result[0]
+            # Parse the date and check if it's recent
+            try:
+                latest_dt = datetime.fromisoformat(latest_play_date.replace('Z', '+00:00'))
+                seven_days_ago = datetime.now(latest_dt.tzinfo) - timedelta(days=7)
+                recent_plays_exist = latest_dt > seven_days_ago
+                if not recent_plays_exist:
+                    warnings.append(f"No plays in last 7 days (latest: {latest_play_date})")
+            except Exception:
+                # If date parsing fails, just report the date
+                pass
+    except Exception as e:
+        errors.append(f"Could not check recent plays: {str(e)}")
+
+    # Determine overall status
+    if errors:
+        overall_status = "critical"
+    elif warnings:
+        overall_status = "warning"
+    else:
+        overall_status = "healthy"
+
+    return DataHealthResponse(
+        status=overall_status,
+        checked_at=datetime.now().isoformat(),
+        db_size_bytes=db_size,
+        tables=tables,
+        recent_plays_exist=recent_plays_exist,
+        latest_play_date=latest_play_date,
+        warnings=warnings,
+        errors=errors
     )
 
 

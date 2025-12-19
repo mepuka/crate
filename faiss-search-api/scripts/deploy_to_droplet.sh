@@ -182,6 +182,17 @@ echo -e "\n${BLUE}Creating remote directories...${NC}"
 ssh root@$DROPLET_IP "mkdir -p $DEPLOY_DIR/{data,logs,secrets}"
 echo -e "${GREEN}✓ Directories created${NC}"
 
+# Capture pre-deployment baseline for comparison
+if [ "$APP_ONLY" = false ]; then
+    echo -e "\n${BLUE}Capturing pre-deployment database baseline...${NC}"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$SCRIPT_DIR/db_integrity_check.py" ]; then
+        scp "$SCRIPT_DIR/db_integrity_check.py" root@$DROPLET_IP:/tmp/
+        ssh root@$DROPLET_IP "python3 /tmp/db_integrity_check.py --db-path $DEPLOY_DIR/data/music_kb.sqlite --save-baseline --baseline-file /tmp/.db_baseline_pre_deploy.json 2>/dev/null || echo 'No existing database - skipping baseline'"
+        echo -e "${GREEN}✓ Baseline captured${NC}"
+    fi
+fi
+
 # Deploy data files (if not app-only)
 if [ "$APP_ONLY" = false ]; then
     # Create backup before overwriting (unless skipped)
@@ -295,6 +306,31 @@ if [ "$DATA_ONLY" = false ]; then
     # Wait for service to start
     echo -e "\n${BLUE}Waiting for service to initialize (30 seconds)...${NC}"
     sleep 30
+fi
+
+# Run post-deployment integrity check
+echo -e "\n${BLUE}Running database integrity check...${NC}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/db_integrity_check.py" ]; then
+    # Run integrity check with comparison against pre-deployment baseline
+    INTEGRITY_RESULT=$(ssh root@$DROPLET_IP "python3 /tmp/db_integrity_check.py --db-path $DEPLOY_DIR/data/music_kb.sqlite --compare-baseline --baseline-file /tmp/.db_baseline_pre_deploy.json" 2>&1)
+    INTEGRITY_EXIT=$?
+    echo "$INTEGRITY_RESULT"
+
+    if [ $INTEGRITY_EXIT -eq 2 ]; then
+        echo -e "${RED}=========================================${NC}"
+        echo -e "${RED}CRITICAL: Database regression detected!${NC}"
+        echo -e "${RED}=========================================${NC}"
+        echo -e "${YELLOW}Recent backups available at: $BACKUP_DIR${NC}"
+        echo -e "${YELLOW}To rollback: ssh root@$DROPLET_IP 'cd $BACKUP_DIR && ls -la'${NC}"
+        exit 1
+    elif [ $INTEGRITY_EXIT -eq 1 ]; then
+        echo -e "${YELLOW}⚠ Integrity check found issues - review output above${NC}"
+    else
+        echo -e "${GREEN}✓ Database integrity verified - no regressions${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ Integrity check script not found - skipping${NC}"
 fi
 
 # Verify deployment

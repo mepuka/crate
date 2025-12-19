@@ -187,6 +187,27 @@ class HealthResponse(BaseModel):
     uptime_seconds: float
 
 
+class TableHealth(BaseModel):
+    """Health status for a single table."""
+    name: str
+    row_count: int
+    min_expected: int
+    status: str  # "ok", "warning", "critical"
+    message: str = ""
+
+
+class DataHealthResponse(BaseModel):
+    """Data completeness health check response."""
+    status: str  # "healthy", "warning", "critical"
+    checked_at: str
+    db_size_bytes: int
+    tables: List[TableHealth]
+    recent_plays_exist: bool  # Has plays in last 7 days
+    latest_play_date: Optional[str] = None
+    warnings: List[str] = []
+    errors: List[str] = []
+
+
 class TimelineResponse(BaseModel):
     """Timeline response with cursor-based pagination."""
 
