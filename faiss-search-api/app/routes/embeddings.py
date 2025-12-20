@@ -380,6 +380,7 @@ async def add_embeddings(
     Returns:
         AddEmbeddingsResponse with status and counts
     """
+    import anyio
     from ..main import search_service
 
     if search_service is None:
@@ -402,10 +403,13 @@ async def add_embeddings(
         import numpy as np
         embeddings = np.array(request.embeddings, dtype=np.float32)
 
-        # Add to index
-        result = search_service.add_embeddings(
-            play_ids=request.play_ids,
-            embeddings=embeddings
+        # Run in thread pool to avoid blocking the event loop
+        # This operation can take 30-90 seconds for large batches
+        result = await anyio.to_thread.run_sync(
+            lambda: search_service.add_embeddings(
+                play_ids=request.play_ids,
+                embeddings=embeddings
+            )
         )
 
         return AddEmbeddingsResponse(
