@@ -32,14 +32,14 @@ export interface GeneratedAsset {
   readonly play_id: number;
   readonly asset_type: string; // Semantic: liner_note, gatefold, insert, character, etc.
   readonly image_url: string;
-  readonly thumbnail_url?: string;
+  readonly thumbnail_url?: string | undefined;
   readonly metadata: {
-    readonly era?: string;
-    readonly style?: string;
-    readonly placement?: string; // Semantic: front, back, inner, gatefold_left, etc.
-    readonly page_number?: number;
-    readonly mood?: string;
-    readonly description?: string;
+    readonly era?: string | undefined;
+    readonly style?: string | undefined;
+    readonly placement?: string | undefined; // Semantic: front, back, inner, gatefold_left, etc.
+    readonly page_number?: number | undefined;
+    readonly mood?: string | undefined;
+    readonly description?: string | undefined;
   };
   readonly created_at: string;
 }

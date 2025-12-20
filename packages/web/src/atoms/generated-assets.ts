@@ -8,8 +8,8 @@
  */
 
 import { Atom, Result } from "@effect-atom/atom"
-import { Effect, Option, Schema } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "@effect/platform"
+import { Effect, Schema } from "effect"
+import { FetchHttpClient, HttpClient, HttpClientResponse } from "@effect/platform"
 import { TimelineRuntime } from "@/lib/http-runtime"
 
 // API base URL (same as other API calls)
@@ -23,12 +23,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ""
  * Asset metadata from generation params
  */
 interface AssetMetadata {
-  readonly era?: string
-  readonly style?: string
-  readonly placement?: string
-  readonly page_number?: number
-  readonly mood?: string
-  readonly description?: string
+  readonly era?: string | undefined
+  readonly style?: string | undefined
+  readonly placement?: string | undefined
+  readonly page_number?: number | undefined
+  readonly mood?: string | undefined
+  readonly description?: string | undefined
 }
 
 /**
@@ -39,7 +39,7 @@ export interface GeneratedAsset {
   readonly play_id: number
   readonly asset_type: string
   readonly image_url: string
-  readonly thumbnail_url?: string
+  readonly thumbnail_url?: string | undefined
   readonly metadata: AssetMetadata
   readonly created_at: string
 }
@@ -64,7 +64,11 @@ const GeneratedAssetSchema = Schema.Struct({
   created_at: Schema.String
 })
 
-const GeneratedAssetsResponseSchema = Schema.Array(GeneratedAssetSchema)
+const GeneratedAssetsResponseSchema = Schema.Struct({
+  play_id: Schema.Number,
+  assets: Schema.Array(GeneratedAssetSchema),
+  count: Schema.Number
+})
 
 // ============================================================================
 // Fetch Effect
@@ -80,12 +84,10 @@ const fetchGeneratedAssetsEffect = (playId: number) =>
     const client = yield* HttpClient.HttpClient
 
     const response = yield* client
-      .get(`${API_BASE_URL}/api/plays/generated-assets`)
+      .get(`${API_BASE_URL}/api/generated-assets/play/${playId}`)
       .pipe(
-        HttpClient.mapRequest(
-          HttpClientRequest.setUrlParams({ play_id: String(playId) })
-        ),
         Effect.flatMap(HttpClientResponse.schemaBodyJson(GeneratedAssetsResponseSchema)),
+        Effect.map((resp) => resp.assets),
         Effect.tap((assets) =>
           Effect.logDebug(`Fetched ${assets.length} generated assets for play ${playId}`)
         ),
@@ -113,13 +115,7 @@ const fetchGeneratedAssetsEffect = (playId: number) =>
  * ```
  */
 export const generatedAssetsAtom = Atom.family((playId: number) =>
-  TimelineRuntime.atom(
-    fetchGeneratedAssetsEffect(playId).pipe(
-      // Cache for 5 minutes to avoid refetching on every render
-      Effect.cachedWithTTL("5 minutes"),
-      Effect.flatten
-    )
-  )
+  TimelineRuntime.atom(fetchGeneratedAssetsEffect(playId))
 )
 
 /**
