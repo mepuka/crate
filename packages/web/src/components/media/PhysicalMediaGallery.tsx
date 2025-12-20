@@ -270,11 +270,6 @@ export const PhysicalMediaGallery = ({
 }: PhysicalMediaGalleryProps) => {
   const [activeAssetIndex, setActiveAssetIndex] = useState(0);
 
-  // Graceful absence: no assets and not loading = render nothing
-  if (!isLoading && assets.length === 0 && !originalArtUrl) {
-    return null;
-  }
-
   const format = useMemo(
     () => getMediaFormat(releaseYear, era),
     [releaseYear, era]
@@ -298,8 +293,7 @@ export const PhysicalMediaGallery = ({
   const backUrl = organized.back?.image_url;
   const innerUrl = organized.inner?.image_url;
 
-  // Don't render if we only have original art and no generated content
-  // (the original art is already shown in the hero section)
+  // Graceful absence: no assets and not loading = render nothing
   if (!isLoading && assets.length === 0) {
     return null;
   }
