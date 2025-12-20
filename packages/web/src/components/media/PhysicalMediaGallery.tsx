@@ -16,6 +16,7 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { VinylSleeve } from "./VinylSleeve";
 import type { Era } from "@/components/insights/eraVisualSystem";
+import type { GeneratedAsset } from "@/atoms/generated-assets";
 
 // ============================================================================
 // Types
@@ -23,26 +24,8 @@ import type { Era } from "@/components/insights/eraVisualSystem";
 
 export type MediaFormat = "vinyl" | "cd" | "cassette" | "78rpm" | "digital";
 
-/**
- * Generated asset from the API
- * Asset types and placements are semantic strings - model-derived, not hardcoded
- */
-export interface GeneratedAsset {
-  readonly id: string;
-  readonly play_id: number;
-  readonly asset_type: string; // Semantic: liner_note, gatefold, insert, character, etc.
-  readonly image_url: string;
-  readonly thumbnail_url?: string | undefined;
-  readonly metadata: {
-    readonly era?: string | undefined;
-    readonly style?: string | undefined;
-    readonly placement?: string | undefined; // Semantic: front, back, inner, gatefold_left, etc.
-    readonly page_number?: number | undefined;
-    readonly mood?: string | undefined;
-    readonly description?: string | undefined;
-  };
-  readonly created_at: string;
-}
+// Re-export for convenience
+export type { GeneratedAsset } from "@/atoms/generated-assets";
 
 interface AlbumPalette {
   readonly dominant: string;
