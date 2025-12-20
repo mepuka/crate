@@ -25,11 +25,11 @@ export const StreamingLink = Schema.Struct({
   kind: StreamingLinkKind,
   url: Schema.String,
   // Optional platform-specific ID (e.g., Spotify track ID)
-  id: Schema.optional(Schema.String),
+  id: Schema.NullOr(Schema.String),
   // Optional display string (e.g., track name)
-  display: Schema.optional(Schema.String),
+  display: Schema.NullOr(Schema.String),
   // Confidence score (0-1) from the resolver
-  confidence: Schema.optional(Schema.Number),
+  confidence: Schema.NullOr(Schema.Number),
   source: StreamingLinkSource
 })
 export type StreamingLink = typeof StreamingLink.Type
@@ -46,10 +46,10 @@ export type StreamingLinksRequest = typeof StreamingLinksRequest.Type
 export const StreamingLinksResponse = Schema.Struct({
   links: Schema.Array(StreamingLink),
   resolved_from: StreamingLinkSource,
-  resolved_ids: Schema.optional(
+  resolved_ids: Schema.NullOr(
     Schema.Struct({
-      spotify_id: Schema.optional(Schema.String),
-      apple_music_id: Schema.optional(Schema.String)
+      spotify_id: Schema.NullOr(Schema.String),
+      apple_music_id: Schema.NullOr(Schema.String)
     })
   )
 })
