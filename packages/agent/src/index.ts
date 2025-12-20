@@ -14,7 +14,13 @@ import { PubSubConfig } from "./config.js"
 // Legacy Services (FaissClient, MusicAgent)
 // =============================================================================
 export { FaissConfig, FaissClient, FaissApiError, FaissClientLive } from "./FaissClient.js"
-export type { PlayResult, SearchResponse, TimelineResponse } from "./FaissClient.js"
+export type {
+  PlayResult,
+  SearchResponse,
+  TimelineResponse,
+  StoreGeneratedAssetRequest,
+  StoreGeneratedAssetResponse
+} from "./FaissClient.js"
 export {
   MusicAgent,
   MusicAgentLive,

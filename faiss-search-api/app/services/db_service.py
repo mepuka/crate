@@ -2535,6 +2535,211 @@ class DatabaseService:
             'strategy': strategy
         }
 
+    # =========================================================================
+    # Generated Assets Methods
+    # =========================================================================
+
+    def store_generated_asset(
+        self,
+        play_id: Optional[int],
+        asset_type: str,
+        params_hash: str,
+        image_base64: str,
+        mime_type: str = "image/png",
+        generation_params: Optional[str] = None,
+        era: Optional[str] = None,
+        style: Optional[str] = None,
+        model_notes: Optional[str] = None,
+        prompt_used: Optional[str] = None,
+        gcs_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Store a generated asset with idempotent behavior.
+
+        If an asset with the same (play_id, asset_type, params_hash) exists,
+        returns the existing record instead of creating a duplicate.
+
+        Args:
+            play_id: Play ID (0 for artist-level assets)
+            asset_type: Type of asset (liner_note, enhanced_art, etc.)
+            params_hash: SHA256 hash of generation params
+            image_base64: Base64-encoded image data
+            mime_type: MIME type of the image
+            generation_params: Full JSON params for reproducibility
+            era: Detected era
+            style: Style used
+            model_notes: Notes from the generation model
+            prompt_used: Full prompt for debugging
+            gcs_url: GCS public URL if uploaded
+
+        Returns:
+            Dict with id, params_hash, was_existing
+        """
+        # Use 0 as sentinel for artist-level assets (SQLite NULL doesn't work with UNIQUE)
+        normalized_play_id = play_id if play_id is not None else 0
+
+        cursor = self.conn.cursor()
+
+        # Check if exists first (idempotent)
+        cursor.execute(
+            """
+            SELECT id FROM generated_assets
+            WHERE play_id = ? AND asset_type = ? AND params_hash = ?
+            LIMIT 1
+            """,
+            (normalized_play_id, asset_type, params_hash)
+        )
+        existing = cursor.fetchone()
+
+        if existing:
+            logger.info(f"Generated asset already exists: {existing[0]}")
+            return {
+                'id': existing[0],
+                'params_hash': params_hash,
+                'was_existing': True
+            }
+
+        # Insert new asset
+        cursor.execute(
+            """
+            INSERT INTO generated_assets (
+                play_id, asset_type, params_hash, generation_params,
+                image_base64, mime_type, era, style, model_notes, prompt_used, gcs_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                normalized_play_id,
+                asset_type,
+                params_hash,
+                generation_params,
+                image_base64,
+                mime_type,
+                era,
+                style,
+                model_notes,
+                prompt_used,
+                gcs_url
+            )
+        )
+        self.conn.commit()
+
+        asset_id = cursor.lastrowid
+        logger.info(f"Stored generated asset: {asset_id} for play {play_id}")
+
+        return {
+            'id': asset_id,
+            'params_hash': params_hash,
+            'was_existing': False
+        }
+
+    def get_generated_assets_by_play_id(self, play_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all generated assets for a play.
+
+        Args:
+            play_id: Play ID to fetch assets for
+
+        Returns:
+            List of asset dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM generated_assets
+            WHERE play_id = ?
+            ORDER BY created_at DESC
+            """,
+            (play_id,)
+        )
+        rows = cursor.fetchall()
+
+        assets = []
+        for row in rows:
+            row_dict = dict(row)
+
+            # Determine image URL: prefer GCS, fallback to data URL
+            gcs_url = row_dict.get('gcs_url')
+            if gcs_url:
+                image_url = gcs_url
+            else:
+                mime_type = row_dict.get('mime_type', 'image/png')
+                image_base64 = row_dict.get('image_base64', '')
+                image_url = f"data:{mime_type};base64,{image_base64}"
+
+            # Parse generation_params for metadata
+            metadata = {
+                'era': row_dict.get('era'),
+                'style': row_dict.get('style'),
+            }
+            if row_dict.get('generation_params'):
+                try:
+                    params = json.loads(row_dict['generation_params'])
+                    metadata['placement'] = params.get('placement')
+                    metadata['page_number'] = params.get('page_number')
+                    metadata['mood'] = params.get('mood')
+                    metadata['description'] = params.get('description')
+                except json.JSONDecodeError:
+                    pass
+
+            assets.append({
+                'id': str(row_dict['id']),
+                'play_id': row_dict['play_id'],
+                'asset_type': row_dict['asset_type'],
+                'image_url': image_url,
+                'metadata': metadata,
+                'created_at': row_dict['created_at']
+            })
+
+        logger.debug(f"Found {len(assets)} assets for play {play_id}")
+        return assets
+
+    def get_recent_generated_assets(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get recently generated assets across all plays.
+
+        Args:
+            limit: Maximum number to return
+
+        Returns:
+            List of asset dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM generated_assets
+            WHERE play_id > 0
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (limit,)
+        )
+        rows = cursor.fetchall()
+
+        assets = []
+        for row in rows:
+            row_dict = dict(row)
+            gcs_url = row_dict.get('gcs_url')
+            if gcs_url:
+                image_url = gcs_url
+            else:
+                mime_type = row_dict.get('mime_type', 'image/png')
+                image_base64 = row_dict.get('image_base64', '')
+                image_url = f"data:{mime_type};base64,{image_base64}"
+
+            assets.append({
+                'id': str(row_dict['id']),
+                'play_id': row_dict['play_id'],
+                'asset_type': row_dict['asset_type'],
+                'image_url': image_url,
+                'metadata': {
+                    'era': row_dict.get('era'),
+                    'style': row_dict.get('style'),
+                },
+                'created_at': row_dict['created_at']
+            })
+
+        return assets
+
     def close(self):
         """Close database connection."""
         if self._conn:

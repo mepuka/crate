@@ -2026,4 +2026,119 @@
       animation: none;
     }
   }
+
+  /* ========================================
+     PHYSICAL MEDIA GALLERY
+     3D transforms for vinyl sleeve flipping
+     ======================================== */
+
+  /* Perspective container */
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+
+  /* 3D transform preservation */
+  .transform-style-3d {
+    transform-style: preserve-3d;
+  }
+
+  /* Backface visibility */
+  .backface-hidden {
+    backface-visibility: hidden;
+  }
+
+  /* Y-axis rotation */
+  .rotate-y-180 {
+    transform: rotateY(180deg);
+  }
+
+  /* Photo development animation */
+  @keyframes develop {
+    0% {
+      filter: sepia(1) brightness(0.2) contrast(0.4);
+      opacity: 0.2;
+    }
+    20% {
+      filter: sepia(0.9) brightness(0.35) contrast(0.5);
+      opacity: 0.4;
+    }
+    40% {
+      filter: sepia(0.7) brightness(0.5) contrast(0.65);
+      opacity: 0.55;
+    }
+    60% {
+      filter: sepia(0.4) brightness(0.7) contrast(0.8);
+      opacity: 0.75;
+    }
+    80% {
+      filter: sepia(0.15) brightness(0.9) contrast(0.95);
+      opacity: 0.9;
+    }
+    100% {
+      filter: sepia(0) brightness(1) contrast(1);
+      opacity: 1;
+    }
+  }
+
+  .animate-develop {
+    animation: develop 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  /* Vinyl sleeve container */
+  .vinyl-sleeve-container {
+    /* Subtle tilt on hover for tactile feel */
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .vinyl-sleeve-container:hover {
+    transform: rotate(-1deg) translateY(-4px);
+  }
+
+  /* CD case reflection effect */
+  .cd-case-reflection {
+    background: linear-gradient(
+      135deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.03) 30%,
+      rgba(255, 255, 255, 0.08) 45%,
+      rgba(255, 255, 255, 0.03) 60%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
+
+  /* Cassette shell texture */
+  .cassette-shell {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.05) 0%,
+      transparent 20%,
+      transparent 80%,
+      rgba(0, 0, 0, 0.1) 100%
+    );
+  }
+
+  /* Media format badge styling */
+  .media-format-badge {
+    font-family: 'IBM Plex Sans', sans-serif;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-size: 9px;
+    font-weight: 500;
+  }
+
+  /* Reduce motion: disable 3D transforms */
+  @media (prefers-reduced-motion: reduce) {
+    .vinyl-sleeve-container:hover {
+      transform: none;
+    }
+    .animate-develop {
+      animation: none;
+      filter: none;
+      opacity: 1;
+    }
+    .rotate-y-180 {
+      transform: none;
+    }
+  }
 }

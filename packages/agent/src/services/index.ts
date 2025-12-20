@@ -268,6 +268,7 @@ export {
   buildGraphContextForArtist,
   type LinerNoteGenerationServiceInterface,
   type GraphContext as LinerNoteGraphContext,
+  type ResearchContext,
 } from "./LinerNoteGenerationService.js"
 
 // Generated asset repository (persistence for AI-generated images)
@@ -283,3 +284,40 @@ export {
   type StoreAssetResult,
   type GenerationParams,
 } from "./GeneratedAssetRepository.js"
+
+// Art generation orchestrator (wires agent research into art generation)
+export {
+  ArtGenerationOrchestrator,
+  ArtGenerationOrchestratorLive,
+  ArtGenerationError,
+  type ArtGenerationOrchestratorInterface,
+  type ArtGenerationInput,
+  type ArtGenerationResult,
+  type PlayContext as ArtPlayContext,
+} from "./ArtGenerationOrchestrator.js"
+
+// GCS storage service (uploads generated assets to Cloud Storage)
+export {
+  GcsStorageService,
+  GcsStorageServiceLive,
+  GcsStorageServiceFull,
+  GcsStorageServiceTest,
+  GcsConfig,
+  GcsStorageError,
+  type GcsStorageServiceInterface,
+  type GcsConfigShape,
+  type UploadRequest,
+  type UploadResult,
+} from "./GcsStorageService.js"
+
+// Liner note orchestrator (generates + persists to GCS)
+export {
+  LinerNoteOrchestrator,
+  LinerNoteOrchestratorLive,
+  LinerNoteOrchestratorFull,
+  LinerNoteOrchestrationError,
+  orchestrateLinerNote,
+  type LinerNoteOrchestratorInterface,
+  type OrchestrateLinerNoteInput,
+  type OrchestrateLinerNoteResult,
+} from "./LinerNoteOrchestrator.js"

@@ -311,6 +311,14 @@ Output discoveries as JSON with:
         }).pipe(
           AnthropicLanguageModel.withConfigOverride({ temperature: 0.7 })
         );
+
+        // Log token usage for cost attribution
+        const usage = response.usage;
+        yield* Effect.log(
+          `DiscoveryAgent: Token usage - input: ${usage.inputTokens}, output: ${usage.outputTokens}, ` +
+          `cache_read: ${usage.cachedInputTokens ?? 0}, total: ${usage.inputTokens + usage.outputTokens}`
+        );
+
         return response.value;
       }).pipe(
         Effect.catchAll((error) =>

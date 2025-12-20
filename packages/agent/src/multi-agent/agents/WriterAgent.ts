@@ -173,6 +173,14 @@ Output as JSON with:
         }).pipe(
           AnthropicLanguageModel.withConfigOverride({ temperature: 0.75 })
         );
+
+        // Log token usage for cost attribution
+        const usage = response.usage;
+        yield* Effect.log(
+          `WriterAgent: Token usage - input: ${usage.inputTokens}, output: ${usage.outputTokens}, ` +
+          `cache_read: ${usage.cachedInputTokens ?? 0}, total: ${usage.inputTokens + usage.outputTokens}`
+        );
+
         return response.value as WriterOutput;
       }).pipe(
         Effect.catchAll((error) =>

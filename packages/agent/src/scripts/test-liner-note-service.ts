@@ -56,38 +56,38 @@ const TEST_CASES: TestCase[] = [
     }
   },
   {
-    name: "Golden Age Jazz (1959)",
-    imagePath: "/Users/pooks/Dev/crate/packages/agent/test-output/character-generation/crate-cat-takuya-kuroda.png",
+    name: "Contemporary Jazz (2014)",
+    imagePath: "/Users/pooks/Dev/crate/packages/agent/test-output/easter-egg/takuya-kuroda-rising-son-easter-egg.png",
     request: {
       playId: 67890,
-      releaseYear: 1959,
-      title: "Miles Davis's Kind of Blue Journey",
-      narrative: "When Miles Davis stepped into Columbia's 30th Street Studio in March 1959, he brought a new vision of jazz - modal, spacious, revolutionary. This album would become the best-selling jazz record of all time.",
-      artistName: "Miles Davis",
-      albumName: "Kind of Blue",
-      style: "archival",
+      releaseYear: 2014,
+      title: "Takuya Kuroda's Rising Son",
+      narrative: "Japanese trumpeter Takuya Kuroda blends jazz tradition with hip-hop production on this Blue Note debut. A frequent collaborator with José James, Kuroda brings a fresh perspective to the storied label.",
+      artistName: "Takuya Kuroda",
+      albumName: "Rising Son",
+      style: "art-forward",
     },
     graphContext: {
-      collaborators: ["John Coltrane", "Bill Evans", "Cannonball Adderley"],
-      labels: ["Columbia"],
+      collaborators: ["José James", "Kris Bowers"],
+      labels: ["Blue Note"],
     }
   },
   {
-    name: "Contemporary (2024)",
-    imagePath: "/Users/pooks/Dev/crate/packages/agent/test-output/character-generation/crate-cat-king-stingray.png",
+    name: "Contemporary Indigenous Rock (2022)",
+    imagePath: "/Users/pooks/Dev/crate/packages/agent/test-output/easter-egg/king-stingray-easter-egg.png",
     request: {
       playId: 99999,
-      releaseYear: 2024,
-      title: "The Hives's KEXP Journey",
-      narrative: "Produced by Beastie Boys legend Mike D and Viagra Boys' Pelle Gunnerfeldt, with contributions from Josh Homme of Queens of the Stone Age, this album showcases The Hives at their most focused.",
-      artistName: "The Hives",
-      albumName: "The Death of Randy Fitzsimmons",
+      releaseYear: 2022,
+      title: "King Stingray's KEXP Discovery",
+      narrative: "Yolŋu surf rock from Northeast Arnhem Land. King Stingray blend their Indigenous Australian heritage with infectious guitar hooks, singing in both Yolŋu Matha and English.",
+      artistName: "King Stingray",
+      albumName: "King Stingray",
       style: "editorial",
     },
     graphContext: {
-      collaborators: ["Mike D", "Pelle Gunnerfeldt", "Josh Homme"],
-      labels: ["Disques Hansen"],
-      relatedArtists: ["Beastie Boys", "Viagra Boys", "Queens of the Stone Age"],
+      collaborators: [],
+      labels: ["Spinefarm"],
+      relatedArtists: ["Yothu Yindi", "Baker Boy"],
     }
   }
 ];

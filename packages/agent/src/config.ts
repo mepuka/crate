@@ -247,6 +247,35 @@ export class AIModelConfig extends Effect.Service<AIModelConfig>()("AIModelConfi
 }) {}
 
 // =============================================================================
+// Crate Server Configuration
+// =============================================================================
+
+/**
+ * Configuration for Crate TypeScript server
+ * Used for storing generated assets and other server-side operations
+ */
+export interface CrateServerConfigShape {
+  readonly baseUrl: string
+  readonly timeout: Duration.Duration
+}
+
+/**
+ * Crate server configuration service
+ */
+export class CrateServerConfig extends Effect.Service<CrateServerConfig>()("CrateServerConfig", {
+  effect: Effect.gen(function* () {
+    const { baseUrl, timeoutMs } = yield* Config.all({
+      baseUrl: Config.string("CRATE_SERVER_URL").pipe(Config.withDefault("http://localhost:3000")),
+      timeoutMs: Config.number("CRATE_SERVER_TIMEOUT_MS").pipe(Config.withDefault(60000))
+    })
+    return {
+      baseUrl,
+      timeout: Duration.millis(timeoutMs)
+    } satisfies CrateServerConfigShape
+  })
+}) {}
+
+// =============================================================================
 // Combined Configuration Layer
 // =============================================================================
 

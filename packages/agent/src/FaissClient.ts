@@ -38,6 +38,30 @@ import type { Insight } from "./prompts/insights.js";
 import { FaissConfig } from "./config.js";
 export { FaissConfig } from "./config.js";
 
+// Generated asset schemas (mirrors server schemas)
+const StoreGeneratedAssetRequest = Schema.Struct({
+  play_id: Schema.optional(Schema.Number),
+  asset_type: Schema.String,
+  params_hash: Schema.String,
+  generation_params: Schema.optional(Schema.String),
+  image_base64: Schema.String,
+  mime_type: Schema.optionalWith(Schema.String, { default: () => "image/png" }),
+  era: Schema.optional(Schema.String),
+  style: Schema.optional(Schema.String),
+  model_notes: Schema.optional(Schema.String),
+  prompt_used: Schema.optional(Schema.String),
+  gcs_url: Schema.optional(Schema.String),
+});
+
+const StoreGeneratedAssetResponse = Schema.Struct({
+  id: Schema.Number,
+  params_hash: Schema.String,
+  was_existing: Schema.Boolean,
+});
+
+export type StoreGeneratedAssetRequest = typeof StoreGeneratedAssetRequest.Type;
+export type StoreGeneratedAssetResponse = typeof StoreGeneratedAssetResponse.Type;
+
 // Export type aliases for convenience
 export type PlayResult = typeof PlayResultSchema.Type;
 export type SearchResponse = typeof SearchResponseSchema.Type;
@@ -443,6 +467,34 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                 (error) =>
                   new FaissApiError({
                     message: `Get unprocessed plays failed`,
+                    cause: error,
+                  })
+              )
+            )
+        ),
+
+      /**
+       * Store a generated asset (liner note, enhanced art, etc.)
+       * Protected by circuit breaker
+       *
+       * Stores asset metadata in the database. If a GCS URL is provided,
+       * the frontend will use it for production serving; otherwise falls
+       * back to base64 data URL.
+       */
+      storeGeneratedAsset: (request: StoreGeneratedAssetRequest) =>
+        withProtection(
+          client
+            .post("/api/generated-assets", {
+              body: HttpBody.unsafeJson(request),
+            })
+            .pipe(
+              Effect.flatMap(
+                HttpClientResponse.schemaBodyJson(StoreGeneratedAssetResponse)
+              ),
+              Effect.mapError(
+                (error) =>
+                  new FaissApiError({
+                    message: `Store generated asset failed`,
                     cause: error,
                   })
               )

@@ -35,6 +35,10 @@ from .models.agent_runs import (
     ListAgentRunsResponse, AgentRunSummary, AgentRunDetail,
     DeleteAgentRunResponse
 )
+from .models.generated_assets import (
+    StoreGeneratedAssetRequest, StoreGeneratedAssetResponse,
+    GeneratedAsset, GetGeneratedAssetsResponse,
+)
 from .config import settings
 from .routes import embeddings, graph
 import json
@@ -1977,4 +1981,137 @@ async def delete_agent_run(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete agent run: {str(e)}"
+        )
+
+
+# =============================================================================
+# Generated Assets Endpoints
+# =============================================================================
+
+@app.post(
+    "/api/generated-assets",
+    response_model=StoreGeneratedAssetResponse,
+    tags=["generated-assets"],
+    summary="Store a generated asset",
+    description="""
+    Store an AI-generated visual asset (liner note, enhanced art, etc.).
+
+    **Idempotent:** If an asset with the same (play_id, asset_type, params_hash)
+    already exists, returns the existing record instead of creating a duplicate.
+
+    **Authentication:** Requires X-API-Key header if FAISS_API_KEY is set.
+    """,
+    responses={
+        200: {"description": "Asset stored successfully"},
+        401: {"description": "Invalid or missing API key"},
+        500: {"description": "Failed to store asset"}
+    }
+)
+async def store_generated_asset(
+    request: StoreGeneratedAssetRequest,
+    x_api_key: Optional[str] = Header(None)
+) -> StoreGeneratedAssetResponse:
+    """Store a generated asset."""
+    global db_service
+
+    # API key check (if configured)
+    api_key = os.getenv("FAISS_API_KEY")
+    if api_key and x_api_key != api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        result = db_service.store_generated_asset(
+            play_id=request.play_id,
+            asset_type=request.asset_type,
+            params_hash=request.params_hash,
+            image_base64=request.image_base64,
+            mime_type=request.mime_type,
+            generation_params=request.generation_params,
+            era=request.era,
+            style=request.style,
+            model_notes=request.model_notes,
+            prompt_used=request.prompt_used,
+            gcs_url=request.gcs_url,
+        )
+
+        return StoreGeneratedAssetResponse(
+            id=result['id'],
+            params_hash=result['params_hash'],
+            was_existing=result['was_existing']
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to store generated asset: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to store generated asset: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/generated-assets/play/{play_id}",
+    response_model=GetGeneratedAssetsResponse,
+    tags=["generated-assets"],
+    summary="Get generated assets for a play",
+    description="""
+    Get all AI-generated visual assets for a specific play.
+
+    Returns assets with their image URLs (GCS or data URL fallback)
+    and metadata (era, style, placement, etc.).
+    """,
+    responses={
+        200: {"description": "Assets retrieved successfully"},
+        400: {"description": "Missing play_id parameter"},
+        500: {"description": "Failed to fetch assets"}
+    }
+)
+async def get_generated_assets(
+    play_id: int
+) -> GetGeneratedAssetsResponse:
+    """Get generated assets for a play."""
+    global db_service
+
+    try:
+        assets = db_service.get_generated_assets_by_play_id(play_id)
+
+        return GetGeneratedAssetsResponse(
+            play_id=play_id,
+            assets=[GeneratedAsset(**a) for a in assets],
+            count=len(assets)
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to fetch generated assets: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch generated assets: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/generated-assets/recent",
+    response_model=list[GeneratedAsset],
+    tags=["generated-assets"],
+    summary="Get recently generated assets",
+    description="Get the most recently generated assets across all plays.",
+    responses={
+        200: {"description": "Assets retrieved successfully"},
+        500: {"description": "Failed to fetch assets"}
+    }
+)
+async def get_recent_generated_assets(
+    limit: int = 20
+) -> list[GeneratedAsset]:
+    """Get recently generated assets."""
+    global db_service
+
+    try:
+        assets = db_service.get_recent_generated_assets(limit=min(limit, 100))
+        return [GeneratedAsset(**a) for a in assets]
+
+    except Exception as e:
+        logger.error(f"Failed to fetch recent assets: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch recent assets: {str(e)}"
         )

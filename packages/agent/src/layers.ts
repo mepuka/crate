@@ -55,7 +55,14 @@ import {
   ArtCurationService,
   ArtCurationServiceTest,
   ArtCurationServiceGeminiWithConfig,
+  // Art generation services
+  ArtGenerationOrchestrator,
+  ArtGenerationOrchestratorLive,
+  LinerNoteGenerationService,
+  LinerNoteGenerationServiceLive,
 } from "./services/index.js";
+
+import { CrateServerConfig } from "./config.js";
 
 // Tool handlers
 import { CrateToolHandlersLayer } from "./tools/handlers.js";
@@ -425,3 +432,53 @@ export type CrateToolServices =
  * Type for full Crate Tools context
  */
 export type CrateToolsContext = CrateToolServices;
+
+// =============================================================================
+// Art Generation Layers
+// =============================================================================
+
+/**
+ * LinerNoteGenerationService with GoogleClient provided
+ *
+ * Creates the liner note generation service with Nano Banana Pro model.
+ * Requires GoogleAIConfig in environment.
+ */
+export const LinerNoteGenerationServiceWithConfig: Layer.Layer<
+  LinerNoteGenerationService,
+  never,
+  GoogleAIConfig
+> = Layer.unwrapEffect(
+  Effect.gen(function* () {
+    const config = yield* GoogleAIConfig;
+
+    // Build GoogleClient layer with HTTP client
+    const googleClientLayer = GoogleClient.layer({
+      apiKey: config.apiKey,
+    }).pipe(Layer.provide(FetchHttpClient.layer));
+
+    return LinerNoteGenerationServiceLive.pipe(Layer.provide(googleClientLayer));
+  })
+);
+
+/**
+ * Complete Art Generation layer with all dependencies resolved
+ *
+ * Provides ArtGenerationOrchestrator with:
+ * - LinerNoteGenerationService (Nano Banana Pro)
+ * - CrateServerConfig (for HTTP storage)
+ * - HttpClient (for album art fetching and asset storage)
+ *
+ * Requires:
+ * - GOOGLE_AI_API_KEY (for image generation)
+ * - CRATE_SERVER_URL (defaults to http://localhost:3000)
+ */
+export const ArtGenerationOrchestratorFull: Layer.Layer<
+  ArtGenerationOrchestrator,
+  never,
+  never
+> = ArtGenerationOrchestratorLive.pipe(
+  Layer.provide(LinerNoteGenerationServiceWithConfig),
+  Layer.provide(CrateServerConfig.Default),
+  Layer.provide(FetchHttpClient.layer),
+  Layer.provide(GoogleAIConfig.Default)
+);

@@ -152,6 +152,31 @@ export interface GraphContext {
 }
 
 /**
+ * Research context from agent's discoveries
+ *
+ * Flows the agent's reasoning and findings into art generation,
+ * enabling contextually rich, story-driven visual prompts.
+ */
+export interface ResearchContext {
+  /** Key findings from agent research (e.g., "First KEXP play in 3 years") */
+  readonly findings?: readonly string[];
+  /** Story hook from DiscoveryArc insight (emotional/narrative core) */
+  readonly storyHook?: string;
+  /** Connection types discovered (e.g., "member-of", "collaborator-with") */
+  readonly connectionTypes?: readonly string[];
+  /** Scene/movement associations (e.g., "Chicago post-punk", "PNW indie") */
+  readonly sceneAssociations?: readonly string[];
+  /** Mood/tone inferred from research (e.g., "reunion", "breakthrough", "retrospective") */
+  readonly mood?: string;
+  /** DJ comment excerpt (the human curation signal) */
+  readonly djCommentExcerpt?: string;
+  /** Notable facts from external sources (Bandcamp, Wikipedia) */
+  readonly externalFacts?: readonly string[];
+  /** Time context (e.g., "returning after hiatus", "debut", "anniversary") */
+  readonly timeContext?: string;
+}
+
+/**
  * Liner note generation request
  */
 export const LinerNoteRequest = Schema.Struct({
@@ -175,6 +200,8 @@ export const LinerNoteRequest = Schema.Struct({
   style: Schema.optional(LinerNoteStyle),
   /** Graph context (collaborators, labels, etc.) */
   graphContext: Schema.optional(Schema.Unknown),
+  /** Research context from agent discoveries (story hooks, findings, mood) */
+  researchContext: Schema.optional(Schema.Unknown),
 });
 export type LinerNoteRequest = typeof LinerNoteRequest.Type;
 
@@ -212,79 +239,219 @@ export class LinerNoteGenerationError extends Data.TaggedError(
 // Prompt Builder
 // =============================================================================
 
+/**
+ * Infer visual mood from research context
+ *
+ * Maps agent discoveries to visual/emotional direction for the art.
+ */
+function inferVisualMood(research?: ResearchContext): string {
+  if (!research) return "";
+
+  const moods: string[] = [];
+
+  // Explicit mood from research
+  if (research.mood) {
+    moods.push(research.mood);
+  }
+
+  // Time context suggests mood
+  if (research.timeContext) {
+    const tc = research.timeContext.toLowerCase();
+    if (tc.includes("return") || tc.includes("comeback") || tc.includes("hiatus")) {
+      moods.push("reunion, anticipation, rediscovery");
+    } else if (tc.includes("debut") || tc.includes("first")) {
+      moods.push("emergence, fresh energy, arrival");
+    } else if (tc.includes("anniversary") || tc.includes("retrospective")) {
+      moods.push("nostalgia, celebration, legacy");
+    } else if (tc.includes("final") || tc.includes("last")) {
+      moods.push("bittersweet, culmination, reverence");
+    }
+  }
+
+  // Scene associations suggest aesthetic
+  if (research.sceneAssociations?.length) {
+    const scenes = research.sceneAssociations.join(", ").toLowerCase();
+    if (scenes.includes("pnw") || scenes.includes("seattle") || scenes.includes("pacific northwest")) {
+      moods.push("misty, evergreen, introspective warmth");
+    } else if (scenes.includes("chicago") || scenes.includes("midwest")) {
+      moods.push("industrial warmth, DIY grit, earnest");
+    } else if (scenes.includes("brooklyn") || scenes.includes("new york")) {
+      moods.push("urban density, art-forward, sophisticated chaos");
+    } else if (scenes.includes("southern") || scenes.includes("nashville") || scenes.includes("memphis")) {
+      moods.push("roots warmth, storytelling, analog soul");
+    }
+  }
+
+  return moods.length > 0 ? moods.join("; ") : "";
+}
+
 function buildLinerNotePrompt(
   request: LinerNoteRequest,
-  graphContext?: GraphContext
+  graphContext?: GraphContext,
+  researchContext?: ResearchContext
 ): string {
   const era = detectEra(request.releaseYear);
   const profile = ERA_PROFILES[era];
   const style = request.style ?? "art-forward";
 
-  const styleDescriptions: Record<LinerNoteStyle, string> = {
-    "art-forward": "Text overlaid on abstracted album art atmosphere, warm inner sleeve feel",
-    "editorial": "Magazine pull-quote card, Pitchfork/FADER aesthetic, bold typography",
-    "archival": "Catalog card / found document, library index card, vintage press clipping",
-    "collage": "Zine collage, mixed media cut-out, punk DIY aesthetic"
+  // Era-specific physical texture descriptions (NO TEXT - texture/background only)
+  const physicalTextureDescriptions: Record<Era, string> = {
+    "pre-vinyl": `A weathered paper texture from a ${request.releaseYear ?? 1940}s 78rpm record sleeve.
+Heavy cream-colored cardstock with visible foxing, age spots, and water staining.
+The surface shows letterpress ink absorption patterns. Sepia-toned with deep patina.
+Torn edges, corner wear, and the organic decay of 80+ year old paper stock.`,
+
+    "golden-age": `The inner sleeve paper from a ${request.releaseYear ?? 1960} vinyl LP.
+Cream or light gray paper, yellowed with age. Ring wear impression from the vinyl.
+Coffee stains, slight foxing, price sticker residue, shop stamps.
+The texture of paper that's been handled by collectors for decades.
+Blue Note / Verve era paper quality and aging characteristics.`,
+
+    "classic-rock": `Gatefold insert paper from a ${request.releaseYear ?? 1973} LP.
+Textured cardstock with a slight sheen, warm cream color with analog warmth.
+Gentle fold creases, slight warping from years in the sleeve.
+The tactile quality of 70s album packaging - substantial, designed to be held.`,
+
+    "new-wave": `Glossy insert card stock from an ${request.releaseYear ?? 1985} 12" single.
+High-gloss paper with spot varnish areas, showing 80s printing technology.
+Clean edges with slight handling wear. That particular 80s CMYK color quality.
+Factory Records / 4AD sleeve texture and finish.`,
+
+    "grunge": `DIY photocopied paper from ${request.releaseYear ?? 1993}.
+Cheap newsprint-quality paper run through a Kinko's copy machine.
+High contrast, slightly skewed, visible toner patterns and copy artifacts.
+Creased, folded, hand-stamped. Sub Pop 7" insert aesthetic.`,
+
+    "digital": `CD booklet paper from ${request.releaseYear ?? 2004}.
+Matte or semi-gloss 4.75" square format paper stock.
+Clean digital printing with minor edge yellowing.
+Early 2000s print quality - crisp but showing subtle age.`,
+
+    "streaming": `Premium vinyl insert from ${request.releaseYear ?? 2015}.
+High quality paper stock with attention to tactile luxury.
+Clean and crisp with minimal weathering.
+Vinyl Me Please / boutique pressing quality.`,
+
+    "contemporary": `Fresh liner note paper from a ${request.releaseYear ?? 2024} pressing.
+Pristine premium paper stock, sharp and unworn.
+Modern vinyl revival packaging - luxurious and collectible.
+Just unwrapped from the shrink wrap.`
   };
 
-  // Build graph context section if available
-  let graphSection = "";
-  if (graphContext) {
-    const parts: string[] = [];
-    if (graphContext.collaborators?.length) {
-      parts.push(`Collaborators: ${graphContext.collaborators.slice(0, 5).join(", ")}`);
-    }
-    if (graphContext.labels?.length) {
-      parts.push(`Labels: ${graphContext.labels.slice(0, 3).join(", ")}`);
-    }
-    if (graphContext.memberOf?.length) {
-      parts.push(`Member of: ${graphContext.memberOf.slice(0, 3).join(", ")}`);
-    }
-    if (graphContext.relatedArtists?.length) {
-      parts.push(`Related artists: ${graphContext.relatedArtists.slice(0, 3).join(", ")}`);
-    }
-    if (parts.length > 0) {
-      graphSection = `\n=== CONTEXTUAL DETAILS (subtle visual hints) ===\n${parts.join("\n")}\n`;
-    }
-  }
+  // Style-specific composition guidance
+  const styleCompositions: Record<LinerNoteStyle, string> = {
+    "art-forward": `Create an abstract composition using album art colors and shapes.
+Transform key visual elements from the album into textural patterns.
+Bold color fields, geometric shapes, artistic interpretation of the cover imagery.
+This is art paper - expressive, designed, intentional.`,
 
-  return `You are looking at the album artwork for "${request.albumName ?? "this album"}" by ${request.artistName} (${request.releaseYear ?? "recent"}).
+    "editorial": `Clean, minimal paper with subtle texture.
+Muted, sophisticated coloring derived from album palette.
+Space for typography - leave breathing room for text overlay.
+Magazine-quality paper stock, refined and understated.`,
 
-Create a VISUAL LINER NOTE image that:
-1. Incorporates visual elements from this album artwork (colors, textures, mood)
-2. Overlays the following text in a readable, designed way
-3. Feels like an authentic inner sleeve from a ${profile.displayName.toLowerCase()} vinyl record
+    "archival": `Documentary photograph of aged paper.
+Show the full artifact: edges, corners, wear patterns, staining.
+Neutral background, museum-quality documentation aesthetic.
+The paper itself tells the story of its age and provenance.`,
 
-=== TEXT CONTENT ===
-Title: "${request.title}"
-Body: "${request.narrative.slice(0, 400)}${request.narrative.length > 400 ? "..." : ""}"
-${graphSection}
-=== STYLE: ${style.toUpperCase()} ===
-${styleDescriptions[style]}
+    "collage": `Layered paper textures and fragments.
+Multiple paper types overlapping: kraft, newsprint, glossy scraps.
+Torn edges, tape residue, paste-up aesthetic.
+Zine-style assembled-by-hand feeling.`
+  };
 
-=== ERA STYLING: ${profile.displayName} (${request.releaseYear ?? "recent"}) ===
-WEATHERING:
-- Physical wear: ${Math.round(profile.weathering.wear * 100)}%
-- Color fade: ${Math.round(profile.weathering.fade * 100)}%
-- Film grain: ${Math.round(profile.weathering.grain * 100)}%
-- Paper yellowing: ${Math.round(profile.weathering.yellowing * 100)}%
+  // Infer visual mood from research
+  const visualMood = inferVisualMood(researchContext);
 
-TYPOGRAPHY: ${profile.typography}
-TEXTURE: ${profile.texture}
+  // Build palette guidance from album art
+  const paletteSection = `
+COLOR PALETTE: Extract and emphasize the dominant colors from the album artwork.
+The texture should feel like it BELONGS to this album - same color temperature,
+same mood, same visual language. The paper's aging/patina should complement, not fight,
+the album's natural palette.`;
 
-ERA GUIDANCE:
-${profile.guidance.map(g => `- ${g}`).join("\n")}
+  // Crate Cat easter egg - the playful mascot hidden in every piece
+  const crateCatSection = `
+=== CRATE CAT EASTER EGG (REQUIRED) ===
+Hidden somewhere in this artwork must be CRATE CAT - a playful black cat silhouette with distinctive yellow/gold eyes.
+
+THE CAT MUST BE:
+- A BLACK CAT silhouette - sleek, elegant, subtly mischievous
+- YELLOW or GOLD eyes that catch attention once you notice them
+- INTEGRATED into the composition - not pasted on top, but PART of the art
+- SUBTLE but DISCOVERABLE - a delightful "aha!" moment when spotted
+
+INTEGRATION IDEAS (be creative, pick what fits the composition):
+- Cat silhouette formed by negative space between shapes
+- Cat ears peeking from behind an element or edge
+- Cat shape emerging from shadows or darker areas
+- Cat curled up in a corner, blending with the color palette
+- Cat watching from within the scene, part of the visual story
+- Cat formed by the intersection of design elements
+
+The cat should feel like it BELONGS in this era's visual language:
+- Golden age jazz: Cat as part of the modernist silhouette composition
+- Classic rock: Cat hidden in psychedelic patterns or gatefold imagery
+- Grunge: Cat in photocopied high-contrast aesthetic
+- Contemporary: Cat as clean graphic element
+
+This is our signature - every Crate liner note has a cat hiding somewhere.
+The viewer should smile when they discover it.`;
+
+  return `TASK: Generate a PHYSICAL PAPER TEXTURE with CRATE CAT (NO TEXT)
+
+Create a PHOTOGRAPH of a real physical paper artifact.
+This will be used as a BACKGROUND for typography overlay - DO NOT include any text, letters, numbers, or writing.
+
+=== CRITICAL: NO TEXT ===
+- NO text of any kind
+- NO letters, numbers, or symbols
+- NO typography or lettering
+- Just pure TEXTURE, COLOR, and PHYSICAL MATERIAL
+
+=== THE PHYSICAL ARTIFACT ===
+${physicalTextureDescriptions[era]}
+
+=== COMPOSITION STYLE ===
+${styleCompositions[style]}
+
+=== CONTEXT FOR COLOR/MOOD ===
+Artist: ${request.artistName}
+Album: ${request.albumName ?? "Unknown"}
+Year: ${request.releaseYear ?? "Unknown"}
+${visualMood ? `Mood: ${visualMood}` : ""}
+
+${paletteSection}
+
+=== MATERIAL AUTHENTICITY ===
+PAPER TEXTURE: ${profile.texture}
+WEATHERING LEVELS:
+- Edge wear and handling: ${Math.round(profile.weathering.wear * 100)}%
+- Color/ink fading: ${Math.round(profile.weathering.fade * 100)}%
+- Paper yellowing/foxing: ${Math.round(profile.weathering.yellowing * 100)}%
+- Surface grain visibility: ${Math.round(profile.weathering.grain * 100)}%
+
+${crateCatSection}
 
 === REQUIREMENTS ===
-- Use the album art's color palette and visual mood
-- Text must be fully legible (4.5:1 contrast minimum)
-- Apply appropriate weathering/aging for ${request.releaseYear ?? "contemporary"}
-- Feel like a real vinyl inner sleeve, not generic AI art
-- NO purple gradients, NO generic stock imagery
-- The album artwork should inform the atmosphere and texture
+1. PHOTOGRAPH of a REAL physical paper/cardstock
+2. NO TEXT, LETTERS, OR WRITING of any kind
+3. Rich texture: paper grain, fibers, imperfections, aging
+4. Colors drawn from the album artwork provided
+5. Era-appropriate material and wear characteristics
+6. Suitable as a background for overlaid typography
+7. High detail in material qualities: creases, stains, wear patterns
+8. CRATE CAT hidden in the composition (black cat, yellow eyes)
 
-=== OUTPUT ===
-A single cohesive image combining album art atmosphere with styled, readable text.`;
+=== DESCRIBE YOUR VISION ===
+Before generating, describe:
+- What type of paper stock and era-specific qualities?
+- What colors from the album art will dominate?
+- What specific wear patterns and aging marks?
+- WHERE and HOW will Crate Cat be hidden? (Be creative!)
+
+Then generate a text-free paper texture with the hidden cat.`;
 }
 
 // =============================================================================
@@ -320,11 +487,13 @@ const makeLinerNoteGenerationService = Effect.gen(function* () {
     Effect.gen(function* () {
       const era = detectEra(request.releaseYear);
       const graphContext = request.graphContext as GraphContext | undefined;
-      const prompt = buildLinerNotePrompt(request, graphContext);
+      const researchContext = request.researchContext as ResearchContext | undefined;
+      const prompt = buildLinerNotePrompt(request, graphContext, researchContext);
 
       const mimeType = request.mimeType ?? "image/jpeg";
 
       // Build Gemini request with image input
+      // Temperature 1.0 for maximum creativity in visual generation
       const geminiRequest = {
         model: NANO_BANANA_PRO_MODEL,
         contents: [
@@ -343,6 +512,7 @@ const makeLinerNoteGenerationService = Effect.gen(function* () {
         ],
         generationConfig: {
           responseModalities: ["TEXT", "IMAGE"],
+          temperature: 1.0,
         },
       };
 

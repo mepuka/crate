@@ -29,6 +29,8 @@ import {
   InsightSessionService,
   faissPlayToKexpPlay,
   AgentCheckpointService,
+  ArtGenerationOrchestrator,
+  type ArtPlayContext,
 } from "./services/index.js";
 import {
   parallelResearch,
@@ -1122,6 +1124,46 @@ Focus on insight types that tell stories (Connection, DiscoveryArc, LocalScene, 
                         })
                       )
                     );
+
+                  // Optional art generation - runs after insights are posted
+                  // Uses the pre-research context and insights to generate visual art
+                  const artOrchestrator = yield* Effect.serviceOption(ArtGenerationOrchestrator);
+                  if (artOrchestrator._tag === "Some") {
+                    const artPlayContext: ArtPlayContext = {
+                      playId: play.id,
+                      artist: play.artist ?? "Unknown",
+                      song: play.song ?? "Unknown",
+                      album: play.album ?? undefined,
+                      imageUri: play.imageUri,
+                      releaseYear: play.releaseDate
+                        ? new Date(play.releaseDate).getFullYear()
+                        : null,
+                      artistMbids: play.artistIds ?? [],
+                      comment: play.comment,
+                    };
+
+                    yield* artOrchestrator.value
+                      .generateFromResearch({
+                        play: artPlayContext,
+                        preResearch: preResearchResult,
+                        insights,
+                      })
+                      .pipe(
+                        Effect.tap((result) =>
+                          result._tag === "Some"
+                            ? Effect.logInfo(
+                                `Art generation complete for play ${play.id}: ${result.value.assetType} (era: ${result.value.era})`
+                              )
+                            : Effect.logDebug(`Art generation skipped for play ${play.id}`)
+                        ),
+                        Effect.catchAll((artError) =>
+                          Effect.logWarning(
+                            `Art generation failed for play ${play.id}: ${artError.message}`
+                          )
+                        ),
+                        Effect.withSpan("MusicAgent.artGeneration")
+                      );
+                  }
 
                   return { insights, evalContext, postedCount: postResult.count };
                 } else {

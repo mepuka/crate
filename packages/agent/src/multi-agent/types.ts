@@ -183,6 +183,44 @@ export const PipelineState = Schema.Struct({
 export type PipelineState = typeof PipelineState.Type;
 
 // =============================================================================
+// Token Usage Tracking
+// =============================================================================
+
+/**
+ * Token usage metrics for cost attribution and cache optimization
+ */
+export const TokenUsage = Schema.Struct({
+  inputTokens: Schema.Number,
+  outputTokens: Schema.Number,
+  totalTokens: Schema.Number,
+  cacheReadTokens: Schema.Number,     // Tokens read from prompt cache
+  cacheCreationTokens: Schema.Number, // Tokens used to create cache
+});
+export type TokenUsage = typeof TokenUsage.Type;
+
+/**
+ * Create an empty token usage object
+ */
+export const emptyTokenUsage = (): TokenUsage => ({
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+});
+
+/**
+ * Add two token usage objects together
+ */
+export const addTokenUsage = (a: TokenUsage, b: TokenUsage): TokenUsage => ({
+  inputTokens: a.inputTokens + b.inputTokens,
+  outputTokens: a.outputTokens + b.outputTokens,
+  totalTokens: a.totalTokens + b.totalTokens,
+  cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+  cacheCreationTokens: a.cacheCreationTokens + b.cacheCreationTokens,
+});
+
+// =============================================================================
 // Coordinator Result
 // =============================================================================
 
@@ -196,26 +234,32 @@ export const CoordinatorResult = Schema.Struct({
   insightsGenerated: Schema.Number,
   insightsApproved: Schema.Number,
   durationMs: Schema.Number,
+  tokenUsage: Schema.optional(TokenUsage), // Aggregate token usage across all stages
   stages: Schema.Struct({
     curator: Schema.optional(Schema.Struct({
       durationMs: Schema.Number,
       highPriorityCount: Schema.Number,
+      tokenUsage: Schema.optional(TokenUsage),
     })),
     discovery: Schema.optional(Schema.Struct({
       durationMs: Schema.Number,
       discoveriesFound: Schema.Number,
+      tokenUsage: Schema.optional(TokenUsage),
     })),
     research: Schema.optional(Schema.Struct({
       durationMs: Schema.Number,
       toolCallCount: Schema.Number,
+      tokenUsage: Schema.optional(TokenUsage),
     })),
     writer: Schema.optional(Schema.Struct({
       durationMs: Schema.Number,
       insightsWritten: Schema.Number,
+      tokenUsage: Schema.optional(TokenUsage),
     })),
     critic: Schema.optional(Schema.Struct({
       durationMs: Schema.Number,
       approvalRate: Schema.Number,
+      tokenUsage: Schema.optional(TokenUsage),
     })),
   }),
 });

@@ -210,6 +210,14 @@ Output your prioritization decisions as a JSON object with:
         }).pipe(
           AnthropicLanguageModel.withConfigOverride({ temperature: 0.35 })
         );
+
+        // Log token usage for cost attribution
+        const usage = response.usage;
+        yield* Effect.log(
+          `CuratorAgent: Token usage - input: ${usage.inputTokens}, output: ${usage.outputTokens}, ` +
+          `cache_read: ${usage.cachedInputTokens ?? 0}, total: ${usage.inputTokens + usage.outputTokens}`
+        );
+
         return response.value;
       }).pipe(
         Effect.catchAll((error) =>

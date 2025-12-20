@@ -153,6 +153,16 @@ __all__ = [
     "AgentRunDetail",
     "ListAgentRunsResponse",
     "DeleteAgentRunResponse",
+
+    # Generated asset models
+    "Era",
+    "Style",
+    "AssetType",
+    "AssetMetadata",
+    "StoreGeneratedAssetRequest",
+    "StoreGeneratedAssetResponse",
+    "GeneratedAsset",
+    "GetGeneratedAssetsResponse",
 ]
 
 # Re-export graph models
@@ -179,4 +189,16 @@ from .agent_runs import (
     AgentRunDetail,
     ListAgentRunsResponse,
     DeleteAgentRunResponse,
+)
+
+# Re-export generated asset models
+from .generated_assets import (
+    Era,
+    Style,
+    AssetType,
+    AssetMetadata,
+    StoreGeneratedAssetRequest,
+    StoreGeneratedAssetResponse,
+    GeneratedAsset,
+    GetGeneratedAssetsResponse,
 )

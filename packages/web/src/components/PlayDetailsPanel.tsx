@@ -15,6 +15,7 @@ import { selectedPlayIdAtom } from "@/atoms/play-details";
 import { playAtom } from "@/atoms/timeline";
 import { streamingLinksForPlayAtom } from "@/atoms/streaming-links";
 import { albumPaletteAtom, DEFAULT_PALETTE, type AlbumPalette } from "@/atoms/album-palette";
+import { generatedAssetsArrayAtom, generatedAssetsLoadingAtom } from "@/atoms/generated-assets";
 import { Option } from "effect";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatSemanticTime } from "@/lib/date-utils";
@@ -23,6 +24,8 @@ import { StreamingLinks } from "./StreamingLinks";
 import { X } from "lucide-react";
 import { InsightPanel } from "./insights/InsightPanel";
 import { LinksByCategory } from "./LinksByCategory";
+import { PhysicalMediaGallery } from "./media/PhysicalMediaGallery";
+import { detectEra } from "./insights/eraVisualSystem";
 
 export function PlayDetailsPanel() {
   const [selectedId, setSelectedId] = useAtom(selectedPlayIdAtom);
@@ -147,6 +150,10 @@ function PlayDetailsInner({ play }: { play: {
 
   // Get streaming links (Spotify, Apple Music, etc.)
   const streamingLinksResult = useAtomValue(streamingLinksForPlayAtom(play.id));
+
+  // Get generated assets (liner notes, etc.)
+  const generatedAssets = useAtomValue(generatedAssetsArrayAtom(play.id));
+  const generatedAssetsLoading = useAtomValue(generatedAssetsLoadingAtom(play.id));
 
   // Extract palette with fallback
   const palette = Result.matchWithWaiting(paletteResult, {
@@ -321,6 +328,21 @@ function PlayDetailsInner({ play }: { play: {
           isLocal={play.is_local}
           airdate={play.airdate}
           albumPalette={getSimplePalette(palette)}
+        />
+      )}
+
+      {/* Physical Media Gallery (Generated Assets) */}
+      {!isNonTrackPlay && (
+        <PhysicalMediaGallery
+          playId={play.id}
+          albumTitle={play.album || play.song || "Unknown"}
+          artistName={play.artist || "Unknown Artist"}
+          originalArtUrl={imageUrl}
+          era={detectEra(releaseYear)}
+          releaseYear={releaseYear}
+          albumPalette={getSimplePalette(palette)}
+          assets={generatedAssets}
+          isLoading={generatedAssetsLoading}
         />
       )}
 

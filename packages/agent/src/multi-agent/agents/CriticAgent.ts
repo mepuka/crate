@@ -64,6 +64,9 @@ export class CriticAgent extends Context.Tag("CriticAgent")<
 /**
  * Heuristic-based fallback review
  * Applies basic quality checks when LLM is unavailable
+ *
+ * Includes PlayHistory enforcement to reduce dominance of bare statistics.
+ * PlayHistory insights need narrative context, not just "X plays on KEXP".
  */
 const heuristicReview = (
   playId: number,
@@ -72,6 +75,26 @@ const heuristicReview = (
   const issues: ReviewIssue[] = [];
   let score = 80;
 
+  // =========================================================================
+  // PlayHistory Quota Enforcement
+  // Limit PlayHistory to ~25% of insights to encourage variety
+  // =========================================================================
+  const playHistoryCount = insights.filter(
+    (i) => i.insight_type === "PlayHistory"
+  ).length;
+  const playHistoryRatio = insights.length > 0 ? playHistoryCount / insights.length : 0;
+
+  if (playHistoryRatio > 0.25 && playHistoryCount > 1) {
+    issues.push({
+      severity: "warning",
+      description: `PlayHistory dominates (${playHistoryCount}/${insights.length} = ${Math.round(playHistoryRatio * 100)}%). Consider more DiscoveryArc, Connection, or Concert insights.`,
+    });
+    score -= 10;
+  }
+
+  // =========================================================================
+  // Per-Insight Quality Checks
+  // =========================================================================
   for (let i = 0; i < insights.length; i++) {
     const insight = insights[i];
 
@@ -83,6 +106,55 @@ const heuristicReview = (
         insightIndex: i,
       });
       score -= 20;
+    }
+
+    // =========================================================================
+    // PlayHistory Quality Gate
+    // Bare statistics like "X plays on KEXP" are low-value.
+    // Good PlayHistory tells a story: first play, comeback, anniversary, DJ love.
+    // =========================================================================
+    if (insight.insight_type === "PlayHistory") {
+      const summaryLength = insight.summary?.length ?? 0;
+
+      // Bare stats check: too short means no narrative context
+      if (summaryLength < 100) {
+        issues.push({
+          severity: "error",
+          description:
+            "PlayHistory insight lacks narrative context. Should tell a story (first play, comeback, DJ favorite) not just stats.",
+          insightIndex: i,
+        });
+        score -= 15;
+      }
+
+      // Check for story indicators that make PlayHistory valuable
+      const storyIndicators = [
+        "first",
+        "debut",
+        "return",
+        "comeback",
+        "anniversary",
+        "favorite",
+        "beloved",
+        "journey",
+        "discovered",
+        "milestone",
+        "decade",
+        "years",
+      ];
+      const hasStoryElement = storyIndicators.some((word) =>
+        insight.summary.toLowerCase().includes(word)
+      );
+
+      if (summaryLength >= 100 && !hasStoryElement) {
+        issues.push({
+          severity: "warning",
+          description:
+            "PlayHistory could be stronger with a story angle (first spin, comeback, anniversary).",
+          insightIndex: i,
+        });
+        score -= 5;
+      }
     }
 
     // Check for missing MBIDs
@@ -197,6 +269,14 @@ Output as JSON with:
         }).pipe(
           AnthropicLanguageModel.withConfigOverride({ temperature: 0.25 })
         );
+
+        // Log token usage for cost attribution
+        const usage = response.usage;
+        yield* Effect.log(
+          `CriticAgent: Token usage - input: ${usage.inputTokens}, output: ${usage.outputTokens}, ` +
+          `cache_read: ${usage.cachedInputTokens ?? 0}, total: ${usage.inputTokens + usage.outputTokens}`
+        );
+
         return response.value;
       }).pipe(
         Effect.catchAll((error) =>

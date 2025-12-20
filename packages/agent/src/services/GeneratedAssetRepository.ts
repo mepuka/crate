@@ -16,25 +16,26 @@ import * as crypto from "node:crypto";
 // =============================================================================
 
 /**
- * Asset types we support
+ * Asset types - semantic strings, model-derived
+ * The model names what it creates (e.g., "liner_note", "gatefold_spread", "label_art", "inner_sleeve")
  */
-export const AssetType = Schema.Literal(
-  "liner_note",
-  "enhanced_art",
-  "character_variant",
-  "easter_egg"
-);
-export type AssetType = typeof AssetType.Type;
+export const AssetType = Schema.String;
+export type AssetType = string;
 
 /**
  * Generation parameters for hashing/deduplication
+ * Also stores semantic metadata that the model provides
  */
 export interface GenerationParams {
   readonly style?: string;
   readonly releaseYear?: number | null;
   readonly narrative?: string;
   readonly artistMbid?: string;
-  // Add other params that affect generation
+  // Semantic metadata from the model
+  readonly placement?: string; // e.g., "front", "back", "inner", "gatefold_left"
+  readonly mood?: string; // e.g., "nostalgic", "energetic", "introspective"
+  readonly description?: string; // Model's description of what it created
+  readonly page_number?: number; // For multi-page assets
 }
 
 /**

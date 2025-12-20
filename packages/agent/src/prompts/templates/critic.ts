@@ -104,17 +104,39 @@ export const COMMON_ISSUES = `## Common Issues to Flag
 - Hallucinated MusicBrainz data
 - Marketing speak / hype language
 - Generic superlatives ("amazing", "incredible")
+- **PlayHistory without narrative**: Bare stats like "X plays on KEXP" are low-value. Must tell a story (first play, comeback, DJ favorite, anniversary)
 
 **Warnings (Should Fix)**:
 - Insight too long / padded with filler
 - Redundant information already in DJ comment
 - Missing opportunity to celebrate local artist
 - Tone doesn't match DJ comment style
+- **PlayHistory dominance**: If more than 25% of insights are PlayHistory, suggest variety (DiscoveryArc, Connection, Concert)
 
 **Suggestions (Nice to Have)**:
 - Could add more specific details
 - Could connect to other plays in the set
-- Could mention related KEXP history`;
+- Could mention related KEXP history
+
+## PlayHistory Quality Gate
+
+PlayHistory insights are the most common type but often lowest value when they're just statistics.
+
+**REJECT PlayHistory if**:
+- Summary is under 100 characters (bare stats)
+- Just says "X has been played Y times" without context
+- No story angle (first play, comeback, milestone, DJ favorite)
+
+**APPROVE PlayHistory if**:
+- Tells a story: first spin, return after hiatus, anniversary
+- Includes DJ context: "has been a favorite of DJ X since..."
+- Shows trajectory: discovery, breakthrough, sustained presence
+- Has narrative framing, not just numbers
+
+**Good PlayHistory example**: "Foo Fighters made their KEXP debut in 1995, just months after the Nirvana tragedy. Since then, they've become a listener favorite with 47 plays, including three in-studio sessions..."
+
+**Bad PlayHistory example**: "Foo Fighters has been played 47 times on KEXP."`;
+
 
 // =============================================================================
 // Build Complete Critic Prompt
