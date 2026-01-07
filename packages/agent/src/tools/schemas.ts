@@ -19,6 +19,16 @@ import { Schema } from "effect"
 // =============================================================================
 
 /**
+ * Number that also accepts string-encoded numbers.
+ * LLMs sometimes send numbers as strings in tool calls (e.g., "100" instead of 100).
+ * This schema accepts both and decodes strings to numbers.
+ */
+const NumberFromStringOrNumber = Schema.Union(
+  Schema.Number,
+  Schema.NumberFromString
+)
+
+/**
  * MusicBrainz entity types
  */
 export const MbEntityType = Schema.Literal(
@@ -118,7 +128,7 @@ export const SearchPlaysParams = Schema.Struct({
     description: "Filter by release group MusicBrainz ID. Finds plays from any edition of this album (includes remasters, represses)."
   }),
   /** Maximum number of results to return (1-100, default 20) */
-  limit: Schema.optional(Schema.Number).annotations({
+  limit: Schema.optional(NumberFromStringOrNumber).annotations({
     description: "Maximum number of results to return (1-100, default 20)"
   }),
   /** Filter plays after this ISO date */
@@ -161,7 +171,7 @@ export const SemanticSearchParams = Schema.Struct({
     description: "Natural language query for semantic search (e.g., 'upbeat jazz fusion')"
   }),
   /** Maximum number of results to return (1-100, default 20) */
-  limit: Schema.optional(Schema.Number).annotations({
+  limit: Schema.optional(NumberFromStringOrNumber).annotations({
     description: "Maximum number of results to return (1-100, default 20)"
   }),
   /** Pagination offset (default 0) */
@@ -201,7 +211,7 @@ export const HybridSearchParams = Schema.Struct({
     description: "Search query - works for exact names AND semantic concepts"
   }),
   /** Maximum results (default 20, max 100) */
-  limit: Schema.optional(Schema.Number).annotations({
+  limit: Schema.optional(NumberFromStringOrNumber).annotations({
     description: "Maximum results to return (default 20, max 100)"
   }),
   /** BM25 weight 0-1 for keyword matching (default 0.5) */
@@ -362,7 +372,7 @@ export type FetchLinkResponse = typeof FetchLinkResponse.Type
  */
 export const GetRecentInsightsParams = Schema.Struct({
   /** Maximum number of recent insights to return (1-50, default 10) */
-  limit: Schema.optional(Schema.Number).annotations({
+  limit: Schema.optional(NumberFromStringOrNumber).annotations({
     description: "Maximum number of recent insights to return (1-50, default 10)"
   }),
   /** Filter insights by play ID - shows insights already produced for this play */
@@ -462,7 +472,7 @@ export const GraphConnectionsParams = Schema.Struct({
   mbids: Schema.Array(Schema.String).annotations({
     description: "List of MusicBrainz IDs to query (1-50)"
   }),
-  limit: Schema.optional(Schema.Number).annotations({
+  limit: Schema.optional(NumberFromStringOrNumber).annotations({
     description: "Maximum connections to return (default 20, max 100)"
   }),
   include_attributes: Schema.optional(Schema.Boolean).annotations({
@@ -546,7 +556,7 @@ export const ExploreGraphParams = Schema.Struct({
   query_type: GraphQueryType.annotations({
     description: "Type of graph query to use when expanding (e.g., band_members, labelmates)"
   }),
-  limit: Schema.optional(Schema.Number).annotations({
+  limit: Schema.optional(NumberFromStringOrNumber).annotations({
     description: "Optional limit for the remote expansion"
   })
 })
@@ -598,7 +608,7 @@ export const QueryCachedNeighborsParams = Schema.Struct({
   include_edges: Schema.optional(Schema.Boolean).annotations({
     description: "Whether to include full edge data with relationship context (default true)"
   }),
-  limit: Schema.optional(Schema.Number).annotations({
+  limit: Schema.optional(NumberFromStringOrNumber).annotations({
     description: "Maximum neighbors to return (1-100, default 20)"
   })
 })
@@ -660,7 +670,7 @@ export const ExploreNeighborhoodParams = Schema.Struct({
   max_hops: Schema.optional(Schema.Number).annotations({
     description: "Maximum number of hops to explore (1-3, default 2)"
   }),
-  limit: Schema.optional(Schema.Number).annotations({
+  limit: Schema.optional(NumberFromStringOrNumber).annotations({
     description: "Maximum nodes to return (default 50, max 100)"
   })
 })
