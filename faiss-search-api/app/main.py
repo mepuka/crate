@@ -1784,6 +1784,16 @@ async def save_agent_run(
     """Save or update an agent run checkpoint."""
     global db_service
 
+    # Check if agent runs are paused
+    if os.getenv("PAUSE_AGENT_RUNS", "").lower() in ("1", "true", "yes"):
+        logger.info("Agent runs paused - skipping save")
+        return SaveAgentRunResponse(
+            status="paused",
+            session_id=request.sessionId,
+            insight_count=0,
+            tool_call_count=0
+        )
+
     # API key check (if configured)
     api_key = os.getenv("FAISS_API_KEY")
     if api_key and x_api_key != api_key:
