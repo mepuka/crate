@@ -2,10 +2,12 @@
 import sqlite3
 import json
 import base64
+import time
 from pathlib import Path
-from typing import Optional, Dict, List, Any, Tuple
+from typing import Optional, Dict, List, Any, Tuple, TypeVar, Callable
 from datetime import datetime
 import logging
+from functools import wraps
 
 try:
     import orjson
@@ -14,6 +16,52 @@ except ImportError:
     HAS_ORJSON = False
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar('T')
+
+
+def retry_on_locked(
+    max_retries: int = 3,
+    base_delay: float = 0.1,
+    max_delay: float = 2.0
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """
+    Decorator that retries a function on SQLite database locked errors.
+
+    Uses exponential backoff between retries.
+
+    Args:
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay between retries (seconds)
+        max_delay: Maximum delay between retries (seconds)
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            last_error = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e):
+                        last_error = e
+                        if attempt < max_retries:
+                            delay = min(base_delay * (2 ** attempt), max_delay)
+                            logger.warning(
+                                f"Database locked on {func.__name__}, "
+                                f"retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})"
+                            )
+                            time.sleep(delay)
+                        else:
+                            logger.error(
+                                f"Database locked on {func.__name__} "
+                                f"after {max_retries} retries"
+                            )
+                    else:
+                        raise
+            raise last_error  # type: ignore
+        return wrapper
+    return decorator
 
 
 class DatabaseService:
@@ -39,8 +87,16 @@ class DatabaseService:
         """Lazy database connection (thread-safe for read operations)."""
         if self._conn is None:
             # Allow SQLite connection to be used across threads for read-only operations
-            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            # Set timeout to 30 seconds to wait for locks
+            self._conn = sqlite3.connect(
+                self.db_path,
+                check_same_thread=False,
+                timeout=30.0
+            )
             self._conn.row_factory = sqlite3.Row
+            # Enable WAL mode for better concurrent access
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA busy_timeout=30000")
         return self._conn
 
     def get_play_by_id(self, play_id: int) -> Optional[Dict[str, Any]]:
@@ -970,6 +1026,7 @@ class DatabaseService:
     # Insights Methods (typed insight storage)
     # =========================================================================
 
+    @retry_on_locked(max_retries=3, base_delay=0.2, max_delay=2.0)
     def bulk_insert_insights(
         self,
         insights: List[Dict[str, Any]]
@@ -2154,6 +2211,7 @@ class DatabaseService:
     # Agent Runs Methods
     # =========================================================================
 
+    @retry_on_locked(max_retries=3, base_delay=0.2, max_delay=2.0)
     def save_agent_run(self, run_data: Dict[str, Any]) -> Tuple[str, bool]:
         """
         Save or update an agent run.
@@ -2382,6 +2440,7 @@ class DatabaseService:
 
         return runs, total
 
+    @retry_on_locked(max_retries=3, base_delay=0.2, max_delay=2.0)
     def delete_agent_run(self, session_id: str) -> bool:
         """
         Delete an agent run.
@@ -2539,6 +2598,7 @@ class DatabaseService:
     # Generated Assets Methods
     # =========================================================================
 
+    @retry_on_locked(max_retries=3, base_delay=0.2, max_delay=2.0)
     def store_generated_asset(
         self,
         play_id: Optional[int],
