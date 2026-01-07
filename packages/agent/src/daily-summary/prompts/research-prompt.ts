@@ -292,23 +292,42 @@ export const buildDayDataMessage = (dayData: DayData): string => {
     parts.push("")
   }
 
-  // DJ Comments for cultural extraction
+  // DJ Comments for cultural extraction (limited to 50 most substantive)
   if (dayData.playsWithComments.length > 0) {
-    parts.push(`## All DJ Comments (${dayData.playsWithComments.length} plays with comments)`)
+    // Sort by comment length (longer comments are usually more substantive)
+    // Filter out trivial comments (< 30 chars) and limit to 50
+    const substantiveComments = dayData.playsWithComments
+      .filter(cp => cp.comment && cp.comment.length >= 30)
+      .sort((a, b) => (b.comment?.length ?? 0) - (a.comment?.length ?? 0))
+      .slice(0, 50)
+
+    parts.push(`## DJ Comments (${substantiveComments.length} substantive, ${dayData.playsWithComments.length} total)`)
     parts.push("Mine these for cultural moments, dedications, and themes:")
-    for (const cp of dayData.playsWithComments) {
+    parts.push("(Sorted by length - longest/most detailed first)")
+    for (const cp of substantiveComments) {
       const play = cp.play
       parts.push(`\n[${play.id}] ${play.artist} - "${play.song}"`)
       parts.push(`> ${cp.comment}`)
     }
+    if (dayData.playsWithComments.length > substantiveComments.length) {
+      parts.push(`\n(${dayData.playsWithComments.length - substantiveComments.length} shorter comments omitted)`)
+    }
     parts.push("")
   }
 
-  // Full play list (compressed)
-  parts.push(`## All Plays (${dayData.plays.length} total)`)
-  parts.push("Ordered by airtime. Use play IDs to reference in tools.")
+  // Play list - detailed for "interesting" plays, ID-only for others
+  // This reduces token usage while maintaining research capability
+  const interestingPlays = dayData.plays.filter(cp =>
+    cp.isLocal || cp.isLive || cp.isRequest || cp.hasRotation || cp.isRecentRelease
+  )
+  const regularPlays = dayData.plays.filter(cp =>
+    !cp.isLocal && !cp.isLive && !cp.isRequest && !cp.hasRotation && !cp.isRecentRelease
+  )
+
+  parts.push(`## Notable Plays (${interestingPlays.length} with special flags)`)
+  parts.push("These plays have notable characteristics (local, live, request, rotation, new):")
   parts.push("```")
-  for (const cp of dayData.plays) {
+  for (const cp of interestingPlays) {
     const play = cp.play
     const flags: string[] = []
     if (cp.isLocal) flags.push("LOCAL")
@@ -316,10 +335,23 @@ export const buildDayDataMessage = (dayData: DayData): string => {
     if (cp.isRequest) flags.push("REQ")
     if (cp.hasRotation) flags.push(`ROT:${play.rotation_status}`)
     if (cp.isRecentRelease) flags.push("NEW")
-    const flagStr = flags.length > 0 ? ` [${flags.join(",")}]` : ""
-    parts.push(`${play.id}|${play.artist}|${play.song}|${play.album ?? ""}${flagStr}`)
+    parts.push(`${play.id}|${play.artist}|${play.song}|${play.album ?? ""}|[${flags.join(",")}]`)
   }
   parts.push("```")
+  parts.push("")
+
+  // Regular plays - just IDs with artist/song (minimal format)
+  if (regularPlays.length > 0) {
+    parts.push(`## Regular Plays (${regularPlays.length} without special flags)`)
+    parts.push("Use search_plays with artist_mbid from these if you need history:")
+    parts.push("```")
+    for (const cp of regularPlays) {
+      const play = cp.play
+      // Minimal format: ID|artist|song (no album, no flags)
+      parts.push(`${play.id}|${play.artist}|${play.song}`)
+    }
+    parts.push("```")
+  }
 
   return parts.join("\n")
 }

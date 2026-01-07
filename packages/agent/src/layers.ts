@@ -28,6 +28,7 @@ import {
   AnthropicConfig,
   GoogleAIConfig,
   AIModelConfig,
+  PolishModelConfig,
 } from "./config.js";
 
 // Service imports
@@ -411,6 +412,44 @@ export const ConfigurableModelLive = Layer.unwrapEffect(
     }
   })
 ).pipe(Layer.provide(AIModelConfig.Default));
+
+/**
+ * Polish Model Layer - Provides LanguageModel for polish phase
+ *
+ * Uses a more capable model (Sonnet/Opus by default) for quality writing.
+ * Can be configured via POLISH_MODEL env var.
+ *
+ * Environment variables:
+ * - POLISH_MODEL: Model name override (default: provider's polish default)
+ *
+ * Examples:
+ *   POLISH_MODEL=claude-opus-4-5-20251101    → Claude Opus for premium quality
+ *   POLISH_MODEL=gemini-3-pro                → Gemini 3 Pro
+ *   (no env var)                             → Claude Sonnet 4 (default)
+ *
+ * Usage:
+ * ```ts
+ * const polishedAgent = polishAgent.pipe(Effect.provide(PolishModelLive))
+ * ```
+ */
+export const PolishModelLive = Layer.unwrapEffect(
+  Effect.gen(function* () {
+    const polishConfig = yield* PolishModelConfig;
+
+    // Log the selected polish model for debugging
+    yield* Effect.logInfo(`Polish Model: ${polishConfig.provider}/${polishConfig.model}`);
+
+    if (polishConfig.provider === "google") {
+      return makeGoogleModelLayer(polishConfig.model).pipe(
+        Layer.provide(GoogleAIConfig.Default)
+      );
+    } else {
+      return makeAnthropicModelLayer(polishConfig.model).pipe(
+        Layer.provide(AnthropicConfig.Default)
+      );
+    }
+  })
+).pipe(Layer.provide(PolishModelConfig.Default));
 
 // =============================================================================
 // Type Exports

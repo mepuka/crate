@@ -303,16 +303,20 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
           // =============================================================================
           yield* Effect.log("Phase 1: Research with tool calls")
 
-          const maxIterations = 15 // Allow more iterations for thorough research
+          const maxIterations = 10 // Reduced from 15 for token efficiency
+          const minIterations = 5 // Ensure at least this many iterations for thorough research
 
           // Run research loop
           let iteration = 0
           let hasMoreToolCalls = true
+          let consecutiveEmptyIterations = 0
 
           while (hasMoreToolCalls && iteration < maxIterations) {
             yield* Effect.log(`Research iteration ${iteration + 1}`)
 
             // Determine tool choice based on iteration
+            // First iterations: require specific tools to ensure thorough exploration
+            // Later iterations: auto mode lets model decide when done
             const toolChoice = iteration === 0
               ? {
                   mode: "required" as const,
@@ -352,11 +356,29 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
               // Note: cache tokens may be in provider-specific fields
             }
 
-            totalToolCalls += response.toolCalls.length
-            hasMoreToolCalls = response.toolCalls.length > 0
+            const toolCallCount = response.toolCalls.length
+            totalToolCalls += toolCallCount
+            hasMoreToolCalls = toolCallCount > 0
             iteration++
 
-            yield* Effect.log(`Iteration ${iteration}: ${response.toolCalls.length} tool calls`)
+            yield* Effect.log(`Iteration ${iteration}: ${toolCallCount} tool calls`)
+
+            // Early stopping: if we've done minimum iterations and model stopped calling tools
+            if (toolCallCount === 0) {
+              consecutiveEmptyIterations++
+              if (iteration >= minIterations && consecutiveEmptyIterations >= 1) {
+                yield* Effect.log("Early stop: model finished research")
+                break
+              }
+            } else {
+              consecutiveEmptyIterations = 0
+            }
+
+            // Early stopping: if we've accumulated enough tool calls (diminishing returns)
+            if (iteration >= minIterations && totalToolCalls >= 25) {
+              yield* Effect.log(`Early stop: sufficient research (${totalToolCalls} tool calls)`)
+              break
+            }
           }
 
           yield* Effect.log(`Research phase complete: ${totalToolCalls} total tool calls over ${iteration} iterations`)

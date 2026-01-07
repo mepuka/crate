@@ -56,8 +56,19 @@ export {
   SummaryWriterAgentLive,
   SummaryWriterError,
   type SummaryWriterAgentInterface,
-  type WriterResult
+  type WriterResult,
+  type WriterOptions
 } from "./SummaryWriterAgent.js"
+
+// Polish Agent (Phase 3)
+export {
+  SummaryPolishAgent,
+  SummaryPolishAgentLive,
+  SummaryPolishError,
+  type SummaryPolishAgentInterface,
+  type PolishResult,
+  type PolishFixes
+} from "./SummaryPolishAgent.js"
 
 // Orchestrator
 export {
@@ -78,3 +89,19 @@ export {
   buildWriterSystemPrompt,
   buildResearchContextMessage
 } from "./prompts/writer-prompt.js"
+export {
+  buildPolishSystemPrompt,
+  buildPolishMessage
+} from "./prompts/polish-prompt.js"
+
+// Play Reference Utilities
+export {
+  extractReferencedPlayIds,
+  extractCategorizedPlayIds,
+  buildPlayLookupTable,
+  formatPlayLookupTable,
+  formatPlayIdInstructions,
+  validatePlayIdPopulation,
+  type PlayLookupEntry,
+  type CategorizedPlayIds
+} from "./play-reference.js"

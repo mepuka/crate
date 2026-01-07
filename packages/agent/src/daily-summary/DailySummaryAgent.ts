@@ -12,7 +12,7 @@
  * @module
  */
 
-import { Effect, Layer, Clock, Data } from "effect"
+import { Effect, Layer, Clock, Data, Config } from "effect"
 import { LanguageModel } from "@effect/ai"
 import { FaissClient } from "../FaissClient.js"
 import {
@@ -27,7 +27,17 @@ import {
   SummaryWriterAgent,
   type WriterResult
 } from "./SummaryWriterAgent.js"
+import {
+  SummaryPolishAgent,
+  type PolishResult,
+  type PolishFixes
+} from "./SummaryPolishAgent.js"
 import type { ResearchContextType, DailySummaryType } from "./schemas.js"
+import {
+  extractReferencedPlayIds,
+  extractCategorizedPlayIds,
+  buildPlayLookupTable
+} from "./play-reference.js"
 
 // =============================================================================
 // Types
@@ -47,8 +57,12 @@ export interface PipelineResult {
     readonly dataCollectionMs: number
     readonly researchMs: number
     readonly writingMs: number
+    readonly polishMs: number
     readonly totalMs: number
   }
+
+  // Polish phase report (what was fixed)
+  readonly polishFixes?: PolishFixes
 
   // Token usage across phases
   readonly tokenUsage: {
@@ -78,7 +92,7 @@ export interface PipelineOptions {
  */
 export class DailySummaryError extends Data.TaggedError("DailySummaryError")<{
   readonly message: string
-  readonly phase: "data_collection" | "research" | "writing" | "persistence"
+  readonly phase: "data_collection" | "research" | "writing" | "polish" | "persistence"
   readonly cause?: unknown
 }> {}
 
@@ -196,6 +210,7 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
       const dataCollector = yield* DayDataCollector
       const researchAgent = yield* SummaryResearchAgent
       const writerAgent = yield* SummaryWriterAgent
+      const polishAgent = yield* SummaryPolishAgent
       // TODO: Use faissClient for persistence when endpoints are ready
       const _faissClient = yield* FaissClient
 
@@ -329,9 +344,24 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
           // Phase 3: Writing
           // =============================================================================
           yield* Effect.log("Phase 3: Writing summary")
+
+          // Build play lookup table from research findings
+          // This gives the writer direct access to playIds for resolution
+          const referencedIds = extractReferencedPlayIds(researchResult.context)
+          const categorizedIds = extractCategorizedPlayIds(researchResult.context)
+          const playLookup = buildPlayLookupTable(dayData, referencedIds)
+
+          yield* Effect.log(
+            `Play reference: ${referencedIds.size} unique plays, ` +
+            `${playLookup.length} in lookup table`
+          )
+
           const writingStart = yield* Clock.currentTimeMillis
 
-          const writerResult = yield* writerAgent.write(researchResult.context).pipe(
+          const writerResult = yield* writerAgent.write(researchResult.context, {
+            playLookup,
+            categorizedIds
+          }).pipe(
             Effect.mapError(e =>
               new DailySummaryError({
                 message: `Writing failed: ${e instanceof Error ? e.message : String(e)}`,
@@ -350,13 +380,63 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
           tokenUsage.cacheReadTokens += writerResult.tokenUsage.cacheReadTokens
           tokenUsage.cacheCreationTokens += writerResult.tokenUsage.cacheCreationTokens
 
-          // Update summary with research ID
-          const summary: DailySummaryType = {
-            ...writerResult.summary,
-            researchId
+          yield* Effect.log(`Writing complete in ${writingMs}ms`)
+
+          // =============================================================================
+          // Phase 4: Polish (optional)
+          // =============================================================================
+          const skipPolish = yield* Config.boolean("SKIP_POLISH").pipe(
+            Config.withDefault(false),
+            Effect.catchAll(() => Effect.succeed(false))
+          )
+
+          let polishMs = 0
+          let polishedSummary = writerResult.summary
+          let polishFixes: PolishFixes | undefined = undefined
+
+          if (!skipPolish) {
+            yield* Effect.log("Phase 4: Polishing summary")
+            const polishStart = yield* Clock.currentTimeMillis
+
+            const polishResult = yield* polishAgent
+              .polish(writerResult.summary, researchResult.context)
+              .pipe(
+                Effect.mapError(e =>
+                  new DailySummaryError({
+                    message: `Polish failed: ${e instanceof Error ? e.message : String(e)}`,
+                    phase: "polish",
+                    cause: e
+                  })
+                )
+              )
+
+            const polishEnd = yield* Clock.currentTimeMillis
+            polishMs = Number(polishEnd - polishStart)
+
+            // Aggregate token usage
+            tokenUsage.inputTokens += polishResult.tokenUsage.inputTokens
+            tokenUsage.outputTokens += polishResult.tokenUsage.outputTokens
+            tokenUsage.cacheReadTokens += polishResult.tokenUsage.cacheReadTokens
+            tokenUsage.cacheCreationTokens += polishResult.tokenUsage.cacheCreationTokens
+
+            polishedSummary = polishResult.summary
+            polishFixes = polishResult.fixes
+
+            yield* Effect.log(
+              `Polish complete in ${polishMs}ms: ` +
+              `headline=${polishFixes.headlineImproved}, ` +
+              `playIds=${polishFixes.playIdsPopulated}, ` +
+              `themes=${polishFixes.themesIncluded}`
+            )
+          } else {
+            yield* Effect.log("Phase 4: Skipped (SKIP_POLISH=true)")
           }
 
-          yield* Effect.log(`Writing complete in ${writingMs}ms`)
+          // Update summary with research ID
+          const summary: DailySummaryType = {
+            ...polishedSummary,
+            researchId
+          }
 
           // Persist summary (if not skipped)
           let summaryId = 0
@@ -386,8 +466,10 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
               dataCollectionMs,
               researchMs,
               writingMs,
+              polishMs,
               totalMs
             },
+            polishFixes,
             tokenUsage,
             toolCallCount: researchResult.toolCallCount
           }
@@ -417,14 +499,20 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
  * - DayDataCollector.Default (includes FaissClient.Default for its own use)
  * - SummaryResearchAgent.Default
  * - SummaryWriterAgent.Default (no dependencies)
+ * - SummaryPolishAgent.Default (no dependencies)
  *
  * The caller must still provide:
- * - LanguageModel.LanguageModel (for both research and writer agents)
+ * - LanguageModel.LanguageModel (for research, writer, and polish agents)
  * - CrateToolsLive (provides CrateToolkit handlers for SummaryResearchAgent)
+ *
+ * Note: All agents currently share the same LanguageModel. For phase-specific
+ * models (e.g., polish with Sonnet), provide PolishModelLive from layers.ts
+ * to the polish agent separately.
  */
 export const DailySummaryAgentLive = DailySummaryAgent.Default.pipe(
   Layer.provide(FaissClient.Default),
   Layer.provide(DayDataCollector.Default),
   Layer.provide(SummaryResearchAgent.Default),
-  Layer.provide(SummaryWriterAgent.Default)
+  Layer.provide(SummaryWriterAgent.Default),
+  Layer.provide(SummaryPolishAgent.Default)
 )

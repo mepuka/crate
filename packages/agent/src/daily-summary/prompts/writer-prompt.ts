@@ -18,6 +18,14 @@
  */
 
 import type { ResearchContextType } from "../schemas.js"
+import type {
+  PlayLookupEntry,
+  CategorizedPlayIds
+} from "../play-reference.js"
+import {
+  formatPlayLookupTable,
+  formatPlayIdInstructions
+} from "../play-reference.js"
 
 // =============================================================================
 // Static Prompt Sections
@@ -130,9 +138,25 @@ export const WRITER_TONE = `## Tone Guidelines
 // =============================================================================
 
 /**
- * Build the user message containing research context for writing
+ * Options for building the research context message
  */
-export const buildResearchContextMessage = (research: ResearchContextType): string => {
+export interface ResearchContextOptions {
+  /** Compact play lookup table for ID resolution */
+  readonly playLookup?: ReadonlyArray<PlayLookupEntry>
+  /** Categorized play IDs for schema population */
+  readonly categorizedIds?: CategorizedPlayIds
+}
+
+/**
+ * Build the user message containing research context for writing
+ *
+ * Optionally includes a play lookup table for explicit ID resolution,
+ * solving the playIds population bug.
+ */
+export const buildResearchContextMessage = (
+  research: ResearchContextType,
+  options?: ResearchContextOptions
+): string => {
   const parts: string[] = []
 
   parts.push(`# Research Context for ${research.date}`)
@@ -278,6 +302,22 @@ export const buildResearchContextMessage = (research: ResearchContextType): stri
     for (const a of research.narrativeAngles) {
       parts.push(`- ${a}`)
     }
+    parts.push("")
+  }
+
+  // Play Reference Table (if provided)
+  // This gives the writer explicit access to play IDs for resolution
+  if (options?.playLookup && options.playLookup.length > 0) {
+    parts.push("")
+    parts.push(formatPlayLookupTable(options.playLookup))
+    parts.push("")
+  }
+
+  // Play ID Population Guide (if provided)
+  // This tells the writer exactly which IDs to include in each array
+  if (options?.categorizedIds) {
+    parts.push("")
+    parts.push(formatPlayIdInstructions(options.categorizedIds))
     parts.push("")
   }
 

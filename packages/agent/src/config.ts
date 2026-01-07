@@ -204,6 +204,16 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
 } as const
 
 /**
+ * Default polish models per provider
+ *
+ * Polish phase uses a more capable model for quality writing.
+ */
+export const DEFAULT_POLISH_MODELS: Record<AIProvider, string> = {
+  anthropic: "claude-sonnet-4-20250514",
+  google: "gemini-2.5-pro",
+} as const
+
+/**
  * Configuration for AI model selection
  */
 export interface AIModelConfigShape {
@@ -243,6 +253,45 @@ export class AIModelConfig extends Effect.Service<AIModelConfig>()("AIModelConfi
       provider,
       model: resolvedModel
     } satisfies AIModelConfigShape
+  })
+}) {}
+
+/**
+ * Configuration for polish model selection
+ *
+ * Allows using a different (typically more capable) model for the polish phase.
+ *
+ * Environment variables:
+ * - POLISH_MODEL: Model name override (default: provider's polish default)
+ * - SKIP_POLISH: Set to "true" to skip the polish phase entirely
+ *
+ * Examples:
+ *   POLISH_MODEL=claude-opus-4-5-20251101    → Claude Opus for premium quality
+ *   POLISH_MODEL=gemini-3-pro                → Gemini 3 Pro (investigate)
+ *   SKIP_POLISH=true                         → Skip polish phase
+ */
+export interface PolishModelConfigShape extends AIModelConfigShape {
+  readonly skipPolish: boolean
+}
+
+export class PolishModelConfig extends Effect.Service<PolishModelConfig>()("PolishModelConfig", {
+  effect: Effect.gen(function* () {
+    const { provider, model, skipPolish } = yield* Config.all({
+      provider: Config.literal("anthropic", "google")("AI_PROVIDER").pipe(
+        Config.withDefault("anthropic" as AIProvider)
+      ),
+      model: Config.option(Config.string("POLISH_MODEL")),
+      skipPolish: Config.boolean("SKIP_POLISH").pipe(Config.withDefault(false))
+    })
+
+    // Use specified polish model or default for the provider
+    const resolvedModel = Option.getOrElse(model, () => DEFAULT_POLISH_MODELS[provider])
+
+    return {
+      provider,
+      model: resolvedModel,
+      skipPolish
+    } satisfies PolishModelConfigShape
   })
 }) {}
 
