@@ -433,13 +433,36 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
             yield* Effect.log("Phase 4: Skipped (SKIP_POLISH=true)")
           }
 
-          // Update summary with research ID
+          // Update summary with research ID and ensure all playIds are included
+          // Programmatic fix: merge any missing IDs that the LLM didn't include
+          const existingPlayIds = new Set(polishedSummary.playIds)
+          const missingPlayIds = categorizedIds.all.filter(id => !existingPlayIds.has(id))
+
+          // Also fix newMusicPlaylistIds - should contain all fresh releases
+          const existingNewMusic = new Set(polishedSummary.newMusicPlaylistIds)
+          const missingNewMusic = categorizedIds.freshReleases.filter(id => !existingNewMusic.has(id))
+
           const summary: DailySummaryType = {
             ...polishedSummary,
-            researchId
+            researchId,
+            // Merge missing playIds programmatically
+            playIds: missingPlayIds.length > 0
+              ? [...polishedSummary.playIds, ...missingPlayIds]
+              : polishedSummary.playIds,
+            // Merge missing newMusicPlaylistIds programmatically
+            newMusicPlaylistIds: missingNewMusic.length > 0
+              ? [...polishedSummary.newMusicPlaylistIds, ...missingNewMusic]
+              : polishedSummary.newMusicPlaylistIds
           }
 
-          // Validate playId population
+          if (missingPlayIds.length > 0) {
+            yield* Effect.log(`PlayId fix: added ${missingPlayIds.length} missing IDs`)
+          }
+          if (missingNewMusic.length > 0) {
+            yield* Effect.log(`NewMusic fix: added ${missingNewMusic.length} fresh releases`)
+          }
+
+          // Validate playId population (should now pass)
           const validationIssues = validatePlayIdPopulation(summary, categorizedIds)
           if (validationIssues.length > 0) {
             yield* Effect.logWarning(`PlayId validation issues: ${validationIssues.join('; ')}`)
