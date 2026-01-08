@@ -22,6 +22,7 @@ import {
   buildPolishMessage
 } from "./prompts/polish-prompt.js"
 import type { ResearchContextType, DailySummaryType } from "./schemas.js"
+import { type TokenUsage, emptyTokenUsage } from "../multi-agent/types.js"
 
 // =============================================================================
 // Types
@@ -34,12 +35,7 @@ export interface PolishResult {
   readonly summary: DailySummaryType
   readonly fixes: PolishFixes
   readonly durationMs: number
-  readonly tokenUsage: {
-    readonly inputTokens: number
-    readonly outputTokens: number
-    readonly cacheReadTokens: number
-    readonly cacheCreationTokens: number
-  }
+  readonly tokenUsage: TokenUsage
 }
 
 /**
@@ -164,14 +160,6 @@ export class SummaryPolishAgent extends Effect.Service<SummaryPolishAgent>()(
   "SummaryPolishAgent",
   {
     effect: Effect.gen(function* () {
-      // Token usage tracking
-      type TokenUsage = {
-        inputTokens: number
-        outputTokens: number
-        cacheReadTokens: number
-        cacheCreationTokens: number
-      }
-
       /**
        * Determine what was fixed by comparing draft to polished output
        */
@@ -290,12 +278,7 @@ export class SummaryPolishAgent extends Effect.Service<SummaryPolishAgent>()(
           const chat = yield* Chat.fromPrompt(prompt)
 
           // Token usage
-          const tokenUsage: TokenUsage = {
-            inputTokens: 0,
-            outputTokens: 0,
-            cacheReadTokens: 0,
-            cacheCreationTokens: 0
-          }
+          const tokenUsage = emptyTokenUsage()
 
           // Generate polished output (no tools needed)
           const response = yield* chat
@@ -313,8 +296,11 @@ export class SummaryPolishAgent extends Effect.Service<SummaryPolishAgent>()(
           // Track token usage
           const usage = response.usage
           if (usage) {
-            tokenUsage.inputTokens = usage.inputTokens ?? 0
-            tokenUsage.outputTokens = usage.outputTokens ?? 0
+            const input = usage.inputTokens ?? 0
+            const output = usage.outputTokens ?? 0
+            tokenUsage.inputTokens = input
+            tokenUsage.outputTokens = output
+            tokenUsage.totalTokens = input + output
           }
 
           const endTime = yield* Clock.currentTimeMillis

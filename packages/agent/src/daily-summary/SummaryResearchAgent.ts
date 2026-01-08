@@ -14,8 +14,9 @@
  */
 
 import { Effect, Schema, Clock, Data } from "effect"
-import { Chat, Prompt } from "@effect/ai"
+import { LanguageModel, Chat, Prompt } from "@effect/ai"
 import { CrateToolkit } from "../tools/definitions.js"
+import { type TokenUsage, emptyTokenUsage } from "../multi-agent/types.js"
 import {
   buildResearchSystemPrompt,
   buildDayDataMessage
@@ -45,12 +46,7 @@ export interface ResearchResult {
   readonly context: ResearchContextType
   readonly durationMs: number
   readonly toolCallCount: number
-  readonly tokenUsage: {
-    readonly inputTokens: number
-    readonly outputTokens: number
-    readonly cacheReadTokens: number
-    readonly cacheCreationTokens: number
-  }
+  readonly tokenUsage: TokenUsage
 }
 
 /**
@@ -178,14 +174,6 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
     effect: Effect.gen(function* () {
       const toolkit = yield* CrateToolkit
 
-      // Token usage tracking
-      type TokenUsage = {
-        inputTokens: number
-        outputTokens: number
-        cacheReadTokens: number
-        cacheCreationTokens: number
-      }
-
       /**
        * Convert LLM output to full ResearchContext
        */
@@ -291,12 +279,7 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
 
           // Track tool calls and token usage
           let totalToolCalls = 0
-          const tokenUsage: TokenUsage = {
-            inputTokens: 0,
-            outputTokens: 0,
-            cacheReadTokens: 0,
-            cacheCreationTokens: 0
-          }
+          const tokenUsage = emptyTokenUsage()
 
           // =============================================================================
           // Phase 1: Research with tools
@@ -364,8 +347,11 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
             // Track token usage
             const usage = response.usage
             if (usage) {
-              tokenUsage.inputTokens += usage.inputTokens ?? 0
-              tokenUsage.outputTokens += usage.outputTokens ?? 0
+              const input = usage.inputTokens ?? 0
+              const output = usage.outputTokens ?? 0
+              tokenUsage.inputTokens += input
+              tokenUsage.outputTokens += output
+              tokenUsage.totalTokens += input + output
               // Note: cache tokens may be in provider-specific fields
             }
 
@@ -431,8 +417,11 @@ Output JSON matching the ResearchContext schema.`
           // Track final token usage
           const finalUsage = structuredResponse.usage
           if (finalUsage) {
-            tokenUsage.inputTokens += finalUsage.inputTokens ?? 0
-            tokenUsage.outputTokens += finalUsage.outputTokens ?? 0
+            const input = finalUsage.inputTokens ?? 0
+            const output = finalUsage.outputTokens ?? 0
+            tokenUsage.inputTokens += input
+            tokenUsage.outputTokens += output
+            tokenUsage.totalTokens += input + output
           }
 
           const endTime = yield* Clock.currentTimeMillis

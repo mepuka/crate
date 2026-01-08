@@ -12,9 +12,10 @@
  * @module
  */
 
-import { Effect, Layer, Clock, Data, Config } from "effect"
+import { Effect, Layer, Clock, Data, Config, Duration } from "effect"
 import { LanguageModel } from "@effect/ai"
 import { FaissClient } from "../FaissClient.js"
+import { type TokenUsage, emptyTokenUsage, addTokenUsage } from "../multi-agent/types.js"
 import {
   DayDataCollector,
   type DayData
@@ -66,12 +67,7 @@ export interface PipelineResult {
   readonly polishFixes?: PolishFixes
 
   // Token usage across phases
-  readonly tokenUsage: {
-    readonly inputTokens: number
-    readonly outputTokens: number
-    readonly cacheReadTokens: number
-    readonly cacheCreationTokens: number
-  }
+  readonly tokenUsage: TokenUsage
 
   readonly toolCallCount: number
 }
@@ -96,6 +92,19 @@ export class DailySummaryError extends Data.TaggedError("DailySummaryError")<{
   readonly phase: "data_collection" | "research" | "writing" | "polish" | "persistence"
   readonly cause?: unknown
 }> {}
+
+/**
+ * Helper to wrap errors as DailySummaryError for a specific phase
+ */
+const wrapPhaseError = <E>(
+  phase: DailySummaryError["phase"],
+  description: string
+) => (e: E): DailySummaryError =>
+  new DailySummaryError({
+    message: `${description} failed: ${e instanceof Error ? e.message : String(e)}`,
+    phase,
+    cause: e
+  })
 
 // =============================================================================
 // Persistence Interface
@@ -131,13 +140,15 @@ export interface SummaryPersistence {
 export interface DailySummaryAgentInterface {
   /**
    * Run the complete daily summary pipeline
+   *
+   * Note: LanguageModel is provided at the layer level, not exposed in the R channel.
+   * Use DailySummaryAgentLive(modelLayer) to construct the service.
    */
   readonly run: (
     options?: PipelineOptions
   ) => Effect.Effect<
     PipelineResult,
-    DailySummaryError,
-    LanguageModel.LanguageModel
+    DailySummaryError
   >
 
   /**
@@ -267,31 +278,18 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
           const pipelineStart = yield* Clock.currentTimeMillis
 
           // Aggregate token usage
-          const tokenUsage = {
-            inputTokens: 0,
-            outputTokens: 0,
-            cacheReadTokens: 0,
-            cacheCreationTokens: 0
-          }
+          let tokenUsage = emptyTokenUsage()
 
           // =============================================================================
           // Phase 1: Data Collection
           // =============================================================================
           yield* Effect.log("Phase 1: Collecting day data")
-          const dataStart = yield* Clock.currentTimeMillis
 
-          const dayData = yield* dataCollector.collectDay(date).pipe(
-            Effect.mapError(e =>
-              new DailySummaryError({
-                message: `Data collection failed: ${e instanceof Error ? e.message : String(e)}`,
-                phase: "data_collection",
-                cause: e
-              })
-            )
+          const [dataCollectionDuration, dayData] = yield* dataCollector.collectDay(date).pipe(
+            Effect.mapError(wrapPhaseError("data_collection", "Data collection")),
+            Effect.timed
           )
-
-          const dataEnd = yield* Clock.currentTimeMillis
-          const dataCollectionMs = Number(dataEnd - dataStart)
+          const dataCollectionMs = Duration.toMillis(dataCollectionDuration)
 
           yield* Effect.log(`Data collection complete: ${dayData.stats.totalPlays} plays in ${dataCollectionMs}ms`)
 
@@ -299,26 +297,15 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
           // Phase 2: Research
           // =============================================================================
           yield* Effect.log("Phase 2: Research with tools")
-          const researchStart = yield* Clock.currentTimeMillis
 
-          const researchResult = yield* researchAgent.research(dayData).pipe(
-            Effect.mapError(e =>
-              new DailySummaryError({
-                message: `Research failed: ${e instanceof Error ? e.message : String(e)}`,
-                phase: "research",
-                cause: e
-              })
-            )
+          const [researchDuration, researchResult] = yield* researchAgent.research(dayData).pipe(
+            Effect.mapError(wrapPhaseError("research", "Research")),
+            Effect.timed
           )
-
-          const researchEnd = yield* Clock.currentTimeMillis
-          const researchMs = Number(researchEnd - researchStart)
+          const researchMs = Duration.toMillis(researchDuration)
 
           // Aggregate token usage
-          tokenUsage.inputTokens += researchResult.tokenUsage.inputTokens
-          tokenUsage.outputTokens += researchResult.tokenUsage.outputTokens
-          tokenUsage.cacheReadTokens += researchResult.tokenUsage.cacheReadTokens
-          tokenUsage.cacheCreationTokens += researchResult.tokenUsage.cacheCreationTokens
+          tokenUsage = addTokenUsage(tokenUsage, researchResult.tokenUsage)
 
           yield* Effect.log(`Research complete: ${researchResult.toolCallCount} tool calls in ${researchMs}ms`)
 
@@ -331,13 +318,7 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
               researchResult.durationMs,
               researchResult.toolCallCount
             ).pipe(
-              Effect.mapError(e =>
-                new DailySummaryError({
-                  message: `Research persistence failed: ${e instanceof Error ? e.message : String(e)}`,
-                  phase: "persistence",
-                  cause: e
-                })
-              )
+              Effect.mapError(wrapPhaseError("persistence", "Research persistence"))
             )
           }
 
@@ -357,29 +338,17 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
             `${playLookup.length} in lookup table`
           )
 
-          const writingStart = yield* Clock.currentTimeMillis
-
-          const writerResult = yield* writerAgent.write(researchResult.context, {
+          const [writingDuration, writerResult] = yield* writerAgent.write(researchResult.context, {
             playLookup,
             categorizedIds
           }).pipe(
-            Effect.mapError(e =>
-              new DailySummaryError({
-                message: `Writing failed: ${e instanceof Error ? e.message : String(e)}`,
-                phase: "writing",
-                cause: e
-              })
-            )
+            Effect.mapError(wrapPhaseError("writing", "Writing")),
+            Effect.timed
           )
-
-          const writingEnd = yield* Clock.currentTimeMillis
-          const writingMs = Number(writingEnd - writingStart)
+          const writingMs = Duration.toMillis(writingDuration)
 
           // Aggregate token usage
-          tokenUsage.inputTokens += writerResult.tokenUsage.inputTokens
-          tokenUsage.outputTokens += writerResult.tokenUsage.outputTokens
-          tokenUsage.cacheReadTokens += writerResult.tokenUsage.cacheReadTokens
-          tokenUsage.cacheCreationTokens += writerResult.tokenUsage.cacheCreationTokens
+          tokenUsage = addTokenUsage(tokenUsage, writerResult.tokenUsage)
 
           yield* Effect.log(`Writing complete in ${writingMs}ms`)
 
@@ -397,28 +366,17 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
 
           if (!skipPolish) {
             yield* Effect.log("Phase 4: Polishing summary")
-            const polishStart = yield* Clock.currentTimeMillis
 
-            const polishResult = yield* polishAgent
+            const [polishDuration, polishResult] = yield* polishAgent
               .polish(writerResult.summary, researchResult.context)
               .pipe(
-                Effect.mapError(e =>
-                  new DailySummaryError({
-                    message: `Polish failed: ${e instanceof Error ? e.message : String(e)}`,
-                    phase: "polish",
-                    cause: e
-                  })
-                )
+                Effect.mapError(wrapPhaseError("polish", "Polish")),
+                Effect.timed
               )
-
-            const polishEnd = yield* Clock.currentTimeMillis
-            polishMs = Number(polishEnd - polishStart)
+            polishMs = Duration.toMillis(polishDuration)
 
             // Aggregate token usage
-            tokenUsage.inputTokens += polishResult.tokenUsage.inputTokens
-            tokenUsage.outputTokens += polishResult.tokenUsage.outputTokens
-            tokenUsage.cacheReadTokens += polishResult.tokenUsage.cacheReadTokens
-            tokenUsage.cacheCreationTokens += polishResult.tokenUsage.cacheCreationTokens
+            tokenUsage = addTokenUsage(tokenUsage, polishResult.tokenUsage)
 
             polishedSummary = polishResult.summary
             polishFixes = polishResult.fixes
@@ -474,13 +432,7 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
           let summaryId = 0
           if (!options.skipPersistence) {
             summaryId = yield* persistSummary(date, summary, researchId).pipe(
-              Effect.mapError(e =>
-                new DailySummaryError({
-                  message: `Summary persistence failed: ${e instanceof Error ? e.message : String(e)}`,
-                  phase: "persistence",
-                  cause: e
-                })
-              )
+              Effect.mapError(wrapPhaseError("persistence", "Summary persistence"))
             )
           }
 
@@ -524,27 +476,42 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
 // =============================================================================
 
 /**
- * Live layer for DailySummaryAgent
+ * Live layer for DailySummaryAgent (parameterized)
+ *
+ * Accepts a LanguageModel layer to satisfy sub-agent requirements.
+ * The modelLayer is provided to the composed layer to satisfy LanguageModel
+ * requirements at runtime (sub-agent methods return Effects that need it).
  *
  * Composes all sub-agent layers:
  * - FaissClient.Default (needed by DailySummaryAgent itself for persistence)
  * - DayDataCollector.Default (includes FaissClient.Default for its own use)
  * - SummaryResearchAgent.Default
- * - SummaryWriterAgent.Default (no dependencies)
- * - SummaryPolishAgent.Default (no dependencies)
+ * - SummaryWriterAgent.Default
+ * - SummaryPolishAgent.Default
  *
  * The caller must still provide:
- * - LanguageModel.LanguageModel (for research, writer, and polish agents)
  * - CrateToolsLive (provides CrateToolkit handlers for SummaryResearchAgent)
  *
- * Note: All agents currently share the same LanguageModel. For phase-specific
- * models (e.g., polish with Sonnet), provide PolishModelLive from layers.ts
- * to the polish agent separately.
+ * @param modelLayer - Layer providing LanguageModel.LanguageModel service
+ *
+ * @example
+ * ```typescript
+ * // Build layer with model and merge to make available at runtime
+ * const DailySummaryWithDeps = DailySummaryAgentLive(ConfigurableModelLive).pipe(
+ *   Layer.provide(CrateToolsLive)
+ * )
+ * const FullLayer = Layer.mergeAll(DailySummaryWithDeps, ConfigurableModelLive)
+ * ```
  */
-export const DailySummaryAgentLive = DailySummaryAgent.Default.pipe(
-  Layer.provide(FaissClient.Default),
-  Layer.provide(DayDataCollector.Default),
-  Layer.provide(SummaryResearchAgent.Default),
-  Layer.provide(SummaryWriterAgent.Default),
-  Layer.provide(SummaryPolishAgent.Default)
-)
+export const DailySummaryAgentLive = (
+  modelLayer: Layer.Layer<LanguageModel.LanguageModel>
+) =>
+  DailySummaryAgent.Default.pipe(
+    Layer.provide(FaissClient.Default),
+    Layer.provide(DayDataCollector.Default),
+    Layer.provide(SummaryResearchAgent.Default),
+    Layer.provide(SummaryWriterAgent.Default),
+    Layer.provide(SummaryPolishAgent.Default),
+    // Provide modelLayer to satisfy LanguageModel requirements at runtime
+    Layer.provide(modelLayer)
+  )

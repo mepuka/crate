@@ -1,26 +1,33 @@
 /**
  * Daily Summary Agent Module
  *
- * A two-phase agent pipeline that creates engaging summaries of KEXP's daily broadcasts.
+ * A multi-phase agent pipeline that creates engaging summaries of KEXP's daily broadcasts.
  *
  * Architecture:
  * - DayDataCollector: Gathers and pre-processes day's plays
  * - SummaryResearchAgent: Deep analysis with tool access (Phase 1)
  * - SummaryWriterAgent: Narrative synthesis (Phase 2)
+ * - SummaryPolishAgent: Quality refinement (Phase 3)
  * - DailySummaryAgent: Orchestrator coordinating the pipeline
  *
  * Usage:
  * ```ts
- * import { DailySummaryAgent } from "./daily-summary"
- * import { Layer } from "effect"
- * import { AnthropicModelLive } from "./layers"
+ * import { DailySummaryAgent, DailySummaryAgentLive } from "./daily-summary"
+ * import { Effect, Layer } from "effect"
+ * import { ConfigurableModelLive, CrateToolsLive } from "./layers"
  *
- * const result = await Effect.runPromise(
- *   DailySummaryAgent.run({ date: "2025-01-06" }).pipe(
- *     Effect.provide(DailySummaryAgent.Default),
- *     Effect.provide(AnthropicModelLive)
- *   )
+ * // Build layer with parameterized model
+ * const DailySummaryWithDeps = DailySummaryAgentLive(ConfigurableModelLive).pipe(
+ *   Layer.provide(CrateToolsLive)
  * )
+ * // Merge to make LanguageModel available at runtime
+ * const FullLayer = Layer.mergeAll(DailySummaryWithDeps, ConfigurableModelLive)
+ *
+ * // Run pipeline
+ * const program = Effect.gen(function* () {
+ *   const agent = yield* DailySummaryAgent
+ *   return yield* agent.run({ date: "2025-01-06" })
+ * }).pipe(Effect.provide(FullLayer))
  * ```
  *
  * @module

@@ -212,18 +212,20 @@ const program = Effect.gen(function* () {
 // =============================================================================
 
 // Build the full layer stack:
-// - DailySummaryAgentLive (which includes DayDataCollector, SummaryResearchAgent, SummaryWriterAgent)
+// - DailySummaryAgentLive(modelLayer) - parameterized layer that provides model to sub-agents
 //   - DayDataCollector.Default includes FaissClient.Default
-//   - SummaryResearchAgent.Default includes CrateToolkit.Default
+//   - SummaryResearchAgent.Default (model provided)
+//   - SummaryWriterAgent.Default (model provided)
+//   - SummaryPolishAgent.Default (model provided)
 // - CrateToolsLive provides CrateToolkit handlers + services (required by SummaryResearchAgent)
-// - ConfigurableModelLive provides the LLM (required by both agents)
+// - ConfigurableModelLive must also be merged to make LanguageModel available at runtime
 
-// DailySummaryAgentLive needs CrateToolsLive for the toolkit handlers
-const DailySummaryWithDeps = DailySummaryAgentLive.pipe(
+// DailySummaryAgentLive is now a function that accepts the model layer
+const DailySummaryWithDeps = DailySummaryAgentLive(ConfigurableModelLive).pipe(
   Layer.provide(CrateToolsLive)
 )
 
-// Full layer: agent + LLM
+// Merge with model layer to make LanguageModel available in execution context
 const FullLayer = Layer.mergeAll(
   DailySummaryWithDeps,
   ConfigurableModelLive
