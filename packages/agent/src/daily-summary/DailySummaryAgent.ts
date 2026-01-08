@@ -36,7 +36,8 @@ import type { ResearchContextType, DailySummaryType } from "./schemas.js"
 import {
   extractReferencedPlayIds,
   extractCategorizedPlayIds,
-  buildPlayLookupTable
+  buildPlayLookupTable,
+  validatePlayIdPopulation
 } from "./play-reference.js"
 
 // =============================================================================
@@ -436,6 +437,14 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
           const summary: DailySummaryType = {
             ...polishedSummary,
             researchId
+          }
+
+          // Validate playId population
+          const validationIssues = validatePlayIdPopulation(summary, categorizedIds)
+          if (validationIssues.length > 0) {
+            yield* Effect.logWarning(`PlayId validation issues: ${validationIssues.join('; ')}`)
+          } else {
+            yield* Effect.log("PlayId validation: all arrays properly populated")
           }
 
           // Persist summary (if not skipped)

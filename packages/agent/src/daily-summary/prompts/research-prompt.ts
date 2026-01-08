@@ -326,6 +326,7 @@ export const buildDayDataMessage = (dayData: DayData): string => {
 
   parts.push(`## Notable Plays (${interestingPlays.length} with special flags)`)
   parts.push("These plays have notable characteristics (local, live, request, rotation, new):")
+  parts.push("Format: id|artist|song|album|artist_mbid|[flags]")
   parts.push("```")
   for (const cp of interestingPlays) {
     const play = cp.play
@@ -335,20 +336,21 @@ export const buildDayDataMessage = (dayData: DayData): string => {
     if (cp.isRequest) flags.push("REQ")
     if (cp.hasRotation) flags.push(`ROT:${play.rotation_status}`)
     if (cp.isRecentRelease) flags.push("NEW")
-    parts.push(`${play.id}|${play.artist}|${play.song}|${play.album ?? ""}|[${flags.join(",")}]`)
+    const artistMbid = play.artist_mbid[0] ?? ""
+    parts.push(`${play.id}|${play.artist}|${play.song}|${play.album ?? ""}|${artistMbid}|[${flags.join(",")}]`)
   }
   parts.push("```")
   parts.push("")
 
-  // Regular plays - just IDs with artist/song (minimal format)
+  // Regular plays - include artist MBID for direct graph lookups
   if (regularPlays.length > 0) {
     parts.push(`## Regular Plays (${regularPlays.length} without special flags)`)
-    parts.push("Use search_plays with artist_mbid from these if you need history:")
+    parts.push("Format: id|artist|song|artist_mbid - use MBID for graph_connections/analyze_influence:")
     parts.push("```")
     for (const cp of regularPlays) {
       const play = cp.play
-      // Minimal format: ID|artist|song (no album, no flags)
-      parts.push(`${play.id}|${play.artist}|${play.song}`)
+      const artistMbid = play.artist_mbid[0] ?? ""
+      parts.push(`${play.id}|${play.artist}|${play.song}|${artistMbid}`)
     }
     parts.push("```")
   }

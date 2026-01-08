@@ -84,19 +84,22 @@ export const PLAYIDS_FIX_INSTRUCTIONS = `## PlayIds Verification and Completion
 
 The writer phase now has direct access to play reference data. The playIds arrays should be mostly populated.
 
-Your task:
-1. VERIFY the playIds array contains IDs from all structured sections:
-   - discoveries[].playId
-   - freshReleases[].playId
-   - highlights[].playId
-   - themes[].playIds
-   - culturalMoments[].playIds
-   - rotationUpdates[].playId
-2. If any array is empty but the research has findings for that category, populate it
-3. Ensure topPickIds has 5-10 selections from discoveries and highlights
-4. Ensure newMusicPlaylistIds includes all freshReleases[].playId values
+**IMPORTANT:** The top-level \`playIds\` array should be the UNION of ALL playIds from structured sections.
+It aggregates IDs - do NOT extract new IDs from narrative text.
 
-Cross-reference with research findings to catch any missing IDs.`
+Your verification task:
+1. VERIFY \`playIds\` contains the union of:
+   - All \`discoveries[].playId\` values
+   - All \`freshReleases[].playId\` values
+   - All \`highlights[].playId\` values
+   - All \`themes[].playIds\` values (flattened)
+   - All \`culturalMoments[].playIds\` values (flattened)
+   - All \`rotationUpdates[].playId\` values
+2. If \`playIds\` is missing any of the above, add them
+3. Ensure \`topPickIds\` has 5-10 selections from discoveries and highlights
+4. Ensure \`newMusicPlaylistIds\` includes all \`freshReleases[].playId\` values
+
+Do NOT add IDs that aren't already in the structured sections.`
 
 export const OUTPUT_INSTRUCTIONS = `## Output Format
 

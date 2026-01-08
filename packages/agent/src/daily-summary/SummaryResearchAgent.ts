@@ -315,8 +315,9 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
             yield* Effect.log(`Research iteration ${iteration + 1}`)
 
             // Determine tool choice based on iteration
-            // First iterations: require specific tools to ensure thorough exploration
-            // Later iterations: auto mode lets model decide when done
+            // Phase 1 (iteration 0-1): Search and basic graph exploration
+            // Phase 2 (iteration 2-4): Include cached graph algorithm tools for deep analysis
+            // Phase 3 (iteration 5+): Auto mode - model decides when done
             const toolChoice = iteration === 0
               ? {
                   mode: "required" as const,
@@ -328,10 +329,22 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
                     "graph_connections"
                   ]
                 }
-              : iteration < 3
+              : iteration < 2
               ? {
                   mode: "required" as const,
-                  oneOf: ["explore_graph", "graph_connections"]
+                  oneOf: ["explore_graph", "graph_connections", "find_graph_path"]
+                }
+              : iteration < 5
+              ? {
+                  mode: "required" as const,
+                  oneOf: [
+                    // Cached graph algorithm tools for deep analysis
+                    "analyze_influence",
+                    "explore_neighborhood",
+                    "summarize_relationships",
+                    "analyze_time_period",
+                    "graph_connections"
+                  ]
                 }
               : "auto" as const
 
