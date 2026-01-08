@@ -24,6 +24,7 @@ import {
   makeContextTailHandler
 } from "./context-discovery/handlers.js";
 import { withRetry, TOOL_RETRY_CONFIGS } from "./retry-policy.js";
+import { withCaptureLarge } from "./capture-large.js";
 import type {
   SearchPlaysParams,
   SearchPlaysResponse,
@@ -1310,22 +1311,78 @@ export const makeCrateToolWithContextHandlers: Effect.Effect<
   // Acquire artifact store for context discovery
   const artifactStoreService = yield* ArtifactStoreService;
 
+  // ==========================================================================
+  // Wrap large-result handlers with artifact capture
+  // ==========================================================================
+  // These tools can return large payloads that would bloat chat history.
+  // Instead of returning full results inline, we:
+  // 1. Store large results (> 8KB) as artifacts
+  // 2. Return truncated preview + artifact reference
+  // 3. Agent can use context_read to retrieve full content on-demand
+  //
+  // Threshold: 8KB (~2K tokens) - balances usefulness vs context bloat
+  // ==========================================================================
+
+  const CAPTURE_THRESHOLD = 8000; // 8KB chars
+
+  // Wrap semantic_search - returns 20 results, each ~300 chars = ~6KB
+  const wrappedSemanticSearch = withCaptureLarge(
+    makeSemanticSearchHandler(semanticSearchService),
+    { toolName: "semantic_search", tags: ["search", "plays"], threshold: CAPTURE_THRESHOLD }
+  );
+
+  // Wrap hybrid_search - same structure as semantic_search
+  const wrappedHybridSearch = withCaptureLarge(
+    makeHybridSearchHandler(semanticSearchService),
+    { toolName: "hybrid_search", tags: ["search", "plays"], threshold: CAPTURE_THRESHOLD }
+  );
+
+  // Wrap search_plays - returns 20 results, each ~300 chars
+  const wrappedSearchPlays = withCaptureLarge(
+    makeSearchPlaysHandler(searchPlaysService),
+    { toolName: "search_plays", tags: ["search", "plays"], threshold: CAPTURE_THRESHOLD }
+  );
+
+  // Wrap graph_connections - returns up to 100 connections
+  const wrappedGraphConnections = withCaptureLarge(
+    makeGraphConnectionsHandler(graphConnectionsService),
+    { toolName: "graph_connections", tags: ["graph", "connections"], threshold: CAPTURE_THRESHOLD }
+  );
+
+  // Wrap explore_graph - returns ALL neighbors, no limit!
+  const wrappedExploreGraph = withCaptureLarge(
+    makeExploreGraphHandler(musicGraphService),
+    { toolName: "explore_graph", tags: ["graph", "explore"], threshold: CAPTURE_THRESHOLD }
+  );
+
+  // Wrap explore_neighborhood - returns 50-100 nodes
+  const wrappedExploreNeighborhood = withCaptureLarge(
+    makeExploreNeighborhoodHandler(musicGraphService),
+    { toolName: "explore_neighborhood", tags: ["graph", "neighborhood"], threshold: CAPTURE_THRESHOLD }
+  );
+
+  // Wrap query_cached_neighbors - returns up to 100 neighbors
+  const wrappedQueryCachedNeighbors = withCaptureLarge(
+    makeQueryCachedNeighborsHandler(musicGraphService),
+    { toolName: "query_cached_neighbors", tags: ["graph", "cache"], threshold: CAPTURE_THRESHOLD }
+  );
+
   // Build handlers that close over the services
   return CrateToolkitWithContext.of({
-    // Crate research tools
-    search_plays: makeSearchPlaysHandler(searchPlaysService),
-    semantic_search: makeSemanticSearchHandler(semanticSearchService),
-    hybrid_search: makeHybridSearchHandler(semanticSearchService),
+    // Crate research tools - wrapped for artifact capture
+    search_plays: wrappedSearchPlays,
+    semantic_search: wrappedSemanticSearch,
+    hybrid_search: wrappedHybridSearch,
     resolve_mbid: makeResolveMbidHandler(mbidResolverService),
     fetch_link: makeFetchLinkHandler(linkFetcherService),
     get_recent_insights: makeGetRecentInsightsHandler(insightSessionService),
-    graph_connections: makeGraphConnectionsHandler(graphConnectionsService),
-    explore_graph: makeExploreGraphHandler(musicGraphService),
+    graph_connections: wrappedGraphConnections,
+    explore_graph: wrappedExploreGraph,
     find_graph_path: makeFindGraphPathHandler(musicGraphService),
-    query_cached_neighbors: makeQueryCachedNeighborsHandler(musicGraphService),
-    // Phase 1 graph algorithm tools
+    query_cached_neighbors: wrappedQueryCachedNeighbors,
+    // Phase 1 graph algorithm tools - wrapped for artifact capture
     analyze_influence: makeAnalyzeInfluenceHandler(musicGraphService),
-    explore_neighborhood: makeExploreNeighborhoodHandler(musicGraphService),
+    explore_neighborhood: wrappedExploreNeighborhood,
     summarize_relationships: makeSummarizeRelationshipsHandler(musicGraphService),
     analyze_time_period: makeAnalyzeTimePeriodHandler(musicGraphService),
     // Art curation tool

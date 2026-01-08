@@ -124,7 +124,9 @@ const makeContextReadHandler =
         }
 
         const fromLine = params.from_line ?? 0
-        const lineLimit = params.line_limit ?? 100
+        // Default to 50 lines to prevent context overflow
+        // Model can request more if needed via line_limit param
+        const lineLimit = params.line_limit ?? 50
 
         // Retrieve content with pagination
         const content = yield* service.retrieve(params.artifact_id, {
@@ -221,7 +223,8 @@ const makeContextTailHandler =
           }
         }
 
-        const requestedLines = params.lines ?? 50
+        // Default to 30 lines to prevent context overflow
+        const requestedLines = params.lines ?? 30
         const startLine = Math.max(0, metadataResult.lineCount - requestedLines)
 
         // Retrieve from calculated start line
