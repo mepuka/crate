@@ -16,7 +16,15 @@
  * @module
  */
 
-import type { DayData, ShowGroup, CategorizedPlay, DayStats } from "../DayDataCollector.js"
+import type {
+  DayData,
+  ShowGroup,
+  CategorizedPlay,
+  DayStats,
+  DayDataArtifacts,
+  ShowIndexEntry,
+  NotablePlaySummary
+} from "../DayDataCollector.js"
 
 // =============================================================================
 // Timezone Constants
@@ -354,6 +362,111 @@ export const buildDayDataMessage = (dayData: DayData): string => {
     }
     parts.push("```")
   }
+
+  return parts.join("\n")
+}
+
+// =============================================================================
+// Artifact-Based Prompt Builders (Dynamic Context Discovery)
+// =============================================================================
+
+/**
+ * Build a compact index-based message for artifact-driven research.
+ *
+ * Instead of embedding all plays inline (4.5-9.5K tokens), this outputs:
+ * - Day stats (~100 tokens)
+ * - Show index (~50 tokens/show)
+ * - Notable plays inline (~150 tokens)
+ * - Artifact references (~50 tokens)
+ * - Context tool instructions (~200 tokens)
+ *
+ * Total: ~500-800 tokens vs 4.5-9.5K inline
+ *
+ * The research agent uses context_list, context_read, context_search
+ * to retrieve specific data on demand.
+ */
+export const buildDayDataIndexMessage = (artifacts: DayDataArtifacts): string => {
+  const parts: string[] = []
+
+  parts.push(`# KEXP Daily Research: ${artifacts.date}`)
+  parts.push("")
+
+  // Stats overview (compact)
+  parts.push(`## Day Overview`)
+  const s = artifacts.stats
+  parts.push(`| Metric | Count |`)
+  parts.push(`|--------|-------|`)
+  parts.push(`| Total plays | ${s.totalPlays} |`)
+  parts.push(`| Unique artists | ${s.uniqueArtists} |`)
+  parts.push(`| Shows | ${s.showCount} |`)
+  parts.push(`| Local artists | ${s.localArtistCount} |`)
+  parts.push(`| Live performances | ${s.livePerformanceCount} |`)
+  parts.push(`| Requests | ${s.requestCount} |`)
+  parts.push(`| Rotation plays | ${s.rotationPlays} |`)
+  parts.push(`| DJ comments | ${s.playsWithComments} |`)
+  parts.push("")
+
+  // Show index (compact)
+  parts.push(`## Shows (${artifacts.showIndex.length} total)`)
+  parts.push("| Time | Plays | Local | Rotation | Req | Comments | Live |")
+  parts.push("|------|-------|-------|----------|-----|----------|------|")
+  for (const show of artifacts.showIndex) {
+    const live = show.hasLive ? "✓" : ""
+    parts.push(`| ${show.timeRange} | ${show.playCount} | ${show.localCount} | ${show.rotationCount} | ${show.requestCount} | ${show.commentCount} | ${live} |`)
+  }
+  parts.push("")
+
+  // Notable plays inline (already compact)
+  if (artifacts.notablePlays.length > 0) {
+    parts.push(`## Notable Plays (${artifacts.notablePlays.length})`)
+    parts.push("These have special flags - research priority:")
+    parts.push("```")
+    for (const np of artifacts.notablePlays.slice(0, 30)) {
+      const flags = np.flags.join(",")
+      parts.push(`${np.id}|${np.artist}|${np.song}|[${flags}]`)
+    }
+    if (artifacts.notablePlays.length > 30) {
+      parts.push(`... and ${artifacts.notablePlays.length - 30} more (use context tools)`)
+    }
+    parts.push("```")
+    parts.push("")
+  }
+
+  // Artifact references
+  parts.push(`## Available Context (Artifact Store)`)
+  parts.push("Full data stored as artifacts. Use context tools to retrieve:")
+  parts.push("")
+  const refs = artifacts.artifactRefs
+  parts.push(`- **All Plays**: \`${refs.allPlays.id}\` - ${refs.allPlays.summary}`)
+  parts.push(`- **DJ Comments**: \`${refs.comments.id}\` - ${refs.comments.summary}`)
+  parts.push(`- **Rotation Plays**: \`${refs.rotationPlays.id}\` - ${refs.rotationPlays.summary}`)
+  parts.push(`- **Recent Releases**: \`${refs.recentReleases.id}\` - ${refs.recentReleases.summary}`)
+  parts.push("")
+
+  // Context tool usage guide
+  parts.push(`## Context Discovery Tools`)
+  parts.push(`
+Use these tools to retrieve detailed data on demand:
+
+**List artifacts**: \`context_list(tags=["${artifacts.date}"])\`
+Returns all artifacts for this day with summaries.
+
+**Read artifact**: \`context_read(artifact_id="${refs.allPlays.id}")\`
+Retrieves artifact content. Use \`from_line\`/\`line_limit\` for pagination.
+
+**Search artifacts**: \`context_search(pattern="Fleet Foxes")\`
+Finds plays matching pattern across all artifacts.
+
+**Tail artifact**: \`context_tail(artifact_id="${refs.allPlays.id}", lines=50)\`
+Gets last N lines (useful for chronological data).
+
+### Research Workflow
+1. Start with the show index above to identify interesting shows
+2. Use \`context_search\` to find specific artists/patterns
+3. Use \`context_read\` with the comments artifact for cultural moments
+4. Use semantic_search for cross-day history, graph tools for connections
+5. Retrieve specific play details via artifact as needed
+`)
 
   return parts.join("\n")
 }

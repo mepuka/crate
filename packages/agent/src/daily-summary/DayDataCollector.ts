@@ -14,9 +14,13 @@
  * @module
  */
 
-import { Effect, Data } from "effect"
+import { Effect, Data, Config } from "effect"
 import { FaissClient, type PlayResult } from "../FaissClient.js"
 import type { Play } from "@crate/domain/faiss/schemas"
+import {
+  ArtifactStoreService,
+  type ArtifactRef
+} from "../services/context-store/index.js"
 
 // =============================================================================
 // Types
@@ -94,14 +98,80 @@ export interface DayData {
 }
 
 // =============================================================================
+// Artifact-Based Types (Dynamic Context Discovery)
+// =============================================================================
+
+/**
+ * Compact show index entry for the prompt
+ * (~50 tokens per show instead of full details)
+ */
+export interface ShowIndexEntry {
+  readonly showId: number
+  readonly timeRange: string // "6:00 AM - 9:00 AM PT"
+  readonly playCount: number
+  readonly localCount: number
+  readonly rotationCount: number
+  readonly requestCount: number
+  readonly commentCount: number
+  readonly hasLive: boolean
+}
+
+/**
+ * Compact play summary for notable plays
+ */
+export interface NotablePlaySummary {
+  readonly id: number
+  readonly artist: string
+  readonly song: string
+  readonly flags: readonly string[] // ["LOCAL", "LIVE", "REQ", etc.]
+  readonly artistMbid: string | null
+}
+
+/**
+ * Artifact-based day data for dynamic context discovery
+ *
+ * Instead of embedding all plays inline, stores them as artifacts
+ * that can be retrieved on-demand via context tools.
+ */
+export interface DayDataArtifacts {
+  readonly date: string
+  readonly stats: DayStats // ~200 tokens inline
+  readonly showIndex: readonly ShowIndexEntry[] // ~50 tokens/show
+
+  /** Notable plays inline (local, live, rotation, request, recent) */
+  readonly notablePlays: readonly NotablePlaySummary[]
+
+  /** Artifact references for full data retrieval */
+  readonly artifactRefs: {
+    readonly allPlays: ArtifactRef // Full play data as NDJSON
+    readonly comments: ArtifactRef // DJ comments as NDJSON
+    readonly rotationPlays: ArtifactRef // Rotation plays as NDJSON
+    readonly recentReleases: ArtifactRef // Recent releases as NDJSON
+  }
+
+  /** Original DayData for backwards compatibility (when not using artifacts) */
+  readonly _fullData?: DayData
+}
+
+// =============================================================================
 // Service Interface
 // =============================================================================
 
 export interface DayDataCollectorInterface {
   /**
-   * Collect all data for a specific date
+   * Collect all data for a specific date (original inline format)
    */
   readonly collectDay: (date: string) => Effect.Effect<DayData, DayDataCollectorError>
+
+  /**
+   * Collect data with artifact storage for dynamic context discovery
+   *
+   * Stores full play data as artifacts and returns compact index.
+   * Uses DYNAMIC_CONTEXT env var to toggle between modes.
+   */
+  readonly collectDayWithArtifacts: (
+    date: string
+  ) => Effect.Effect<DayDataArtifacts, DayDataCollectorError, ArtifactStoreService>
 }
 
 /**
@@ -215,7 +285,171 @@ export class DayDataCollector extends Effect.Service<DayDataCollector>()(
           }
         })
 
-      return { collectDay } satisfies DayDataCollectorInterface
+      /**
+       * Collect data with artifact storage for dynamic context discovery
+       */
+      const collectDayWithArtifacts = (
+        date: string
+      ): Effect.Effect<DayDataArtifacts, DayDataCollectorError, ArtifactStoreService> =>
+        Effect.gen(function* () {
+          // First, collect full day data using existing method
+          const dayData = yield* collectDay(date)
+
+          yield* Effect.log(`Creating artifacts for ${date}: ${dayData.plays.length} plays`)
+
+          const store = yield* ArtifactStoreService
+
+          // Build show index (compact)
+          const showIndex: ShowIndexEntry[] = dayData.showGroups.map(show => ({
+            showId: show.showId,
+            timeRange: `${formatPacificTime(show.startTime)} - ${formatPacificTime(show.endTime)} PT`,
+            playCount: show.plays.length,
+            localCount: show.localCount,
+            rotationCount: show.rotationCount,
+            requestCount: show.requestCount,
+            commentCount: show.comments.length,
+            hasLive: show.plays.some(p => p.isLive)
+          }))
+
+          // Build notable plays (compact summaries)
+          const notablePlays: NotablePlaySummary[] = dayData.plays
+            .filter(cp => cp.isLocal || cp.isLive || cp.isRequest || cp.hasRotation || cp.isRecentRelease)
+            .map(cp => {
+              const flags: string[] = []
+              if (cp.isLocal) flags.push("LOCAL")
+              if (cp.isLive) flags.push("LIVE")
+              if (cp.isRequest) flags.push("REQ")
+              if (cp.hasRotation) flags.push(`ROT:${cp.play.rotation_status}`)
+              if (cp.isRecentRelease) flags.push("NEW")
+              return {
+                id: cp.play.id,
+                artist: cp.play.artist,
+                song: cp.play.song,
+                flags,
+                artistMbid: cp.play.artist_mbid[0] ?? null
+              }
+            })
+
+          // Store all plays as NDJSON artifact
+          const allPlaysNdjson = dayData.plays.map(cp => JSON.stringify({
+            id: cp.play.id,
+            artist: cp.play.artist,
+            song: cp.play.song,
+            album: cp.play.album,
+            airdate: cp.play.airdate.toISOString(),
+            artist_mbid: cp.play.artist_mbid,
+            recording_mbid: cp.play.recording_mbid,
+            release_mbid: cp.play.release_mbid,
+            is_local: cp.isLocal,
+            is_live: cp.isLive,
+            is_request: cp.isRequest,
+            rotation_status: cp.play.rotation_status,
+            comment: cp.comment,
+            labels: cp.play.labels
+          })).join("\n")
+
+          const allPlaysRef = yield* store.store({
+            content: allPlaysNdjson,
+            format: "ndjson",
+            summary: `${dayData.plays.length} plays from ${date}`,
+            tags: ["plays", date, "daily-summary"],
+            sessionId: `daily-${date}`
+          }).pipe(
+            Effect.mapError(e => new DayDataCollectorError({
+              message: `Failed to store plays artifact: ${e.message}`,
+              cause: e
+            }))
+          )
+
+          // Store comments as NDJSON artifact
+          const commentsNdjson = dayData.playsWithComments.map(cp => JSON.stringify({
+            id: cp.play.id,
+            artist: cp.play.artist,
+            song: cp.play.song,
+            comment: cp.comment,
+            showId: cp.play.show
+          })).join("\n")
+
+          const commentsRef = yield* store.store({
+            content: commentsNdjson,
+            format: "ndjson",
+            summary: `${dayData.playsWithComments.length} DJ comments from ${date}`,
+            tags: ["comments", date, "daily-summary"],
+            sessionId: `daily-${date}`
+          }).pipe(
+            Effect.mapError(e => new DayDataCollectorError({
+              message: `Failed to store comments artifact: ${e.message}`,
+              cause: e
+            }))
+          )
+
+          // Store rotation plays as NDJSON artifact
+          const rotationNdjson = dayData.rotationPlays.map(cp => JSON.stringify({
+            id: cp.play.id,
+            artist: cp.play.artist,
+            song: cp.play.song,
+            album: cp.play.album,
+            rotation_status: cp.play.rotation_status,
+            artist_mbid: cp.play.artist_mbid[0] ?? null
+          })).join("\n")
+
+          const rotationRef = yield* store.store({
+            content: rotationNdjson,
+            format: "ndjson",
+            summary: `${dayData.rotationPlays.length} rotation plays from ${date}`,
+            tags: ["rotation", date, "daily-summary"],
+            sessionId: `daily-${date}`
+          }).pipe(
+            Effect.mapError(e => new DayDataCollectorError({
+              message: `Failed to store rotation artifact: ${e.message}`,
+              cause: e
+            }))
+          )
+
+          // Store recent releases as NDJSON artifact
+          const recentReleases = dayData.plays.filter(cp => cp.isRecentRelease)
+          const releasesNdjson = recentReleases.map(cp => JSON.stringify({
+            id: cp.play.id,
+            artist: cp.play.artist,
+            song: cp.play.song,
+            album: cp.play.album,
+            release_date: cp.play.release_date?.toISOString() ?? null,
+            is_local: cp.isLocal,
+            artist_mbid: cp.play.artist_mbid[0] ?? null,
+            labels: cp.play.labels
+          })).join("\n")
+
+          const releasesRef = yield* store.store({
+            content: releasesNdjson,
+            format: "ndjson",
+            summary: `${recentReleases.length} recent releases from ${date}`,
+            tags: ["releases", date, "daily-summary"],
+            sessionId: `daily-${date}`
+          }).pipe(
+            Effect.mapError(e => new DayDataCollectorError({
+              message: `Failed to store releases artifact: ${e.message}`,
+              cause: e
+            }))
+          )
+
+          yield* Effect.log(`Created 4 artifacts for ${date}`)
+
+          return {
+            date,
+            stats: dayData.stats,
+            showIndex,
+            notablePlays,
+            artifactRefs: {
+              allPlays: allPlaysRef,
+              comments: commentsRef,
+              rotationPlays: rotationRef,
+              recentReleases: releasesRef
+            },
+            _fullData: dayData
+          }
+        })
+
+      return { collectDay, collectDayWithArtifacts } satisfies DayDataCollectorInterface
     }),
     dependencies: [FaissClient.Default]
   }
@@ -224,6 +458,27 @@ export class DayDataCollector extends Effect.Service<DayDataCollector>()(
 // =============================================================================
 // Implementation
 // =============================================================================
+
+/**
+ * KEXP's timezone for display purposes
+ */
+const KEXP_TIMEZONE = "America/Los_Angeles"
+
+/**
+ * Format a Date to Pacific timezone for display
+ */
+const formatPacificTime = (
+  date: Date,
+  options: Intl.DateTimeFormatOptions = {}
+): string => {
+  const defaultOptions: Intl.DateTimeFormatOptions = {
+    timeZone: KEXP_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }
+  return date.toLocaleTimeString("en-US", { ...defaultOptions, ...options })
+}
 
 /**
  * Check if a release date is within the last N days of the play date

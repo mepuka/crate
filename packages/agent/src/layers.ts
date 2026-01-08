@@ -66,7 +66,10 @@ import {
 import { CrateServerConfig } from "./config.js";
 
 // Tool handlers
-import { CrateToolHandlersLayer } from "./tools/handlers.js";
+import { CrateToolHandlersLayer, CrateToolWithContextHandlersLayer } from "./tools/handlers.js";
+
+// Context store (artifact storage for dynamic context discovery)
+import { ArtifactStoreService } from "./services/context-store/index.js";
 
 // Toolkit
 
@@ -180,6 +183,57 @@ export const HandlersLive = CrateToolHandlersLayer;
  */
 export const CrateToolsLive = HandlersLive.pipe(
   Layer.provideMerge(ServicesFull)
+);
+
+// =============================================================================
+// Context Discovery Layer (Dynamic Context)
+// =============================================================================
+
+/**
+ * Services layer with ArtifactStoreService for context discovery
+ *
+ * Adds in-memory artifact storage to the standard services.
+ * Used by agents that need dynamic context retrieval.
+ */
+export const ServicesWithContextLive = Layer.mergeAll(
+  ServicesLive,
+  ArtifactStoreService.Default
+);
+
+/**
+ * Services with context - fully resolved with infrastructure
+ */
+export const ServicesWithContextFull = ServicesWithContextLive.pipe(
+  Layer.provide(InfraLive)
+);
+
+/**
+ * Tool handlers layer with context discovery tools
+ *
+ * Provides CrateToolkitWithContext handlers that include:
+ * - All standard Crate research tools
+ * - Context discovery tools (context_list, context_read, context_search, context_tail)
+ */
+export const HandlersWithContextLive = CrateToolWithContextHandlersLayer;
+
+/**
+ * Complete Crate Tools layer with context discovery
+ *
+ * Same as CrateToolsLive but includes:
+ * - ArtifactStoreService for storing/retrieving large data
+ * - Context discovery tools for on-demand retrieval
+ *
+ * Usage:
+ * ```ts
+ * const program = Effect.gen(function* () {
+ *   const toolkit = yield* CrateToolkitWithContext
+ *   const result = yield* toolkit.handle("context_read", { artifact_id: "abc" })
+ *   return result
+ * }).pipe(Effect.provide(CrateToolsWithContextLive))
+ * ```
+ */
+export const CrateToolsWithContextLive = HandlersWithContextLive.pipe(
+  Layer.provideMerge(ServicesWithContextFull)
 );
 
 // =============================================================================

@@ -15,13 +15,14 @@
 
 import { Effect, Schema, Clock, Data } from "effect"
 import { LanguageModel, Chat, Prompt } from "@effect/ai"
-import { CrateToolkit } from "../tools/definitions.js"
+import { CrateToolkit, CrateToolkitWithContext } from "../tools/definitions.js"
 import { type TokenUsage, emptyTokenUsage } from "../multi-agent/types.js"
 import {
   buildResearchSystemPrompt,
-  buildDayDataMessage
+  buildDayDataMessage,
+  buildDayDataIndexMessage
 } from "./prompts/research-prompt.js"
-import type { DayData } from "./DayDataCollector.js"
+import type { DayData, DayDataArtifacts } from "./DayDataCollector.js"
 import {
   ResearchContext,
   type ResearchContextType,
@@ -153,10 +154,24 @@ type ResearchOutput = typeof ResearchOutputSchema.Type
 
 export interface SummaryResearchAgentInterface {
   /**
-   * Run research on day data and produce ResearchContext
+   * Run research on day data and produce ResearchContext (inline data)
    */
   readonly research: (
     dayData: DayData
+  ) => Effect.Effect<
+    ResearchResult,
+    SummaryResearchError,
+    LanguageModel.LanguageModel
+  >
+
+  /**
+   * Run research on artifact-based day data (dynamic context discovery)
+   *
+   * Uses compact index prompt and context discovery tools to retrieve
+   * data on demand, significantly reducing prompt token usage.
+   */
+  readonly researchWithArtifacts: (
+    artifacts: DayDataArtifacts
   ) => Effect.Effect<
     ResearchResult,
     SummaryResearchError,
@@ -173,6 +188,7 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
   {
     effect: Effect.gen(function* () {
       const toolkit = yield* CrateToolkit
+      const toolkitWithContext = yield* CrateToolkitWithContext
 
       /**
        * Convert LLM output to full ResearchContext
@@ -445,7 +461,246 @@ Output JSON matching the ResearchContext schema.`
           }
         })
 
-      return { research } satisfies SummaryResearchAgentInterface
+      /**
+       * Artifact-based research using dynamic context discovery
+       *
+       * Similar to `research` but:
+       * - Uses compact index prompt (~500-800 tokens vs 4.5-9.5K)
+       * - Includes context discovery tools for on-demand retrieval
+       * - Agent can fetch specific data from artifacts as needed
+       */
+      const researchWithArtifacts = (
+        artifacts: DayDataArtifacts
+      ): Effect.Effect<
+        ResearchResult,
+        SummaryResearchError,
+        LanguageModel.LanguageModel
+      > =>
+        Effect.gen(function* () {
+          yield* Effect.log(`Starting artifact-based research for ${artifacts.date}`)
+
+          const startTime = yield* Clock.currentTimeMillis
+
+          // Build compact prompt with artifact references
+          const systemPrompt = buildResearchSystemPrompt()
+          const userMessage = buildDayDataIndexMessage(artifacts)
+
+          const prompt = Prompt.make([
+            {
+              role: "system",
+              content: systemPrompt,
+              options: {
+                anthropic: {
+                  cacheControl: { type: "ephemeral" }
+                }
+              }
+            },
+            { role: "user", content: userMessage }
+          ])
+          const chat = yield* Chat.fromPrompt(prompt)
+
+          // Track tool calls and token usage
+          let totalToolCalls = 0
+          const tokenUsage = emptyTokenUsage()
+
+          // =============================================================================
+          // Phase 1: Research with tools (including context discovery)
+          // =============================================================================
+          yield* Effect.log("Phase 1: Research with tool calls (artifact-based)")
+
+          const maxIterations = 12 // Allow more iterations for context retrieval
+          const minIterations = 5
+
+          // Run research loop
+          let iteration = 0
+          let hasMoreToolCalls = true
+          let consecutiveEmptyIterations = 0
+
+          while (hasMoreToolCalls && iteration < maxIterations) {
+            yield* Effect.log(`Research iteration ${iteration + 1}`)
+
+            // Modified tool choice to encourage context discovery first
+            // Phase 0 (iteration 0): Start with context discovery to understand data
+            // Phase 1 (iteration 1-2): Search and basic graph exploration
+            // Phase 2 (iteration 3-5): Deep graph analysis
+            // Phase 3 (iteration 6+): Auto mode
+            const toolChoice = iteration === 0
+              ? {
+                  mode: "required" as const,
+                  oneOf: [
+                    // Start by exploring available context
+                    "context_list",
+                    "context_search",
+                    "context_read"
+                  ]
+                }
+              : iteration < 3
+              ? {
+                  mode: "required" as const,
+                  oneOf: [
+                    "search_plays",
+                    "semantic_search",
+                    "hybrid_search",
+                    "context_search",
+                    "context_read",
+                    "explore_graph",
+                    "graph_connections"
+                  ]
+                }
+              : iteration < 6
+              ? {
+                  mode: "required" as const,
+                  oneOf: [
+                    "analyze_influence",
+                    "explore_neighborhood",
+                    "summarize_relationships",
+                    "analyze_time_period",
+                    "graph_connections",
+                    "context_read",
+                    "context_search"
+                  ]
+                }
+              : "auto" as const
+
+            const response = yield* chat
+              .generateText({
+                prompt: [],
+                toolkit: toolkitWithContext,
+                toolChoice
+              })
+              .pipe(
+                Effect.mapError(e => new SummaryResearchError({
+                  message: `Research iteration ${iteration + 1} failed: ${e instanceof Error ? e.message : String(e)}`,
+                  cause: e
+                }))
+              )
+
+            // Track token usage
+            const usage = response.usage
+            if (usage) {
+              const input = usage.inputTokens ?? 0
+              const output = usage.outputTokens ?? 0
+              tokenUsage.inputTokens += input
+              tokenUsage.outputTokens += output
+              tokenUsage.totalTokens += input + output
+            }
+
+            const toolCallCount = response.toolCalls.length
+            totalToolCalls += toolCallCount
+            hasMoreToolCalls = toolCallCount > 0
+            iteration++
+
+            yield* Effect.log(`Iteration ${iteration}: ${toolCallCount} tool calls`)
+
+            // Early stopping logic
+            if (toolCallCount === 0) {
+              consecutiveEmptyIterations++
+              if (iteration >= minIterations && consecutiveEmptyIterations >= 1) {
+                yield* Effect.log("Early stop: model finished research")
+                break
+              }
+            } else {
+              consecutiveEmptyIterations = 0
+            }
+
+            if (iteration >= minIterations && totalToolCalls >= 30) {
+              yield* Effect.log(`Early stop: sufficient research (${totalToolCalls} tool calls)`)
+              break
+            }
+          }
+
+          yield* Effect.log(`Research phase complete: ${totalToolCalls} total tool calls over ${iteration} iterations`)
+
+          // =============================================================================
+          // Phase 2: Generate structured output
+          // =============================================================================
+          yield* Effect.log("Phase 2: Generating structured research output")
+
+          const outputPrompt = `Based on all the research you've conducted, provide your complete findings as structured JSON.
+
+Include:
+- All discoveries (first plays, first artists)
+- Fresh releases you identified
+- Rotation updates
+- Themes detected across shows
+- Cultural moments extracted from DJ comments
+- Notable plays worth highlighting
+- Graph connections discovered
+- Your research notes and suggested narrative angles
+
+Output JSON matching the ResearchContext schema.`
+
+          const structuredResponse = yield* chat
+            .generateObject({
+              prompt: outputPrompt,
+              toolkit: toolkitWithContext,
+              schema: ResearchOutputSchema
+            })
+            .pipe(
+              Effect.mapError(e => new SummaryResearchError({
+                message: `Failed to generate structured output: ${e instanceof Error ? e.message : String(e)}`,
+                cause: e
+              }))
+            )
+
+          // Track final token usage
+          const finalUsage = structuredResponse.usage
+          if (finalUsage) {
+            const input = finalUsage.inputTokens ?? 0
+            const output = finalUsage.outputTokens ?? 0
+            tokenUsage.inputTokens += input
+            tokenUsage.outputTokens += output
+            tokenUsage.totalTokens += input + output
+          }
+
+          const endTime = yield* Clock.currentTimeMillis
+          const durationMs = Number(endTime - startTime)
+
+          // Convert to full ResearchContext - use _fullData if available for showGroups
+          const dayDataForContext = artifacts._fullData ?? {
+            date: artifacts.date,
+            stats: artifacts.stats,
+            plays: [],
+            showGroups: artifacts.showIndex.map(si => ({
+              showId: si.showId,
+              showName: null,
+              startTime: new Date(),
+              endTime: new Date(),
+              plays: [],
+              comments: [],
+              localCount: si.localCount,
+              rotationCount: si.rotationCount,
+              requestCount: si.requestCount
+            })),
+            firstPlays: [],
+            rotationPlays: [],
+            localPlays: [],
+            livePlays: [],
+            requestPlays: [],
+            playsWithComments: [],
+            uniqueArtistMbids: new Set(),
+            uniqueRecordingMbids: new Set(),
+            uniqueReleaseMbids: new Set()
+          }
+
+          const context = toResearchContext(
+            structuredResponse.value,
+            dayDataForContext,
+            durationMs,
+            totalToolCalls
+          )
+
+          yield* Effect.log(`Artifact-based research complete for ${artifacts.date}: ${durationMs}ms, ${totalToolCalls} tool calls`)
+
+          return {
+            context,
+            durationMs,
+            toolCallCount: totalToolCalls,
+            tokenUsage
+          }
+        })
+
+      return { research, researchWithArtifacts } satisfies SummaryResearchAgentInterface
     })
     // Note: CrateToolkit is provided by CrateToolsLive layer at the app boundary
     // Toolkit.make() doesn't create a service with .Default, so we can't include it here

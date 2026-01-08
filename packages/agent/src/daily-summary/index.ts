@@ -45,7 +45,11 @@ export {
   type DayData,
   type DayStats,
   type CategorizedPlay,
-  type ShowGroup
+  type ShowGroup,
+  // Artifact-based types (Dynamic Context Discovery)
+  type ShowIndexEntry,
+  type NotablePlaySummary,
+  type DayDataArtifacts
 } from "./DayDataCollector.js"
 
 // Research Agent (Phase 1)
@@ -90,11 +94,13 @@ export {
 // Prompts (for customization)
 export {
   buildResearchSystemPrompt,
-  buildDayDataMessage
+  buildDayDataMessage,
+  buildDayDataIndexMessage
 } from "./prompts/research-prompt.js"
 export {
   buildWriterSystemPrompt,
-  buildResearchContextMessage
+  buildResearchContextMessage,
+  buildResearchIndexMessage
 } from "./prompts/writer-prompt.js"
 export {
   buildPolishSystemPrompt,

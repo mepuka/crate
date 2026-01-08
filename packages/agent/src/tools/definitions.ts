@@ -472,10 +472,59 @@ export const CrateToolkit = Toolkit.make(
   AnalyzeAlbumArtTool
 );
 
+// =============================================================================
+// Context Discovery Tool Definitions (imported inline)
+// =============================================================================
+
+import {
+  ContextListTool,
+  ContextReadTool,
+  ContextSearchTool,
+  ContextTailTool
+} from "./context-discovery/definitions.js"
+
+/**
+ * Extended Crate Toolkit with Context Discovery
+ *
+ * Combines all music research tools with artifact context discovery tools.
+ * Used by agents that need dynamic context retrieval (e.g., SummaryResearchAgent
+ * when using artifact-based DayDataArtifacts instead of inline DayData).
+ */
+export const CrateToolkitWithContext = Toolkit.make(
+  // Music research tools
+  SearchPlaysTool,
+  SemanticSearchTool,
+  HybridSearchTool,
+  ResolveMbidTool,
+  FetchLinkTool,
+  GetRecentInsightsTool,
+  GraphConnectionsTool,
+  ExploreGraphTool,
+  FindGraphPathTool,
+  QueryCachedNeighborsTool,
+  // Phase 1 graph algorithm tools
+  AnalyzeInfluenceTool,
+  ExploreNeighborhoodTool,
+  SummarizeRelationshipsTool,
+  AnalyzeTimePeriodTool,
+  // Art curation tool
+  AnalyzeAlbumArtTool,
+  // Context discovery tools
+  ContextListTool,
+  ContextReadTool,
+  ContextSearchTool,
+  ContextTailTool
+);
+
 /**
  * Type alias for the toolkit
  */
 export type CrateToolkit = typeof CrateToolkit;
+
+/**
+ * Type alias for the extended toolkit
+ */
+export type CrateToolkitWithContext = typeof CrateToolkitWithContext;
 
 /**
  * Export individual tool types for handler implementations

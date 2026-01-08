@@ -325,6 +325,125 @@ export const buildResearchContextMessage = (
 }
 
 /**
+ * Build a compact research index message for artifact-based workflow
+ *
+ * Similar to buildResearchContextMessage but more compact.
+ * When using artifact-based research, the full research findings can be
+ * stored as artifacts and the writer receives this compact index.
+ *
+ * Token savings: ~5.5-10.5K → ~2-3K
+ */
+export const buildResearchIndexMessage = (
+  research: ResearchContextType,
+  options?: ResearchContextOptions
+): string => {
+  const parts: string[] = []
+
+  parts.push(`# Research Summary for ${research.date}`)
+  parts.push("")
+
+  // Compact stats table
+  parts.push(`## Day Stats`)
+  parts.push(`| Total | Artists | Albums | Local | Live | Requests |`)
+  parts.push(`|-------|---------|--------|-------|------|----------|`)
+  parts.push(`| ${research.totalPlays} | ${research.uniqueArtists} | ${research.uniqueAlbums} | ${research.localArtistCount} | ${research.livePerformanceCount} | ${research.requestCount} |`)
+  parts.push("")
+
+  // Compact discoveries list
+  if (research.discoveries.length > 0) {
+    parts.push(`## Discoveries (${research.discoveries.length})`)
+    for (const d of research.discoveries) {
+      parts.push(`- [${d.playId}] ${d.artist} - "${d.song}" (${d.discoveryType}): ${d.significance.slice(0, 100)}`)
+    }
+    parts.push("")
+  }
+
+  // Compact fresh releases
+  if (research.freshReleases.length > 0) {
+    parts.push(`## Fresh Releases (${research.freshReleases.length})`)
+    for (const r of research.freshReleases) {
+      const local = r.isLocal ? " [LOCAL]" : ""
+      parts.push(`- [${r.playId}] ${r.artist} - "${r.song}" (${r.releaseType}${local})`)
+    }
+    parts.push("")
+  }
+
+  // Compact rotation
+  if (research.rotationUpdates.length > 0) {
+    parts.push(`## Rotation (${research.rotationUpdates.length})`)
+    for (const r of research.rotationUpdates.slice(0, 10)) {
+      parts.push(`- [${r.playId}] ${r.artist} - "${r.song}" (${r.rotationStatus}, ${r.playCountToday}x)`)
+    }
+    if (research.rotationUpdates.length > 10) {
+      parts.push(`... and ${research.rotationUpdates.length - 10} more`)
+    }
+    parts.push("")
+  }
+
+  // Themes - summary only
+  if (research.themes.length > 0) {
+    parts.push(`## Themes (${research.themes.length})`)
+    for (const t of research.themes) {
+      parts.push(`- **${t.theme}**: ${t.description.slice(0, 100)}... (plays: ${t.playIds.join(",")})`)
+    }
+    parts.push("")
+  }
+
+  // Cultural moments - summary only
+  if (research.culturalMoments.length > 0) {
+    parts.push(`## Cultural Moments (${research.culturalMoments.length})`)
+    for (const c of research.culturalMoments) {
+      parts.push(`- **${c.type}**: ${c.subject} - ${c.significance.slice(0, 80)}`)
+    }
+    parts.push("")
+  }
+
+  // Notable plays - compact
+  if (research.notablePlays.length > 0) {
+    parts.push(`## Notable Plays (${research.notablePlays.length})`)
+    for (const p of research.notablePlays.slice(0, 10)) {
+      parts.push(`- [${p.playId}] ${p.artist} - "${p.song}" (${p.category}): ${p.reason.slice(0, 60)}`)
+    }
+    if (research.notablePlays.length > 10) {
+      parts.push(`... and ${research.notablePlays.length - 10} more`)
+    }
+    parts.push("")
+  }
+
+  // Suggested headlines
+  if (research.suggestedHeadlines.length > 0) {
+    parts.push(`## Headline Ideas`)
+    for (const h of research.suggestedHeadlines) {
+      parts.push(`- ${h}`)
+    }
+    parts.push("")
+  }
+
+  // Narrative angles
+  if (research.narrativeAngles.length > 0) {
+    parts.push(`## Narrative Angles`)
+    for (const a of research.narrativeAngles) {
+      parts.push(`- ${a}`)
+    }
+    parts.push("")
+  }
+
+  // Play lookup table if provided
+  if (options?.playLookup && options.playLookup.length > 0) {
+    parts.push("")
+    parts.push(formatPlayLookupTable(options.playLookup))
+  }
+
+  // Play ID instructions if provided
+  if (options?.categorizedIds) {
+    parts.push("")
+    parts.push(formatPlayIdInstructions(options.categorizedIds))
+  }
+
+  return parts.join("\n")
+}
+
+/**
  * Build the complete system prompt for writing
  */
 export const buildWriterSystemPrompt = (): string => {

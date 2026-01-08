@@ -12,7 +12,17 @@
 
 import { Effect, pipe } from "effect";
 import { Toolkit } from "@effect/ai";
-import { CrateToolkit } from "./definitions.js";
+import { CrateToolkit, CrateToolkitWithContext } from "./definitions.js";
+import {
+  ArtifactStoreService,
+  type ArtifactStoreServiceInterface
+} from "../services/context-store/index.js";
+import {
+  makeContextListHandler,
+  makeContextReadHandler,
+  makeContextSearchHandler,
+  makeContextTailHandler
+} from "./context-discovery/handlers.js";
 import { withRetry, TOOL_RETRY_CONFIGS } from "./retry-policy.js";
 import type {
   SearchPlaysParams,
@@ -1255,6 +1265,101 @@ export const makeCrateToolHandlers: Effect.Effect<
  */
 export const CrateToolHandlersLayer = CrateToolkit.toLayer(
   makeCrateToolHandlers
+);
+
+// =============================================================================
+// Extended Toolkit with Context Discovery
+// =============================================================================
+
+/**
+ * Services required for CrateToolkitWithContext
+ *
+ * Includes all Crate tool services plus ArtifactStoreService for context discovery.
+ */
+export type CrateToolWithContextServices =
+  | CrateToolServices
+  | ArtifactStoreService;
+
+/**
+ * Handler type for CrateToolkitWithContext
+ */
+export type CrateToolWithContextHandlers = Toolkit.HandlersFrom<
+  Toolkit.Tools<typeof CrateToolkitWithContext>
+>;
+
+/**
+ * Build all tool handlers including context discovery
+ *
+ * Combines Crate research tool handlers with artifact context discovery handlers.
+ */
+export const makeCrateToolWithContextHandlers: Effect.Effect<
+  CrateToolWithContextHandlers,
+  never,
+  CrateToolWithContextServices
+> = Effect.gen(function* () {
+  // Acquire all Crate tool services
+  const searchPlaysService = yield* SearchPlaysService;
+  const semanticSearchService = yield* SemanticSearchService;
+  const mbidResolverService = yield* MbidResolverService;
+  const linkFetcherService = yield* LinkFetcherService;
+  const insightSessionService = yield* InsightSessionService;
+  const graphConnectionsService = yield* GraphConnectionsService;
+  const musicGraphService = yield* MusicGraphService;
+  const artCurationService = yield* ArtCurationService;
+
+  // Acquire artifact store for context discovery
+  const artifactStoreService = yield* ArtifactStoreService;
+
+  // Build handlers that close over the services
+  return CrateToolkitWithContext.of({
+    // Crate research tools
+    search_plays: makeSearchPlaysHandler(searchPlaysService),
+    semantic_search: makeSemanticSearchHandler(semanticSearchService),
+    hybrid_search: makeHybridSearchHandler(semanticSearchService),
+    resolve_mbid: makeResolveMbidHandler(mbidResolverService),
+    fetch_link: makeFetchLinkHandler(linkFetcherService),
+    get_recent_insights: makeGetRecentInsightsHandler(insightSessionService),
+    graph_connections: makeGraphConnectionsHandler(graphConnectionsService),
+    explore_graph: makeExploreGraphHandler(musicGraphService),
+    find_graph_path: makeFindGraphPathHandler(musicGraphService),
+    query_cached_neighbors: makeQueryCachedNeighborsHandler(musicGraphService),
+    // Phase 1 graph algorithm tools
+    analyze_influence: makeAnalyzeInfluenceHandler(musicGraphService),
+    explore_neighborhood: makeExploreNeighborhoodHandler(musicGraphService),
+    summarize_relationships: makeSummarizeRelationshipsHandler(musicGraphService),
+    analyze_time_period: makeAnalyzeTimePeriodHandler(musicGraphService),
+    // Art curation tool
+    analyze_album_art: makeAnalyzeAlbumArtHandler(artCurationService),
+    // Context discovery tools
+    context_list: makeContextListHandler(artifactStoreService),
+    context_read: makeContextReadHandler(artifactStoreService),
+    context_search: makeContextSearchHandler(artifactStoreService),
+    context_tail: makeContextTailHandler(artifactStoreService),
+  });
+});
+
+/**
+ * Layer providing CrateToolkitWithContext handlers
+ *
+ * Combines all Crate research tool handlers with context discovery handlers.
+ * Requires all Crate tool services plus ArtifactStoreService.
+ *
+ * Usage:
+ * ```ts
+ * const program = CrateToolkitWithContext.pipe(
+ *   Effect.flatMap((toolkit) => toolkit.handle("context_read", { artifact_id: "abc" }))
+ * )
+ *
+ * const runnable = program.pipe(
+ *   Effect.provide(CrateToolWithContextHandlersLayer),
+ *   Effect.provide(ArtifactStoreService.Default),
+ *   Effect.provide(SearchPlaysServiceLive),
+ *   // ... other service layers
+ * )
+ * ```
+ */
+export const CrateToolWithContextHandlersLayer = CrateToolkitWithContext.toLayer(
+  makeCrateToolWithContextHandlers
 );
 
 // =============================================================================
