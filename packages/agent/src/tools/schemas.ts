@@ -29,6 +29,27 @@ const NumberFromStringOrNumber = Schema.Union(
 )
 
 /**
+ * String array that also accepts JSON-stringified arrays.
+ * LLMs sometimes send arrays as strings in tool calls
+ * (e.g., "[\"uuid1\", \"uuid2\"]" instead of ["uuid1", "uuid2"]).
+ * This schema accepts both and decodes strings to arrays.
+ */
+const StringArrayFromJsonString = Schema.transform(
+  Schema.String,
+  Schema.Array(Schema.String),
+  {
+    strict: true,
+    decode: (s) => JSON.parse(s) as string[],
+    encode: (arr) => JSON.stringify(arr)
+  }
+)
+
+const StringArrayFromStringOrArray = Schema.Union(
+  Schema.Array(Schema.String),
+  StringArrayFromJsonString
+)
+
+/**
  * MusicBrainz entity types
  */
 export const MbEntityType = Schema.Literal(
@@ -469,7 +490,7 @@ export const GraphConnectionsParams = Schema.Struct({
   query_type: GraphQueryType.annotations({
     description: "Type of graph query to run (e.g., band_members, labelmates, collaborators_direct)"
   }),
-  mbids: Schema.Array(Schema.String).annotations({
+  mbids: StringArrayFromStringOrArray.annotations({
     description: "List of MusicBrainz IDs to query (1-50)"
   }),
   limit: Schema.optional(NumberFromStringOrNumber).annotations({
@@ -550,7 +571,7 @@ export type GraphConnectionsResponse = typeof GraphConnectionsResponse.Type
 // =============================================================================
 
 export const ExploreGraphParams = Schema.Struct({
-  mbids: Schema.Array(Schema.String).annotations({
+  mbids: StringArrayFromStringOrArray.annotations({
     description: "Seed MBIDs to expand in the local graph cache"
   }),
   query_type: GraphQueryType.annotations({

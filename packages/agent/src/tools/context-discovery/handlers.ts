@@ -80,9 +80,15 @@ const makeContextListHandler =
 
         const total = yield* service.count()
 
+        // Add guidance message when no artifacts found
+        const message = artifacts.length === 0
+          ? "No artifacts stored yet. Use the day data index to identify shows and plays to explore, then use other tools like semantic_search and explore_graph."
+          : undefined
+
         return {
           artifacts: artifacts.map(toArtifactSummary),
-          total
+          total,
+          message
         }
       }),
       Effect.tap(() => Effect.logDebug("context_list executed"))
@@ -112,7 +118,8 @@ const makeContextReadHandler =
             total_bytes: 0,
             from_line: 0,
             lines_returned: 0,
-            has_more: false
+            has_more: false,
+            error_message: `Artifact '${params.artifact_id}' not found. Use context_list to see available artifacts, or verify the artifact ID from the day data index.`
           }
         }
 
@@ -166,6 +173,11 @@ const makeContextSearchHandler =
         // Count unique artifacts searched
         const artifactsSearched = new Set(results.map(r => r.artifactId)).size
 
+        // Add guidance message when no matches found
+        const message = results.length === 0
+          ? `No matches for pattern "${params.pattern}". Patterns are case-insensitive. Try broader patterns, different keywords, or use context_read to browse artifact content directly.`
+          : undefined
+
         return {
           matches: results.map(r => ({
             artifact_id: r.artifactId,
@@ -175,7 +187,8 @@ const makeContextSearchHandler =
             after: [...r.after]
           })),
           total_matches: results.length,
-          artifacts_searched: artifactsSearched
+          artifacts_searched: artifactsSearched,
+          message
         }
       }),
       Effect.tap(() => Effect.logDebug("context_search executed"))
@@ -203,7 +216,8 @@ const makeContextTailHandler =
             format: "text" as const,
             total_lines: 0,
             lines_returned: 0,
-            start_line: 0
+            start_line: 0,
+            error_message: `Artifact '${params.artifact_id}' not found. Use context_list to see available artifacts.`
           }
         }
 

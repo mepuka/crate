@@ -57,7 +57,10 @@ export type ArtifactSummary = typeof ArtifactSummary.Type
  */
 export const ContextListResponse = Schema.Struct({
   artifacts: Schema.Array(ArtifactSummary),
-  total: Schema.Number
+  total: Schema.Number,
+  message: Schema.optional(Schema.String).annotations({
+    description: "Guidance message when artifacts are empty or filtered"
+  })
 })
 export type ContextListResponse = typeof ContextListResponse.Type
 
@@ -98,7 +101,10 @@ export const ContextReadResponse = Schema.Struct({
   total_bytes: Schema.Number,
   from_line: Schema.Number,
   lines_returned: Schema.Number,
-  has_more: Schema.Boolean
+  has_more: Schema.Boolean,
+  error_message: Schema.optional(Schema.String).annotations({
+    description: "Error message when artifact not found or read fails"
+  })
 })
 export type ContextReadResponse = typeof ContextReadResponse.Type
 
@@ -143,7 +149,10 @@ export type SearchMatch = typeof SearchMatch.Type
 export const ContextSearchResponse = Schema.Struct({
   matches: Schema.Array(SearchMatch),
   total_matches: Schema.Number,
-  artifacts_searched: Schema.Number
+  artifacts_searched: Schema.Number,
+  message: Schema.optional(Schema.String).annotations({
+    description: "Guidance message when no matches found"
+  })
 })
 export type ContextSearchResponse = typeof ContextSearchResponse.Type
 
@@ -173,6 +182,9 @@ export const ContextTailResponse = Schema.Struct({
   format: ArtifactFormatSchema,
   total_lines: Schema.Number,
   lines_returned: Schema.Number,
-  start_line: Schema.Number
+  start_line: Schema.Number,
+  error_message: Schema.optional(Schema.String).annotations({
+    description: "Error message when artifact not found"
+  })
 })
 export type ContextTailResponse = typeof ContextTailResponse.Type

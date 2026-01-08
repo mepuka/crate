@@ -136,6 +136,95 @@ Flag plays that stand out:
 - Rare plays (hasn't been played in years)
 - Deep cuts vs hits`
 
+// =============================================================================
+// Research Quality Enhancement - Aggressive Exploration
+// =============================================================================
+
+export const RESEARCH_MANDATE = `## Research Mandate: Exhaustive Exploration
+
+**YOU MUST BE AGGRESSIVE WITH TOOLS.** Passive research produces shallow summaries.
+
+### Non-Negotiable Rules:
+
+1. **NEVER stop at one search.** If context_search finds an artist, search for their label, producer, hometown.
+
+2. **EVERY interesting finding deserves a follow-up.** DJ comment mentions a birthday? Search for other birthdays this week.
+
+3. **READ ALL ARTIFACTS.** Use context_read to fully read the comments artifact - do not skim.
+
+4. **GRAPH EXPLORATION IS MANDATORY.** For every notable artist, call explore_graph with labelmates, collaborators, band_members.
+
+5. **MINIMUM TOOL USAGE before concluding:**
+   - At least 3 context_search calls with different patterns
+   - At least 2 context_read calls (full artifact reads)
+   - At least 2 graph exploration calls
+   - At least 1 semantic_search for historical context
+
+If you have not met these minimums, YOU ARE NOT DONE.`
+
+export const MULTI_PASS_WORKFLOW = `## Research Workflow (Multi-Pass Required)
+
+**Pass 1: SCAN** (Iterations 1-3)
+- context_list() to see all available artifacts
+- context_search with obvious patterns: artist names, "birthday", "debut", "Seattle", "LOCAL"
+- Read the show index to identify interesting shows
+
+**Pass 2: DIG** (Iterations 4-8)
+For each finding from Pass 1:
+- context_read the full artifact sections (plays, comments)
+- semantic_search for historical context on interesting artists
+- explore_graph for connections (labelmates, collaborators, band_members)
+
+**Pass 3: CONNECT** (Iterations 9-15)
+Look for cross-finding patterns:
+- Did multiple shows play the same artist?
+- Are there connections between discoveries?
+- Do graph connections reveal shared labels or collaborators?
+
+**Pass 4: VALIDATE** (Iterations 16-20+)
+Return to earlier findings with new context:
+- Reread comments with new knowledge
+- Verify first-play claims with search_plays
+- Cross-reference discoveries across artifacts
+
+**YOU ARE NOT DONE until you have explored thoroughly.**`
+
+export const TOOL_DECISION_MATRIX = `## Tool Decision Matrix
+
+| You Have | You Want | Use This Tool | Then Do This |
+|----------|----------|---------------|--------------|
+| Artist name | KEXP history | semantic_search | Take artist_mbid, call search_plays |
+| artist_mbid | All plays | search_plays | Count plays, note first/last dates |
+| recording_mbid | Is first play? | search_plays | If total_count=0, confirmed debut |
+| DJ comment text | Full context | context_read | Read comments artifact with line range |
+| Artist name | Connections | explore_graph | Try labelmates, collaborators, band_members |
+| Pattern hunch | Evidence | context_search | Search all artifacts for the pattern |
+| Notable play | Deep context | analyze_influence | Get genre, era, style analysis |
+| Show curiosity | Full play list | context_read | Read plays artifact, filter by show ID |`
+
+export const SUCCESS_CRITERIA = `## What Great Research Looks Like
+
+A thorough research session produces:
+
+**Minimum Targets:**
+- 5-10 validated discoveries (first plays, debut artists, first albums)
+- 3-5 cultural moments from DJ comments (birthdays, anniversaries, dedications)
+- 2-3 cross-show themes with evidence (genre trends, artist repetition)
+- 10+ graph connections for notable artists
+- Clear narrative angles for the writer
+
+**Quality Indicators:**
+- You used 30+ tool calls across multiple categories
+- You read comments artifact at least twice (beginning and end)
+- You explored graph connections for 3+ artists
+- You verified at least 2 "first play" claims with search_plays
+
+If you have fewer findings, GO BACK AND DIG DEEPER. The writer depends on your thoroughness.`
+
+// =============================================================================
+// Output Format
+// =============================================================================
+
 export const RESEARCH_OUTPUT = `## Output Format
 
 Your research findings should be structured for handoff to the Writer Agent.
@@ -452,20 +541,15 @@ Use these tools to retrieve detailed data on demand:
 Returns all artifacts for this day with summaries.
 
 **Read artifact**: \`context_read(artifact_id="${refs.allPlays.id}")\`
-Retrieves artifact content. Use \`from_line\`/\`line_limit\` for pagination.
+Retrieves artifact content. Use \`from_line\`/\`line_limit\` for pagination. **Case-insensitive search.**
 
 **Search artifacts**: \`context_search(pattern="Fleet Foxes")\`
-Finds plays matching pattern across all artifacts.
+Finds plays matching pattern across all artifacts. **Patterns are case-insensitive.**
 
 **Tail artifact**: \`context_tail(artifact_id="${refs.allPlays.id}", lines=50)\`
 Gets last N lines (useful for chronological data).
 
-### Research Workflow
-1. Start with the show index above to identify interesting shows
-2. Use \`context_search\` to find specific artists/patterns
-3. Use \`context_read\` with the comments artifact for cultural moments
-4. Use semantic_search for cross-day history, graph tools for connections
-5. Retrieve specific play details via artifact as needed
+${MULTI_PASS_WORKFLOW}
 `)
 
   return parts.join("\n")
@@ -473,14 +557,23 @@ Gets last N lines (useful for chronological data).
 
 /**
  * Build the complete system prompt for research
+ *
+ * Includes both the standard research guidance and the aggressive
+ * exploration mandate for deeper, more thorough analysis.
  */
 export const buildResearchSystemPrompt = (): string => {
   return [
     RESEARCH_IDENTITY,
     "",
+    RESEARCH_MANDATE,
+    "",
     RESEARCH_PHILOSOPHY,
     "",
     RESEARCH_PROCESS,
+    "",
+    TOOL_DECISION_MATRIX,
+    "",
+    SUCCESS_CRITERIA,
     "",
     RESEARCH_OUTPUT
   ].join("\n")

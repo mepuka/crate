@@ -302,8 +302,9 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
           // =============================================================================
           yield* Effect.log("Phase 1: Research with tool calls")
 
-          const maxIterations = 10 // Reduced from 15 for token efficiency
-          const minIterations = 5 // Ensure at least this many iterations for thorough research
+          // Increased limits for thorough exploration (Phase 2.5 enhancement)
+          const maxIterations = 20 // Increased from 10 for deeper analysis
+          const minIterations = 8 // Increased from 5 for baseline depth
 
           // Run research loop
           let iteration = 0
@@ -379,10 +380,11 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
             yield* Effect.log(`Iteration ${iteration}: ${toolCallCount} tool calls`)
 
             // Early stopping: if we've done minimum iterations and model stopped calling tools
+            // Require 2 consecutive empty iterations to prevent premature exit
             if (toolCallCount === 0) {
               consecutiveEmptyIterations++
-              if (iteration >= minIterations && consecutiveEmptyIterations >= 1) {
-                yield* Effect.log("Early stop: model finished research")
+              if (iteration >= minIterations && consecutiveEmptyIterations >= 2) {
+                yield* Effect.log("Early stop: model finished research (2 consecutive empty)")
                 break
               }
             } else {
@@ -390,7 +392,8 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
             }
 
             // Early stopping: if we've accumulated enough tool calls (diminishing returns)
-            if (iteration >= minIterations && totalToolCalls >= 25) {
+            // Increased from 25 to 50 for more thorough research
+            if (iteration >= minIterations && totalToolCalls >= 50) {
               yield* Effect.log(`Early stop: sufficient research (${totalToolCalls} tool calls)`)
               break
             }
@@ -508,8 +511,9 @@ Output JSON matching the ResearchContext schema.`
           // =============================================================================
           yield* Effect.log("Phase 1: Research with tool calls (artifact-based)")
 
-          const maxIterations = 12 // Allow more iterations for context retrieval
-          const minIterations = 5
+          // Significantly increased limits for thorough multi-pass exploration (Phase 2.5)
+          const maxIterations = 25 // Increased from 12 for deep context discovery
+          const minIterations = 10 // Increased from 5 for comprehensive research
 
           // Run research loop
           let iteration = 0
@@ -592,18 +596,19 @@ Output JSON matching the ResearchContext schema.`
 
             yield* Effect.log(`Iteration ${iteration}: ${toolCallCount} tool calls`)
 
-            // Early stopping logic
+            // Early stopping logic - require 2 consecutive empty iterations
             if (toolCallCount === 0) {
               consecutiveEmptyIterations++
-              if (iteration >= minIterations && consecutiveEmptyIterations >= 1) {
-                yield* Effect.log("Early stop: model finished research")
+              if (iteration >= minIterations && consecutiveEmptyIterations >= 2) {
+                yield* Effect.log("Early stop: model finished research (2 consecutive empty)")
                 break
               }
             } else {
               consecutiveEmptyIterations = 0
             }
 
-            if (iteration >= minIterations && totalToolCalls >= 30) {
+            // Increased from 30 to 60 for more comprehensive artifact exploration
+            if (iteration >= minIterations && totalToolCalls >= 60) {
               yield* Effect.log(`Early stop: sufficient research (${totalToolCalls} tool calls)`)
               break
             }
