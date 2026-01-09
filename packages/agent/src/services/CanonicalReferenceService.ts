@@ -203,12 +203,10 @@ const loadCanonicalFromFolder = (
     }
 
     if (!configPath || !configContent) {
-      return yield* Effect.fail(
-        new ConfigParseError({
-          path: folderPath,
-          reason: `No config file found (tried: ${CONFIG_FILES.join(", ")})`,
-        })
-      );
+      return yield* new ConfigParseError({
+        path: folderPath,
+        reason: `No config file found (tried: ${CONFIG_FILES.join(", ")})`,
+      });
     }
 
     // Parse config
@@ -220,13 +218,11 @@ const loadCanonicalFromFolder = (
         rawConfig = yaml.parse(configContent);
       }
     } catch (e) {
-      return yield* Effect.fail(
-        new ConfigParseError({
-          path: configPath,
-          reason: "Failed to parse config file",
-          cause: e,
-        })
-      );
+      return yield* new ConfigParseError({
+        path: configPath,
+        reason: "Failed to parse config file",
+        cause: e,
+      });
     }
 
     // Validate against schema
@@ -362,9 +358,7 @@ const makeCanonicalReferenceService = (
           yield* loadAllImpl();
           const result = cache.get(id);
           if (!result) {
-            return yield* Effect.fail(
-              new CanonicalNotFoundError({ id, searchPath: referencesPath })
-            );
+            return yield* new CanonicalNotFoundError({ id, searchPath: referencesPath });
           }
           return result;
         }),
@@ -387,7 +381,7 @@ const makeCanonicalReferenceService = (
             yield* loadAllImpl();
             const result = cache.get(id);
             if (!result) {
-              return yield* Effect.fail(new CanonicalNotFoundError({ id }));
+              return yield* new CanonicalNotFoundError({ id });
             }
             return result;
           });
@@ -444,7 +438,7 @@ const makeCanonicalReferenceService = (
             yield* loadAllImpl();
             const result = cache.get(id);
             if (!result) {
-              return yield* Effect.fail(new CanonicalNotFoundError({ id }));
+              return yield* new CanonicalNotFoundError({ id });
             }
             return result;
           });

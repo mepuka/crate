@@ -187,7 +187,7 @@ export class ArtifactStoreService extends Effect.Service<ArtifactStoreService>()
           const artifact = HashMap.get(store, id)
 
           if (Option.isNone(artifact)) {
-            return yield* Effect.fail(new ArtifactNotFoundError({ artifactId: id }))
+            return yield* new ArtifactNotFoundError({ artifactId: id })
           }
 
           let content = artifact.value.content
@@ -222,7 +222,7 @@ export class ArtifactStoreService extends Effect.Service<ArtifactStoreService>()
           const artifact = HashMap.get(store, id)
 
           if (Option.isNone(artifact)) {
-            return yield* Effect.fail(new ArtifactNotFoundError({ artifactId: id }))
+            return yield* new ArtifactNotFoundError({ artifactId: id })
           }
 
           const { ref, lineCount, preview } = artifact.value
@@ -436,7 +436,7 @@ export const ArtifactStoreServiceScoped: Layer.Layer<ArtifactStoreService> =
           const artifact = HashMap.get(currentStore, id)
 
           if (Option.isNone(artifact)) {
-            return yield* Effect.fail(new ArtifactNotFoundError({ artifactId: id }))
+            return yield* new ArtifactNotFoundError({ artifactId: id })
           }
 
           let content = artifact.value.content
@@ -465,7 +465,7 @@ export const ArtifactStoreServiceScoped: Layer.Layer<ArtifactStoreService> =
           const artifact = HashMap.get(currentStore, id)
 
           if (Option.isNone(artifact)) {
-            return yield* Effect.fail(new ArtifactNotFoundError({ artifactId: id }))
+            return yield* new ArtifactNotFoundError({ artifactId: id })
           }
 
           const { ref, lineCount, preview } = artifact.value

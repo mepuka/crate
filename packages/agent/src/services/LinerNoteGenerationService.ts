@@ -545,9 +545,9 @@ const makeLinerNoteGenerationService = Effect.gen(function* () {
       }
 
       if (!imageBase64) {
-        return yield* Effect.fail(new LinerNoteGenerationError({
+        return yield* new LinerNoteGenerationError({
           message: "No image generated in response"
-        }));
+        });
       }
 
       // Use mimeType from response, fallback to png (Gemini typically returns png)
