@@ -210,6 +210,72 @@ export const withCaptureLarge = <P, A, E, R>(
 }
 
 /**
+ * Wrap a tool handler with capture capability, providing ArtifactStoreService internally
+ *
+ * Unlike withCaptureLarge, this version takes the ArtifactStoreService directly
+ * and provides it internally, so the returned handler has no R channel dependency
+ * on ArtifactStoreService.
+ *
+ * @example
+ * ```typescript
+ * const artifactStore = yield* ArtifactStoreService
+ * const wrappedHandler = withCaptureLargeProvided(
+ *   originalHandler,
+ *   artifactStore,
+ *   { toolName: "semantic_search", tags: ["search", "plays"] }
+ * )
+ * ```
+ */
+export const withCaptureLargeProvided = <P, A, E, R>(
+  handler: (params: P) => Effect.Effect<A, E, R>,
+  store: ArtifactStoreService,
+  config: CaptureLargeConfig
+): ((params: P) => Effect.Effect<A, E, R>) => {
+  const threshold = config.threshold ?? DEFAULT_CAPTURE_THRESHOLD
+  const format = config.format ?? "json"
+  const previewLength = config.previewLength ?? 500
+
+  return (params: P): Effect.Effect<A, E, R> =>
+    Effect.gen(function* () {
+      // Execute original handler
+      const result = yield* handler(params)
+
+      // Check if result is large
+      const resultStr = formatResult(result)
+      if (resultStr.length <= threshold) {
+        return result
+      }
+
+      const summary = generateSummary(config.toolName, result, resultStr.length)
+
+      const ref = yield* store.store({
+        content: resultStr,
+        format,
+        summary,
+        tags: [...config.tags, config.toolName],
+        sessionId: config.sessionId
+      }).pipe(
+        Effect.catchAll(() => Effect.succeed(null))
+      )
+
+      if (ref === null) {
+        // Store failed, return original result
+        yield* Effect.logWarning(
+          `Failed to capture large result for ${config.toolName}`
+        )
+        return result
+      }
+
+      yield* Effect.log(
+        `Captured large ${config.toolName} result: ${ref.id} (${resultStr.length} chars)`
+      )
+
+      // Return truncated result with artifact hint
+      return truncateWithHint(result, ref, previewLength)
+    })
+}
+
+/**
  * Batch wrap multiple handlers with capture configuration
  *
  * @example

@@ -128,14 +128,15 @@ export interface DailySummaryAgentInterface {
   /**
    * Run the complete daily summary pipeline
    *
-   * Note: LanguageModel is provided at the layer level, not exposed in the R channel.
-   * Use DailySummaryAgentLive(modelLayer) to construct the service.
+   * Requires LanguageModel to be provided in context for LLM operations.
+   * Use DailySummaryAgentLive(modelLayer) to construct the service with model included.
    */
   readonly run: (
     options?: PipelineOptions
   ) => Effect.Effect<
     PipelineResult,
-    DailySummaryError
+    DailySummaryError,
+    LanguageModel.LanguageModel
   >
 
   /**

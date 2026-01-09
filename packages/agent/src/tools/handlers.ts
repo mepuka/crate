@@ -21,7 +21,7 @@ import {
   makeContextTailHandler
 } from "./context-discovery/handlers.js";
 import { withRetry, TOOL_RETRY_CONFIGS } from "./retry-policy.js";
-import { withCaptureLarge } from "./capture-large.js";
+import { withCaptureLargeProvided } from "./capture-large.js";
 import type {
   SearchPlaysParams,
   SearchPlaysResponse,
@@ -1325,44 +1325,51 @@ export const makeCrateToolWithContextHandlers: Effect.Effect<
   const CAPTURE_THRESHOLD = 4000; // 4KB chars
 
   // Wrap semantic_search - returns 20 results, each ~300 chars = ~6KB
-  const wrappedSemanticSearch = withCaptureLarge(
+  const wrappedSemanticSearch = withCaptureLargeProvided(
     makeSemanticSearchHandler(semanticSearchService),
+    artifactStoreService,
     { toolName: "semantic_search", tags: ["search", "plays"], threshold: CAPTURE_THRESHOLD }
   );
 
   // Wrap hybrid_search - same structure as semantic_search
-  const wrappedHybridSearch = withCaptureLarge(
+  const wrappedHybridSearch = withCaptureLargeProvided(
     makeHybridSearchHandler(semanticSearchService),
+    artifactStoreService,
     { toolName: "hybrid_search", tags: ["search", "plays"], threshold: CAPTURE_THRESHOLD }
   );
 
   // Wrap search_plays - returns 20 results, each ~300 chars
-  const wrappedSearchPlays = withCaptureLarge(
+  const wrappedSearchPlays = withCaptureLargeProvided(
     makeSearchPlaysHandler(searchPlaysService),
+    artifactStoreService,
     { toolName: "search_plays", tags: ["search", "plays"], threshold: CAPTURE_THRESHOLD }
   );
 
   // Wrap graph_connections - returns up to 100 connections
-  const wrappedGraphConnections = withCaptureLarge(
+  const wrappedGraphConnections = withCaptureLargeProvided(
     makeGraphConnectionsHandler(graphConnectionsService),
+    artifactStoreService,
     { toolName: "graph_connections", tags: ["graph", "connections"], threshold: CAPTURE_THRESHOLD }
   );
 
   // Wrap explore_graph - returns ALL neighbors, no limit!
-  const wrappedExploreGraph = withCaptureLarge(
+  const wrappedExploreGraph = withCaptureLargeProvided(
     makeExploreGraphHandler(musicGraphService),
+    artifactStoreService,
     { toolName: "explore_graph", tags: ["graph", "explore"], threshold: CAPTURE_THRESHOLD }
   );
 
   // Wrap explore_neighborhood - returns 50-100 nodes
-  const wrappedExploreNeighborhood = withCaptureLarge(
+  const wrappedExploreNeighborhood = withCaptureLargeProvided(
     makeExploreNeighborhoodHandler(musicGraphService),
+    artifactStoreService,
     { toolName: "explore_neighborhood", tags: ["graph", "neighborhood"], threshold: CAPTURE_THRESHOLD }
   );
 
   // Wrap query_cached_neighbors - returns up to 100 neighbors
-  const wrappedQueryCachedNeighbors = withCaptureLarge(
+  const wrappedQueryCachedNeighbors = withCaptureLargeProvided(
     makeQueryCachedNeighborsHandler(musicGraphService),
+    artifactStoreService,
     { toolName: "query_cached_neighbors", tags: ["graph", "cache"], threshold: CAPTURE_THRESHOLD }
   );
 

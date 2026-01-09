@@ -57,9 +57,7 @@ import {
   ArtCurationServiceTest,
   ArtCurationServiceGeminiWithConfig,
   // Art generation services
-  ArtGenerationOrchestrator,
   ArtGenerationOrchestratorLive,
-  LinerNoteGenerationService,
   LinerNoteGenerationServiceLive,
 } from "./services/index.js";
 
@@ -550,11 +548,7 @@ export type CrateToolsContext = CrateToolServices;
  * Creates the liner note generation service with Nano Banana Pro model.
  * Requires GoogleAIConfig in environment.
  */
-export const LinerNoteGenerationServiceWithConfig: Layer.Layer<
-  LinerNoteGenerationService,
-  never,
-  GoogleAIConfig
-> = Layer.unwrapEffect(
+export const LinerNoteGenerationServiceWithConfig = Layer.unwrapEffect(
   Effect.gen(function* () {
     const config = yield* GoogleAIConfig;
 
@@ -579,11 +573,7 @@ export const LinerNoteGenerationServiceWithConfig: Layer.Layer<
  * - GOOGLE_AI_API_KEY (for image generation)
  * - CRATE_SERVER_URL (defaults to http://localhost:3000)
  */
-export const ArtGenerationOrchestratorFull: Layer.Layer<
-  ArtGenerationOrchestrator,
-  never,
-  never
-> = ArtGenerationOrchestratorLive.pipe(
+export const ArtGenerationOrchestratorFull = ArtGenerationOrchestratorLive.pipe(
   Layer.provide(LinerNoteGenerationServiceWithConfig),
   Layer.provide(CrateServerConfig.Default),
   Layer.provide(FetchHttpClient.layer),

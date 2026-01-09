@@ -39,7 +39,7 @@ export class RotationFinding extends Schema.Class<RotationFinding>("RotationFind
   playId: Schema.Number,
   artist: Schema.String,
   song: Schema.String,
-  rotationStatus: Schema.String,
+  rotationStatus: Schema.NullOr(Schema.String),
   previousStatus: Schema.NullOr(Schema.String),
   playCountToday: Schema.Number,
   significance: Schema.NullOr(Schema.String)
@@ -202,7 +202,7 @@ export class RotationItem extends Schema.Class<RotationItem>("RotationItem")({
   playId: Schema.Number,
   artist: Schema.String,
   song: Schema.String,
-  rotationStatus: Schema.String,
+  rotationStatus: Schema.NullOr(Schema.String),
   playCountToday: Schema.Number,
   blurb: Schema.NullOr(Schema.String)
 }) {}

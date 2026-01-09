@@ -13,7 +13,7 @@
  */
 
 import { Effect, pipe, Layer } from "effect"
-import { Toolkit } from "@effect/ai"
+import { Toolkit, Tool } from "@effect/ai"
 import {
   ArtifactStoreService,
   type ArtifactStoreServiceInterface,
@@ -38,10 +38,9 @@ import type {
 
 /**
  * Handler type extracted from ContextDiscoveryToolkit
+ * Tool.HandlersFor is the type returned by Toolkit.toLayer
  */
-export type ContextDiscoveryHandlers = Toolkit.HandlersFrom<
-  Toolkit.Tools<typeof ContextDiscoveryToolkit>
->
+export type ContextDiscoveryHandlers = Tool.HandlersFor<Toolkit.Tools<typeof ContextDiscoveryToolkit>>
 
 // =============================================================================
 // Handler Helpers
@@ -322,7 +321,7 @@ export const ContextDiscoveryHandlersLayer = ContextDiscoveryToolkit.toLayer(
  * Self-contained layer that provides both handlers and their dependency.
  */
 export const ContextDiscoveryLive: Layer.Layer<
-  Toolkit.Handlers<typeof ContextDiscoveryToolkit>
+  ContextDiscoveryHandlers
 > = ContextDiscoveryHandlersLayer.pipe(
   Layer.provide(ArtifactStoreService.Default)
 )

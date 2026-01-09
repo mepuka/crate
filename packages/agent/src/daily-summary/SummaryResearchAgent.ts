@@ -319,12 +319,12 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
                     "hybrid_search",
                     "explore_graph",
                     "graph_connections"
-                  ]
+                  ] as const
                 }
               : iteration < 2
               ? {
                   mode: "required" as const,
-                  oneOf: ["explore_graph", "graph_connections", "find_graph_path"]
+                  oneOf: ["explore_graph", "graph_connections", "find_graph_path"] as const
                 }
               : iteration < 5
               ? {
@@ -336,7 +336,7 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
                     "summarize_relationships",
                     "analyze_time_period",
                     "graph_connections"
-                  ]
+                  ] as const
                 }
               : "auto" as const
 
@@ -629,7 +629,7 @@ Output the complete JSON now.`
                     "context_list",
                     "context_search",
                     "context_read"
-                  ]
+                  ] as const
                 }
               : iteration < 3
               ? {
@@ -642,7 +642,7 @@ Output the complete JSON now.`
                     "context_read",
                     "explore_graph",
                     "graph_connections"
-                  ]
+                  ] as const
                 }
               : iteration < 6
               ? {
@@ -655,7 +655,7 @@ Output the complete JSON now.`
                     "graph_connections",
                     "context_read",
                     "context_search"
-                  ]
+                  ] as const
                 }
               : "auto" as const
 
