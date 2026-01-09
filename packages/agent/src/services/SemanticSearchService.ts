@@ -94,9 +94,9 @@ const makeSemanticSearchService = Effect.gen(function* () {
   const config = yield* FaissConfig
   const client = yield* makeJsonClient(config.baseUrl)
 
-  const search = (
+  const search = Effect.fn("SemanticSearchService.search")(function* (
     params: SemanticSearchParams
-  ): Effect.Effect<typeof SearchResponse.Type, SemanticSearchError> => {
+  ) {
     // Build request body
     const body = {
       query: params.query,
@@ -104,10 +104,9 @@ const makeSemanticSearchService = Effect.gen(function* () {
       offset: params.offset ?? 0
     }
 
-    return client.post("/api/search", {
+    const response = yield* client.post("/api/search", {
       body: HttpBody.unsafeJson(body)
     }).pipe(
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(SearchResponse)),
       Effect.mapError((error) =>
         new SemanticSearchError({
           message: "Semantic search failed",
@@ -116,11 +115,22 @@ const makeSemanticSearchService = Effect.gen(function* () {
         })
       )
     )
-  }
+    return yield* HttpClientResponse.schemaBodyJson(SearchResponse)(response).pipe(
+      Effect.mapError((error) =>
+        new SemanticSearchError({
+          message: "Semantic search response parsing failed",
+          query: params.query,
+          cause: error
+        })
+      )
+    )
+  }) as (
+    params: SemanticSearchParams
+  ) => Effect.Effect<typeof SearchResponse.Type, SemanticSearchError>
 
-  const hybridSearch = (
+  const hybridSearch = Effect.fn("SemanticSearchService.hybridSearch")(function* (
     params: HybridSearchParams
-  ): Effect.Effect<typeof HybridSearchResponse.Type, HybridSearchError> => {
+  ) {
     // Build request body
     const body = {
       query: params.query,
@@ -130,10 +140,9 @@ const makeSemanticSearchService = Effect.gen(function* () {
       use_expansion: params.use_expansion ?? false
     }
 
-    return client.post("/api/search/hybrid", {
+    const response = yield* client.post("/api/search/hybrid", {
       body: HttpBody.unsafeJson(body)
     }).pipe(
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(HybridSearchResponse)),
       Effect.mapError((error) =>
         new HybridSearchError({
           message: "Hybrid search failed",
@@ -142,7 +151,18 @@ const makeSemanticSearchService = Effect.gen(function* () {
         })
       )
     )
-  }
+    return yield* HttpClientResponse.schemaBodyJson(HybridSearchResponse)(response).pipe(
+      Effect.mapError((error) =>
+        new HybridSearchError({
+          message: "Hybrid search response parsing failed",
+          query: params.query,
+          cause: error
+        })
+      )
+    )
+  }) as (
+    params: HybridSearchParams
+  ) => Effect.Effect<typeof HybridSearchResponse.Type, HybridSearchError>
 
   return {
     search,

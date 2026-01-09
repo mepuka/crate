@@ -58,10 +58,13 @@ export class GraphConnectionsService extends Context.Tag("GraphConnectionsServic
 const makeGraphConnectionsService = Effect.gen(function* () {
   const client = yield* GraphConnectionsClient
 
-  const connections = (
+  const connections = Effect.fn("GraphConnectionsService.connections")(function* (
     params: GraphConnectionsRequest
-  ): Effect.Effect<GraphConnectionsResponse, GraphApiError, never> =>
-    client.connections(params)
+  ) {
+    return yield* client.connections(params)
+  }) as (
+    params: GraphConnectionsRequest
+  ) => Effect.Effect<GraphConnectionsResponse, GraphApiError, never>
 
   return { connections } satisfies GraphConnectionsServiceInterface
 })

@@ -225,67 +225,68 @@ const makeLinkFetcherService = Effect.gen(function* () {
   /**
    * Fetch web content via Jina AI Reader
    */
-  const fetch = (
+  const fetch = Effect.fn("LinkFetcherService.fetch")(function* (
     params: FetchLinkParams
-  ): Effect.Effect<FetchLinkResponse, LinkFetchError> =>
-    Effect.gen(function* () {
-      // Jina Reader API: GET https://r.jina.ai/{target-url}
-      // The URL is appended directly after the base URL
-      const targetUrl = params.url;
+  ) {
+    // Jina Reader API: GET https://r.jina.ai/{target-url}
+    // The URL is appended directly after the base URL
+    const targetUrl = params.url;
 
-      const response = yield* client.get(`/${targetUrl}`).pipe(
-        Effect.timeout(config.timeout),
-        Effect.mapError(
-          (error) =>
-            new LinkFetchError({
-              message: `Jina Reader fetch failed: ${error}`,
-              url: params.url,
-              cause: error,
-            })
-        )
-      );
-
-      // Parse Jina response
-      const jinaData = yield* HttpClientResponse.schemaBodyJson(
-        JinaReaderResponse
-      )(response).pipe(
-        Effect.mapError(
-          (error) =>
-            new LinkFetchError({
-              message: `Failed to parse Jina Reader response: ${error}`,
-              url: params.url,
-              cause: error,
-            })
-        )
-      );
-
-      // Check for API errors
-      if (jinaData.code !== 200) {
-        return yield* Effect.fail(
+    const response = yield* client.get(`/${targetUrl}`).pipe(
+      Effect.timeout(config.timeout),
+      Effect.mapError(
+        (error) =>
           new LinkFetchError({
-            message: `Jina Reader API error: status ${jinaData.status}`,
+            message: `Jina Reader fetch failed: ${error}`,
             url: params.url,
+            cause: error,
           })
-        );
-      }
+      )
+    );
 
-      const content = jinaData.data.content;
-      const title = jinaData.data.title || extractTitleFromMarkdown(content);
+    // Parse Jina response
+    const jinaData = yield* HttpClientResponse.schemaBodyJson(
+      JinaReaderResponse
+    )(response).pipe(
+      Effect.mapError(
+        (error) =>
+          new LinkFetchError({
+            message: `Failed to parse Jina Reader response: ${error}`,
+            url: params.url,
+            cause: error,
+          })
+      )
+    );
 
-      // Extract links if requested
-      const links = extractLinksFromMarkdown(
-        content,
-        params.extract_links ?? false
+    // Check for API errors
+    if (jinaData.code !== 200) {
+      return yield* Effect.fail(
+        new LinkFetchError({
+          message: `Jina Reader API error: status ${jinaData.status}`,
+          url: params.url,
+        })
       );
+    }
 
-      return {
-        url: jinaData.data.url,
-        title,
-        content,
-        word_count: countWords(content),
-        links: links as ExtractedLink[],
-      };
-    });
+    const content = jinaData.data.content;
+    const title = jinaData.data.title || extractTitleFromMarkdown(content);
+
+    // Extract links if requested
+    const links = extractLinksFromMarkdown(
+      content,
+      params.extract_links ?? false
+    );
+
+    return {
+      url: jinaData.data.url,
+      title,
+      content,
+      word_count: countWords(content),
+      links: links as ExtractedLink[],
+    };
+  }) as (
+    params: FetchLinkParams
+  ) => Effect.Effect<FetchLinkResponse, LinkFetchError>;
 
   /**
    * Extract MusicBrainz IDs from markdown content

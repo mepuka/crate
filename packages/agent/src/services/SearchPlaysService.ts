@@ -99,29 +99,39 @@ const makeSearchPlaysService = Effect.gen(function* () {
   const config = yield* FaissConfig
   const client = yield* makeJsonClient(config.baseUrl)
 
-  const timeline = (
+  const timeline = Effect.fn("SearchPlaysService.timeline")(function* (
     params: SearchTimelineParams = {}
-  ): Effect.Effect<typeof TimelineResponse.Type, SearchPlaysError> =>
-    client
-      .get("/api/plays/timeline", {
-        urlParams: buildUrlParams(params, timelineParamKeyMap),
-      })
-      .pipe(
-        Effect.flatMap(HttpClientResponse.schemaBodyJson(TimelineResponse)),
-        Effect.mapError(
-          (error) =>
-            new SearchPlaysError({
-              message: "Timeline search failed",
-              query: JSON.stringify(params),
-              cause: error,
-            })
-        )
-      );
+  ) {
+    const response = yield* client.get("/api/plays/timeline", {
+      urlParams: buildUrlParams(params, timelineParamKeyMap),
+    }).pipe(
+      Effect.mapError(
+        (error) =>
+          new SearchPlaysError({
+            message: "Timeline search failed",
+            query: JSON.stringify(params),
+            cause: error,
+          })
+      )
+    )
+    return yield* HttpClientResponse.schemaBodyJson(TimelineResponse)(response).pipe(
+      Effect.mapError(
+        (error) =>
+          new SearchPlaysError({
+            message: "Timeline response parsing failed",
+            query: JSON.stringify(params),
+            cause: error,
+          })
+      )
+    )
+  }) as (
+    params?: SearchTimelineParams
+  ) => Effect.Effect<typeof TimelineResponse.Type, SearchPlaysError>;
 
-  const count = (
+  const count = Effect.fn("SearchPlaysService.count")(function* (
     mbid: string,
     entityType: MbEntityType
-  ): Effect.Effect<number, SearchPlaysError> => {
+  ) {
     // Map entity type to the correct URL param
     const paramMap: Record<MbEntityType, string> = {
       artist: "artist_mbid",
@@ -135,23 +145,33 @@ const makeSearchPlaysService = Effect.gen(function* () {
 
     const paramName = paramMap[entityType];
 
-    return client
-      .get("/api/plays/count", {
-        urlParams: { [paramName]: mbid },
-      })
-      .pipe(
-        Effect.flatMap(HttpClientResponse.schemaBodyJson(PlayCountResponse)),
-        Effect.map((response) => response.count),
-        Effect.mapError(
-          (error) =>
-            new SearchPlaysError({
-              message: `Play count failed for ${entityType}`,
-              query: mbid,
-              cause: error,
-            })
-        )
-      );
-  };
+    const response = yield* client.get("/api/plays/count", {
+      urlParams: { [paramName]: mbid },
+    }).pipe(
+      Effect.mapError(
+        (error) =>
+          new SearchPlaysError({
+            message: `Play count failed for ${entityType}`,
+            query: mbid,
+            cause: error,
+          })
+      )
+    )
+    const data = yield* HttpClientResponse.schemaBodyJson(PlayCountResponse)(response).pipe(
+      Effect.mapError(
+        (error) =>
+          new SearchPlaysError({
+            message: `Play count response parsing failed for ${entityType}`,
+            query: mbid,
+            cause: error,
+          })
+      )
+    )
+    return data.count
+  }) as (
+    mbid: string,
+    entityType: MbEntityType
+  ) => Effect.Effect<number, SearchPlaysError>;
 
   return {
     timeline,

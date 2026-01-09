@@ -399,37 +399,43 @@ const makeInsightSessionService = Effect.gen(function* () {
   // Insight Management
   // =========================================================================
 
-  const addInsight = (insight: InsightSummary): Effect.Effect<void> =>
-    Ref.update(stateRef, (state) => ({
+  const addInsight = Effect.fn("InsightSessionService.addInsight")(function* (
+    insight: InsightSummary
+  ) {
+    yield* Ref.update(stateRef, (state) => ({
       ...state,
       insights: [...state.insights, insight]
     }))
+  }) as (insight: InsightSummary) => Effect.Effect<void>
 
-  const getRecentInsights = (
+  const getRecentInsights = Effect.fn("InsightSessionService.getRecentInsights")(function* (
     params: Partial<GetRecentInsightsParams> = {}
-  ): Effect.Effect<GetRecentInsightsResponse> =>
-    Ref.get(stateRef).pipe(
-      Effect.map((state) => {
-        const filtered = filterInsights(state.insights, params)
-        const limit = params.limit ?? 10
+  ) {
+    const state = yield* Ref.get(stateRef)
+    const filtered = filterInsights(state.insights, params)
+    const limit = params.limit ?? 10
 
-        return {
-          insights: filtered.slice(-limit),
-          total: filtered.length,
-          sessionId: state.sessionId
-        }
-      })
-    )
+    return {
+      insights: filtered.slice(-limit),
+      total: filtered.length,
+      sessionId: state.sessionId
+    }
+  }) as (
+    params?: GetRecentInsightsParams
+  ) => Effect.Effect<GetRecentInsightsResponse>
 
-  const seedWithExistingInsights = (
+  const seedWithExistingInsights = Effect.fn("InsightSessionService.seedWithExistingInsights")(function* (
     insights: readonly InsightSummary[]
-  ): Effect.Effect<void> =>
-    Ref.update(stateRef, (state) => ({
+  ) {
+    yield* Ref.update(stateRef, (state) => ({
       ...state,
       // Prepend existing insights so they appear first (oldest first)
       // New insights produced this session will be appended after
       insights: [...insights, ...state.insights]
     }))
+  }) as (
+    insights: readonly InsightSummary[]
+  ) => Effect.Effect<void>
 
   const clear = (): Effect.Effect<void> =>
     Ref.update(stateRef, (state) => ({
@@ -549,22 +555,24 @@ const makeInsightSessionService = Effect.gen(function* () {
   // Session Export/Import
   // =========================================================================
 
-  const exportSession = (): Effect.Effect<SessionExport> =>
-    Ref.get(stateRef).pipe(
-      Effect.map((state) => ({
-        sessionId: state.sessionId,
-        mode: state.mode,
-        startedAt: state.startedAt,
-        playIds: state.playIds,
-        insights: state.insights,
-        toolCalls: state.toolCalls,
-        researchSteps: state.researchSteps,
-        entities: Array.from(HashMap.values(state.entities))
-      }))
-    )
+  const exportSession = Effect.fn("InsightSessionService.exportSession")(function* () {
+    const state = yield* Ref.get(stateRef)
+    return {
+      sessionId: state.sessionId,
+      mode: state.mode,
+      startedAt: state.startedAt,
+      playIds: state.playIds,
+      insights: state.insights,
+      toolCalls: state.toolCalls,
+      researchSteps: state.researchSteps,
+      entities: Array.from(HashMap.values(state.entities))
+    }
+  }) as () => Effect.Effect<SessionExport>
 
-  const importSession = (session: SessionExport): Effect.Effect<void> =>
-    Ref.set(stateRef, {
+  const importSession = Effect.fn("InsightSessionService.importSession")(function* (
+    session: SessionExport
+  ) {
+    yield* Ref.set(stateRef, {
       sessionId: session.sessionId,
       mode: session.mode,
       startedAt: session.startedAt,
@@ -576,6 +584,7 @@ const makeInsightSessionService = Effect.gen(function* () {
         session.entities.map((e) => [e.mbid, e] as const)
       )
     })
+  }) as (session: SessionExport) => Effect.Effect<void>
 
   // =========================================================================
   // Session Metadata
