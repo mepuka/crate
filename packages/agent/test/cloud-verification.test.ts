@@ -13,7 +13,7 @@
  * @module
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll } from "@effect/vitest";
 import { Effect, Layer, Exit } from "effect";
 import { FetchHttpClient } from "@effect/platform";
 import {
