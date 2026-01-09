@@ -14,12 +14,21 @@
 
 import { BrowserWorkerRunner } from "@effect/platform-browser";
 import { WorkerRunner } from "@effect/platform";
-import { Effect, Layer, Context, Schema, Match } from "effect";
+import { Effect, Layer, Context, Schema, Match, Data } from "effect";
 import {
   AlbumArtworkData,
   type WorkerRequest,
 } from "./album-bar-worker-protocol";
 import { PlayResult } from "@crate/api";
+
+// ============================================================================
+// Errors
+// ============================================================================
+
+class ImagePreloadError extends Data.TaggedError("ImagePreloadError")<{
+  readonly message: string;
+  readonly url: string;
+}> {}
 
 /**
  * AlbumArtworkService
@@ -113,7 +122,7 @@ const AlbumArtworkServiceLive = Layer.succeed(
         for (const url of urls) {
           const fetchEffect = Effect.tryPromise({
             try: () => fetch(url, { mode: "cors" }),
-            catch: () => new Error(`Failed to fetch ${url}`),
+            catch: () => new ImagePreloadError({ message: "Failed to fetch", url }),
           });
 
           const result = yield* Effect.either(fetchEffect);

@@ -105,6 +105,68 @@ End with curated lists:
 
 Include ALL play IDs referenced anywhere in the summary in the playIds array.`
 
+export const WRITER_JSON_FORMAT = `## JSON Output Format - CRITICAL
+
+You MUST output valid JSON with these SEPARATE arrays. Each array serves a different purpose:
+
+### Array Separation Rules
+
+| Array | What Goes Here | NOT Here |
+|-------|---------------|----------|
+| highlights | 5-8 curated standout moments | NOT all discoveries |
+| discoveries | ALL first plays from research | NOT highlights |
+| freshReleases | ALL recent releases from research | NOT highlights |
+| rotationUpdates | ALL rotation status changes | NOT highlights |
+| themes | ALL cross-show patterns | Include in highlights too |
+| culturalMoments | ALL birthdays/anniversaries | Include in highlights too |
+
+### Example JSON Structure
+
+\`\`\`json
+{
+  "headline": "Seattle's Sound Took Over Tuesday",
+  "openingNarrative": "The day began with...[2-3 paragraphs]",
+
+  "highlights": [
+    {"playId": 1234, "headline": "...", "description": "...", "category": "discovery", "showName": "Morning Show"},
+    {"playId": 2345, "headline": "...", "description": "...", "category": "local", "showName": "Afternoon Show"}
+  ],
+
+  "discoveries": [
+    {"playId": 1234, "artist": "...", "song": "...", "album": null, "discoveryType": "first_play", "blurb": "..."},
+    {"playId": 5678, "artist": "...", "song": "...", "album": "...", "discoveryType": "first_artist", "blurb": "..."}
+  ],
+
+  "freshReleases": [
+    {"playId": 3456, "artist": "...", "song": "...", "album": "...", "releaseDate": "2025-01-06", "releaseType": "single", "isLocal": false, "blurb": "..."}
+  ],
+
+  "rotationUpdates": [
+    {"playId": 4567, "artist": "...", "song": "...", "rotationStatus": "Heavy", "playCountToday": 3, "blurb": "..."}
+  ],
+
+  "themes": [
+    {"title": "ESNS 2025 Showcase", "description": "...", "playIds": [1111, 2222, 3333], "showNames": ["Morning Show"]}
+  ],
+
+  "culturalMoments": [
+    {"type": "birthday", "title": "...", "description": "...", "playIds": [9999], "source": "DJ comment"}
+  ],
+
+  "playIds": [1234, 2345, 3456, 4567, 5678, 1111, 2222, 3333, 9999],
+  "topPickIds": [1234, 3456, 4567],
+  "newMusicPlaylistIds": [3456, 5678]
+}
+\`\`\`
+
+### IMPORTANT
+
+- **discoveries array**: Contains EVERY first play from research, with full details
+- **freshReleases array**: Contains EVERY recent release from research, with full details
+- **highlights array**: CURATED selection (5-8) of the most interesting moments to showcase
+- A play CAN appear in both highlights AND discoveries/freshReleases - they serve different purposes
+- DO NOT leave discoveries or freshReleases empty if research found items for them`
+
 export const WRITER_TONE = `## Tone Guidelines
 
 **DO:**
@@ -133,6 +195,138 @@ export const WRITER_TONE = `## Tone Guidelines
 
 ❌ "A popular song was played that hadn't been played in a while."`
 
+/**
+ * Build data requirements section with exact counts from research
+ *
+ * This section tells the writer EXACTLY how many items are available
+ * and requires them to populate corresponding output arrays.
+ */
+export interface DataRequirementsCounts {
+  discoveries: number
+  freshReleases: number
+  rotationUpdates: number
+  themes: number
+  culturalMoments: number
+  notablePlays: number
+}
+
+export const buildDataRequirementsSection = (counts: DataRequirementsCounts): string => {
+  const parts: string[] = []
+
+  parts.push(`## Data Requirements - MANDATORY`)
+  parts.push("")
+  parts.push(`The research phase found the following items. You MUST include ALL of them in your output:`)
+  parts.push("")
+  parts.push(`| Section | Research Found | Your Output Must Have |`)
+  parts.push(`|---------|---------------|----------------------|`)
+
+  if (counts.discoveries > 0) {
+    parts.push(`| **discoveries** | ${counts.discoveries} items | EXACTLY ${counts.discoveries} items |`)
+  }
+  if (counts.freshReleases > 0) {
+    parts.push(`| **freshReleases** | ${counts.freshReleases} items | EXACTLY ${counts.freshReleases} items |`)
+  }
+  if (counts.rotationUpdates > 0) {
+    parts.push(`| **rotationUpdates** | ${counts.rotationUpdates} items | EXACTLY ${counts.rotationUpdates} items |`)
+  }
+  if (counts.themes > 0) {
+    parts.push(`| **themes** | ${counts.themes} items | EXACTLY ${counts.themes} items |`)
+  }
+  if (counts.culturalMoments > 0) {
+    parts.push(`| **culturalMoments** | ${counts.culturalMoments} items | EXACTLY ${counts.culturalMoments} items |`)
+  }
+  if (counts.notablePlays > 0) {
+    parts.push(`| **notablePlays** | ${counts.notablePlays} items | EXACTLY ${counts.notablePlays} items |`)
+  }
+  parts.push("")
+
+  parts.push(`### Field Mapping Instructions`)
+  parts.push("")
+
+  if (counts.discoveries > 0) {
+    parts.push(`**discoveries** (${counts.discoveries} required):`)
+    parts.push(`For EACH discovery in the research, output:`)
+    parts.push(`- playId: COPY the exact playId from research`)
+    parts.push(`- artist, song, album: COPY from research`)
+    parts.push(`- discoveryType: COPY from research (first_play, first_artist, first_album)`)
+    parts.push(`- blurb: Write 1-2 sentences expanding on significance`)
+    parts.push("")
+  }
+
+  if (counts.freshReleases > 0) {
+    parts.push(`**freshReleases** (${counts.freshReleases} required):`)
+    parts.push(`For EACH fresh release in the research, output:`)
+    parts.push(`- playId: COPY the exact playId from research`)
+    parts.push(`- artist, song, album: COPY from research`)
+    parts.push(`- releaseDate, releaseType, isLocal: COPY from research`)
+    parts.push(`- blurb: Write 1-2 sentences about the release context`)
+    parts.push("")
+  }
+
+  if (counts.culturalMoments > 0) {
+    parts.push(`**culturalMoments** (${counts.culturalMoments} required):`)
+    parts.push(`For EACH cultural moment in the research, output:`)
+    parts.push(`- type: COPY from research (birthday, anniversary, death, event, etc.)`)
+    parts.push(`- title: Create a short headline for this moment`)
+    parts.push(`- description: Expand on the significance`)
+    parts.push(`- playIds: COPY from research`)
+    parts.push(`- source: DJ comment or null`)
+    parts.push("")
+  }
+
+  if (counts.themes > 0) {
+    parts.push(`**themes** (${counts.themes} required):`)
+    parts.push(`For EACH theme in the research, output:`)
+    parts.push(`- title: Theme name`)
+    parts.push(`- description: Expand on the cross-show pattern`)
+    parts.push(`- playIds: COPY all relevant play IDs`)
+    parts.push(`- showNames: List show names involved`)
+    parts.push("")
+  }
+
+  if (counts.rotationUpdates > 0) {
+    parts.push(`**rotationUpdates** (${counts.rotationUpdates} required):`)
+    parts.push(`For EACH rotation update in the research, output:`)
+    parts.push(`- playId: COPY the exact playId from research`)
+    parts.push(`- artist, song: COPY from research`)
+    parts.push(`- rotationStatus: COPY from research (Heavy, Medium, Light, New)`)
+    parts.push(`- playCountToday: COPY from research`)
+    parts.push(`- blurb: Write 1 sentence about rotation significance (or null)`)
+    parts.push("")
+  }
+
+  if (counts.notablePlays > 0) {
+    parts.push(`**notablePlays** (${counts.notablePlays} required):`)
+    parts.push(`For EACH notable play in the research, output as a highlight:`)
+    parts.push(`- playId: COPY the exact playId from research`)
+    parts.push(`- headline: Short attention-grabbing headline`)
+    parts.push(`- description: 1-2 sentences expanding on why it's notable`)
+    parts.push(`- category: Map from research (rare→rare, request→cultural, live→cultural, deep_cut→rare, connection→connection, dj_pick→theme)`)
+    parts.push(`- showName: COPY show context from research or null`)
+    parts.push("")
+  }
+
+  parts.push(`### Verification Before Output`)
+  parts.push("")
+  parts.push(`Before generating JSON, count your arrays:`)
+
+  const checks: string[] = []
+  if (counts.discoveries > 0) checks.push(`- discoveries.length === ${counts.discoveries}`)
+  if (counts.freshReleases > 0) checks.push(`- freshReleases.length === ${counts.freshReleases}`)
+  if (counts.rotationUpdates > 0) checks.push(`- rotationUpdates.length === ${counts.rotationUpdates}`)
+  if (counts.themes > 0) checks.push(`- themes.length === ${counts.themes}`)
+  if (counts.culturalMoments > 0) checks.push(`- culturalMoments.length === ${counts.culturalMoments}`)
+  if (counts.notablePlays > 0) checks.push(`- highlights should include ${counts.notablePlays} notable plays`)
+
+  if (checks.length > 0) {
+    parts.push(checks.join("\n"))
+    parts.push("")
+    parts.push(`If any count is wrong, GO BACK and add missing items.`)
+  }
+
+  return parts.join("\n")
+}
+
 // =============================================================================
 // Dynamic Prompt Builders
 // =============================================================================
@@ -142,9 +336,9 @@ export const WRITER_TONE = `## Tone Guidelines
  */
 export interface ResearchContextOptions {
   /** Compact play lookup table for ID resolution */
-  readonly playLookup?: ReadonlyArray<PlayLookupEntry>
+  readonly playLookup?: ReadonlyArray<PlayLookupEntry> | undefined
   /** Categorized play IDs for schema population */
-  readonly categorizedIds?: CategorizedPlayIds
+  readonly categorizedIds?: CategorizedPlayIds | undefined
 }
 
 /**
@@ -453,6 +647,8 @@ export const buildWriterSystemPrompt = (): string => {
     WRITER_PHILOSOPHY,
     "",
     WRITER_STRUCTURE,
+    "",
+    WRITER_JSON_FORMAT,
     "",
     WRITER_TONE
   ].join("\n")

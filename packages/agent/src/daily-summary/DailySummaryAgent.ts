@@ -16,23 +16,10 @@ import { Effect, Layer, Clock, Data, Config, Duration } from "effect"
 import { LanguageModel } from "@effect/ai"
 import { FaissClient } from "../FaissClient.js"
 import { type TokenUsage, emptyTokenUsage, addTokenUsage } from "../multi-agent/types.js"
-import {
-  DayDataCollector,
-  type DayData
-} from "./DayDataCollector.js"
-import {
-  SummaryResearchAgent,
-  type ResearchResult
-} from "./SummaryResearchAgent.js"
-import {
-  SummaryWriterAgent,
-  type WriterResult
-} from "./SummaryWriterAgent.js"
-import {
-  SummaryPolishAgent,
-  type PolishResult,
-  type PolishFixes
-} from "./SummaryPolishAgent.js"
+import { DayDataCollector } from "./DayDataCollector.js"
+import { SummaryResearchAgent } from "./SummaryResearchAgent.js"
+import { SummaryWriterAgent } from "./SummaryWriterAgent.js"
+import { SummaryPolishAgent, type PolishFixes } from "./SummaryPolishAgent.js"
 import type { ResearchContextType, DailySummaryType } from "./schemas.js"
 import {
   extractReferencedPlayIds,
@@ -64,7 +51,7 @@ export interface PipelineResult {
   }
 
   // Polish phase report (what was fixed)
-  readonly polishFixes?: PolishFixes
+  readonly polishFixes?: PolishFixes | undefined
 
   // Token usage across phases
   readonly tokenUsage: TokenUsage
@@ -77,11 +64,11 @@ export interface PipelineResult {
  */
 export interface PipelineOptions {
   /** Date to generate summary for (YYYY-MM-DD). Defaults to yesterday. */
-  readonly date?: string
+  readonly date?: string | undefined
   /** Force regeneration even if summary exists */
-  readonly regenerate?: boolean
+  readonly regenerate?: boolean | undefined
   /** Skip persistence (for testing) */
-  readonly skipPersistence?: boolean
+  readonly skipPersistence?: boolean | undefined
 }
 
 /**
@@ -223,24 +210,50 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
       const researchAgent = yield* SummaryResearchAgent
       const writerAgent = yield* SummaryWriterAgent
       const polishAgent = yield* SummaryPolishAgent
-      // TODO: Use faissClient for persistence when endpoints are ready
-      const _faissClient = yield* FaissClient
+      const faissClient = yield* FaissClient
 
-      // Simple in-memory persistence for now
-      // TODO: Replace with actual FAISS API calls when endpoints are ready
+      /**
+       * Persist research context to the database via FAISS API
+       *
+       * Stores the full research findings (discoveries, themes, cultural moments, etc.)
+       * which are referenced by the summary for future analysis.
+       */
       const persistResearch = (
         date: string,
         context: ResearchContextType,
         durationMs: number,
-        toolCallCount: number
+        toolCallCount: number,
+        tokenUsage?: { inputTokens: number; outputTokens: number; totalTokens: number }
       ): Effect.Effect<number, Error> =>
         Effect.gen(function* () {
           yield* Effect.log(`Persisting research for ${date}`)
-          // TODO: Call POST /api/summary/research
-          // For now, return a mock ID
-          return Date.now()
+
+          const response = yield* faissClient.saveDailyResearch(
+            date,
+            context as unknown as Record<string, unknown>,
+            durationMs,
+            toolCallCount,
+            tokenUsage ? {
+              inputTokens: tokenUsage.inputTokens,
+              outputTokens: tokenUsage.outputTokens,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+              totalTokens: tokenUsage.totalTokens
+            } : undefined
+          ).pipe(
+            Effect.mapError(e => new Error(`Failed to persist research: ${e.message}`))
+          )
+
+          yield* Effect.log(`Research persisted: id=${response.id}, status=${response.status}`)
+          return response.id
         })
 
+      /**
+       * Persist final summary to the database via FAISS API
+       *
+       * Stores the complete summary including headline, narrative, highlights,
+       * discoveries, fresh releases, themes, and all play references.
+       */
       const persistSummary = (
         date: string,
         summary: DailySummaryType,
@@ -248,9 +261,17 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
       ): Effect.Effect<number, Error> =>
         Effect.gen(function* () {
           yield* Effect.log(`Persisting summary for ${date}`)
-          // TODO: Call POST /api/summary/save
-          // For now, return a mock ID
-          return Date.now()
+
+          const response = yield* faissClient.saveDailySummary(
+            date,
+            summary as unknown as Record<string, unknown>,
+            researchId
+          ).pipe(
+            Effect.mapError(e => new Error(`Failed to persist summary: ${e.message}`))
+          )
+
+          yield* Effect.log(`Summary persisted: id=${response.id}, status=${response.status}, regenerated_count=${response.regenerated_count}`)
+          return response.id
         })
 
       const run = (
@@ -316,7 +337,8 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
               date,
               researchResult.context,
               researchResult.durationMs,
-              researchResult.toolCallCount
+              researchResult.toolCallCount,
+              researchResult.tokenUsage
             ).pipe(
               Effect.mapError(wrapPhaseError("persistence", "Research persistence"))
             )

@@ -21,7 +21,7 @@ import { useState, useMemo, useCallback } from "react"
 import { useAtomValue } from "@effect-atom/atom-react"
 import { HashMap, Chunk } from "effect"
 import { linksByCategoryAtom } from "@/atoms/link-atoms"
-import { ExtractedLink } from "@/lib/links/models"
+import type { ExtractedLink } from "@/lib/links/models"
 import { ExternalLink, Music, Newspaper, Globe, Video } from "lucide-react"
 import { cn } from "@/lib/utils"
 

@@ -91,7 +91,9 @@ const makeContextListHandler =
           message
         }
       }),
-      Effect.tap(() => Effect.logDebug("context_list executed"))
+      Effect.tap((result) =>
+        Effect.log(`context_list: returned ${result.artifacts.length}/${result.total} artifacts`)
+      )
     )
 
 /**
@@ -124,9 +126,12 @@ const makeContextReadHandler =
         }
 
         const fromLine = params.from_line ?? 0
-        // Default to 50 lines to prevent context overflow
-        // Model can request more if needed via line_limit param
-        const lineLimit = params.line_limit ?? 50
+        // Default to 15 lines (~2.25K tokens) to prevent chat history explosion
+        // HARD CAP at 25 lines (~3.75K tokens) - model cannot override this
+        // This prevents quadratic context growth in iterative agents
+        const MAX_LINES = 25
+        const requestedLimit = params.line_limit ?? 15
+        const lineLimit = Math.min(requestedLimit, MAX_LINES)
 
         // Retrieve content with pagination
         const content = yield* service.retrieve(params.artifact_id, {
@@ -152,7 +157,9 @@ const makeContextReadHandler =
           has_more: hasMore
         }
       }),
-      Effect.tap(() => Effect.logDebug("context_read executed"))
+      Effect.tap((result) =>
+        Effect.log(`context_read: ${params.artifact_id} lines ${result.from_line}-${result.from_line + result.lines_returned}/${result.total_lines} (${result.content.length} chars)`)
+      )
     )
 
 /**
@@ -163,11 +170,20 @@ const makeContextSearchHandler =
   (params: ContextSearchParams): Effect.Effect<ContextSearchResponse> =>
     pipe(
       Effect.gen(function* () {
+        // HARD CAPS to prevent context overflow
+        // Each match with context = ~3 lines × ~600 bytes = ~1.8KB
+        // 10 matches × 1.8KB = ~18KB max per search
+        const MAX_MATCHES = 10
+        const MAX_CONTEXT_LINES = 1
+
+        const requestedLimit = params.limit ?? 10
+        const requestedContext = params.context_lines ?? 1
+
         const results = yield* service.search({
           pattern: params.pattern,
           artifactId: params.artifact_id,
-          contextLines: params.context_lines ?? 2,
-          limit: params.limit ?? 20
+          contextLines: Math.min(requestedContext, MAX_CONTEXT_LINES),
+          limit: Math.min(requestedLimit, MAX_MATCHES)
         }).pipe(
           Effect.catchAll(() => Effect.succeed([]))
         )
@@ -193,7 +209,9 @@ const makeContextSearchHandler =
           message
         }
       }),
-      Effect.tap(() => Effect.logDebug("context_search executed"))
+      Effect.tap((result) =>
+        Effect.log(`context_search: pattern="${params.pattern}" found ${result.total_matches} matches in ${result.artifacts_searched} artifacts`)
+      )
     )
 
 /**
@@ -223,8 +241,10 @@ const makeContextTailHandler =
           }
         }
 
-        // Default to 30 lines to prevent context overflow
-        const requestedLines = params.lines ?? 30
+        // Default to 15 lines (~2.25K tokens) to prevent chat history explosion
+        // HARD CAP at 25 lines to match context_read limits
+        const MAX_LINES = 25
+        const requestedLines = Math.min(params.lines ?? 15, MAX_LINES)
         const startLine = Math.max(0, metadataResult.lineCount - requestedLines)
 
         // Retrieve from calculated start line
@@ -246,7 +266,9 @@ const makeContextTailHandler =
           start_line: startLine
         }
       }),
-      Effect.tap(() => Effect.logDebug("context_tail executed"))
+      Effect.tap((result) =>
+        Effect.log(`context_tail: ${params.artifact_id} last ${result.lines_returned}/${result.total_lines} lines (${result.content.length} chars)`)
+      )
     )
 
 // =============================================================================

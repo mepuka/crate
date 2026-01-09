@@ -22,12 +22,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { FaissClient, FaissClientLive } from "../FaissClient.js";
+import { LinerNoteGenerationServiceLive } from "../services/LinerNoteGenerationService.js";
 import {
-  LinerNoteGenerationService,
-  LinerNoteGenerationServiceLive,
-} from "../services/LinerNoteGenerationService.js";
-import {
-  LinerNoteOrchestrator,
   LinerNoteOrchestratorLive,
   orchestrateLinerNote,
   type OrchestrateLinerNoteInput,

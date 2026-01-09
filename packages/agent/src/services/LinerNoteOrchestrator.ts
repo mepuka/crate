@@ -12,15 +12,12 @@
 import { Context, Data, Effect, Layer, Schema, pipe } from "effect";
 import {
   LinerNoteGenerationService,
-  LinerNoteGenerationServiceLive,
   generateLinerNote,
   type LinerNoteRequest,
-  type LinerNoteResponse,
 } from "./LinerNoteGenerationService.js";
 import {
   GcsStorageService,
   GcsStorageServiceFull,
-  type UploadResult,
 } from "./GcsStorageService.js";
 import * as crypto from "node:crypto";
 
@@ -36,34 +33,34 @@ export interface OrchestrateLinerNoteInput {
   /** Base64-encoded album art */
   readonly albumArtBase64: string;
   /** MIME type of album art */
-  readonly mimeType?: string;
+  readonly mimeType?: string | undefined;
   /** Release year for era detection */
   readonly releaseYear: number | null;
   /** Artist name */
   readonly artistName: string;
   /** Album name */
-  readonly albumName?: string;
+  readonly albumName?: string | undefined;
   /** Track title */
-  readonly trackTitle?: string;
+  readonly trackTitle?: string | undefined;
   /** Narrative/comment for context */
-  readonly narrative?: string;
+  readonly narrative?: string | undefined;
   /** Visual style preference */
-  readonly style?: "art-forward" | "editorial" | "archival" | "collage";
+  readonly style?: "art-forward" | "editorial" | "archival" | "collage" | undefined;
   /** Graph context (collaborators, labels, etc.) */
   readonly graphContext?: {
-    readonly collaborators?: readonly string[];
-    readonly labels?: readonly string[];
-    readonly relatedArtists?: readonly string[];
-    readonly memberOf?: readonly string[];
-  };
+    readonly collaborators?: readonly string[] | undefined;
+    readonly labels?: readonly string[] | undefined;
+    readonly relatedArtists?: readonly string[] | undefined;
+    readonly memberOf?: readonly string[] | undefined;
+  } | undefined;
   /** Research context from agent discoveries */
   readonly researchContext?: {
-    readonly findings?: readonly string[];
-    readonly storyHook?: string;
-    readonly sceneAssociations?: readonly string[];
-    readonly mood?: string;
-    readonly djCommentExcerpt?: string;
-  };
+    readonly findings?: readonly string[] | undefined;
+    readonly storyHook?: string | undefined;
+    readonly sceneAssociations?: readonly string[] | undefined;
+    readonly mood?: string | undefined;
+    readonly djCommentExcerpt?: string | undefined;
+  } | undefined;
 }
 
 /**
@@ -82,7 +79,7 @@ export interface OrchestrateLinerNoteResult {
   /** Style used */
   readonly style: string;
   /** Model's notes about the generation */
-  readonly modelNotes?: string;
+  readonly modelNotes?: string | undefined;
   /** Hash of generation params (for deduplication) */
   readonly paramsHash: string;
   /** Generation timestamp */

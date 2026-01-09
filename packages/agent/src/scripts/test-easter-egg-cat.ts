@@ -48,7 +48,7 @@ const REFERENCES_DIR = path.join(__dirname, "../../references/crate-cat");
 const OUTPUT_DIR = path.join(__dirname, "../../test-output/easter-egg");
 
 // Diverse test albums - different genres, eras, and visual styles
-const TEST_ALBUMS = [
+const DEFAULT_TEST_ALBUMS = [
   {
     url: "https://dn720703.ca.archive.org/0/items/mbid-aa90104a-ec1e-4de3-b954-12a63ea39747/mbid-aa90104a-ec1e-4de3-b954-12a63ea39747-33233332974_thumb500.jpg",
     name: "King Stingray",
@@ -70,6 +70,11 @@ const TEST_ALBUMS = [
     name: "Blonde Frank Ocean",
   },
 ];
+
+// Allow overriding with ALBUM_ART env var
+const TEST_ALBUMS = process.env.ALBUM_ART
+  ? [{ url: process.env.ALBUM_ART, name: process.env.ALBUM_NAME || "Custom Album" }]
+  : DEFAULT_TEST_ALBUMS;
 
 const shouldOpen = process.argv.includes("--open");
 

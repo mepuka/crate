@@ -7,7 +7,7 @@
  * @module
  */
 
-import { Context, Data, Effect, Layer, Config, Option } from "effect";
+import { Context, Data, Effect, Layer, Config } from "effect";
 
 // =============================================================================
 // Errors

@@ -15,12 +15,12 @@ import { Chunk, HashMap, Option, pipe } from "effect"
 import { nanoid } from "nanoid"
 import {
   PlayLinks,
-  ExtractedLink,
   YoutubeLink,
   SoundCloudLink,
   KexpLink,
   GenericLink
 } from "./models"
+import type { ExtractedLink } from "./models"
 
 /**
  * URL pattern for extracting links from comment text

@@ -1134,11 +1134,11 @@ Focus on insight types that tell stories (Connection, DiscoveryArc, LocalScene, 
                       artist: play.artist ?? "Unknown",
                       song: play.song ?? "Unknown",
                       album: play.album ?? undefined,
-                      imageUri: play.imageUri,
-                      releaseYear: play.releaseDate
-                        ? new Date(play.releaseDate).getFullYear()
+                      imageUri: play.image_uri,
+                      releaseYear: play.release_date
+                        ? new Date(play.release_date).getFullYear()
                         : null,
-                      artistMbids: play.artistIds ?? [],
+                      artistMbids: play.artist_ids ?? [],
                       comment: play.comment,
                     };
 

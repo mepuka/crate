@@ -16,6 +16,7 @@ import type {
   ArtifactRef,
   CaptureResult
 } from "./types.js"
+import { ArtifactStoreError } from "./types.js"
 import { ArtifactStoreService } from "./ArtifactStoreService.js"
 
 // =============================================================================
@@ -149,7 +150,7 @@ export interface CaptureLargeOptions {
 export const captureLarge = (
   content: string,
   options: CaptureLargeOptions
-): Effect.Effect<CaptureResult, never, ArtifactStoreService> =>
+): Effect.Effect<CaptureResult, ArtifactStoreError, ArtifactStoreService> =>
   Effect.gen(function* () {
     const threshold = options.threshold ?? DEFAULT_CAPTURE_THRESHOLD
     const previewLength = options.previewLength ?? PREVIEW_LENGTH

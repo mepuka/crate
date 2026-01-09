@@ -16,11 +16,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
-  LinerNoteGenerationService,
   LinerNoteGenerationServiceLive,
   generateLinerNote,
   type LinerNoteRequest,
-  type LinerNoteGraphContext,
+  type GraphContext,
 } from "../services/LinerNoteGenerationService.js";
 
 const OUTPUT_DIR = "/tmp/liner-notes-test";
@@ -33,8 +32,27 @@ interface TestCase {
   name: string;
   imagePath: string;
   request: Omit<LinerNoteRequest, "albumArtBase64" | "mimeType">;
-  graphContext?: LinerNoteGraphContext;
+  graphContext?: GraphContext;
 }
+
+// Custom test case from env vars (if ALBUM_ART is set)
+const CUSTOM_TEST_CASE: TestCase | null = process.env.ALBUM_ART ? {
+  name: `Custom: ${process.env.ARTIST || "Custom Artist"} (${process.env.ERA || "2024"})`,
+  imagePath: process.env.ALBUM_ART, // Will be treated as URL
+  request: {
+    playId: 99999,
+    releaseYear: parseInt(process.env.ERA || "2024"),
+    title: process.env.TITLE || `${process.env.ARTIST || "Artist"}'s Musical Journey`,
+    narrative: process.env.NARRATIVE || "A landmark album that defined its era and influenced generations of musicians.",
+    artistName: process.env.ARTIST || "Custom Artist",
+    albumName: process.env.ALBUM || "Custom Album",
+    style: (process.env.STYLE as "art-forward" | "editorial" | "archival" | "collage") || "art-forward",
+  },
+  graphContext: process.env.COLLABORATORS ? {
+    collaborators: process.env.COLLABORATORS.split(","),
+    labels: process.env.LABELS?.split(",") || [],
+  } : undefined,
+} : null;
 
 const TEST_CASES: TestCase[] = [
   {
@@ -120,6 +138,17 @@ const LinerNoteServiceLayer = Layer.provide(
 const testIndex = parseInt(process.env.TEST_INDEX ?? "0");
 const singleTest = process.env.SINGLE_TEST === "true";
 
+// Helper to fetch image from URL
+const fetchImageAsBase64 = async (url: string): Promise<{ base64: string; mimeType: string }> => {
+  const response = await fetch(url);
+  const buffer = await response.arrayBuffer();
+  const contentType = response.headers.get("content-type") || "image/jpeg";
+  return {
+    base64: Buffer.from(buffer).toString("base64"),
+    mimeType: contentType.includes("png") ? "image/png" : "image/jpeg",
+  };
+};
+
 const program = Effect.gen(function* () {
   if (!fs.existsSync(OUTPUT_DIR)) {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -128,7 +157,10 @@ const program = Effect.gen(function* () {
   yield* Console.log(`\n🎨 LinerNoteGenerationService Test`);
   yield* Console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
-  const casesToRun = singleTest ? [TEST_CASES[testIndex]] : TEST_CASES;
+  // Use custom test case if ALBUM_ART is set, otherwise use built-in cases
+  const casesToRun = CUSTOM_TEST_CASE
+    ? [CUSTOM_TEST_CASE]
+    : (singleTest ? [TEST_CASES[testIndex]] : TEST_CASES);
 
   for (let i = 0; i < casesToRun.length; i++) {
     const testCase = casesToRun[i];
@@ -148,17 +180,26 @@ const program = Effect.gen(function* () {
       }
     }
 
-    // Load image
-    if (!fs.existsSync(testCase.imagePath)) {
-      yield* Console.error(`   ⚠️  Image not found: ${testCase.imagePath}`);
-      continue;
+    // Load image (from URL or local file)
+    let albumArtBase64: string;
+    let mimeType: string;
+
+    if (testCase.imagePath.startsWith("http")) {
+      yield* Console.log(`   Fetching: ${testCase.imagePath.slice(0, 60)}...`);
+      const fetched = yield* Effect.promise(() => fetchImageAsBase64(testCase.imagePath));
+      albumArtBase64 = fetched.base64;
+      mimeType = fetched.mimeType;
+      yield* Console.log(`   ✓ Fetched (${Math.round(albumArtBase64.length * 0.75 / 1024)}KB)`);
+    } else {
+      if (!fs.existsSync(testCase.imagePath)) {
+        yield* Console.error(`   ⚠️  Image not found: ${testCase.imagePath}`);
+        continue;
+      }
+      const imageBuffer = fs.readFileSync(testCase.imagePath);
+      albumArtBase64 = imageBuffer.toString("base64");
+      mimeType = testCase.imagePath.endsWith(".png") ? "image/png" : "image/jpeg";
+      yield* Console.log(`   Image: ${path.basename(testCase.imagePath)} (${Math.round(imageBuffer.length / 1024)}KB)`);
     }
-
-    const imageBuffer = fs.readFileSync(testCase.imagePath);
-    const albumArtBase64 = imageBuffer.toString("base64");
-    const mimeType = testCase.imagePath.endsWith(".png") ? "image/png" : "image/jpeg";
-
-    yield* Console.log(`   Image: ${path.basename(testCase.imagePath)} (${Math.round(imageBuffer.length / 1024)}KB)`);
 
     // Build full request
     const request: LinerNoteRequest = {

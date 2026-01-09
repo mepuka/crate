@@ -1,0 +1,28 @@
+diff --git a/dist/cjs/Prompt.js b/dist/cjs/Prompt.js
+index 74630405e568dbdd651e276251983a6d8e801fa1..356a21b7a639b1f87d8b109ff19ed42385f2c821 100644
+--- a/dist/cjs/Prompt.js
++++ b/dist/cjs/Prompt.js
+@@ -708,7 +708,8 @@ const fromResponseParts = parts => {
+             id: part.id,
+             name: part.providerName ?? part.name,
+             params: part.params,
+-            providerExecuted: part.providerExecuted ?? false
++            providerExecuted: part.providerExecuted ?? false,
++            options: part.metadata
+           }));
+           break;
+         }
+diff --git a/dist/esm/Prompt.js b/dist/esm/Prompt.js
+index 05a90df2e63c90c17949eddc742f7ee491e3e095..7021607d2707c6212677028042621db2efaf0640 100644
+--- a/dist/esm/Prompt.js
++++ b/dist/esm/Prompt.js
+@@ -683,7 +683,8 @@ export const fromResponseParts = parts => {
+             id: part.id,
+             name: part.providerName ?? part.name,
+             params: part.params,
+-            providerExecuted: part.providerExecuted ?? false
++            providerExecuted: part.providerExecuted ?? false,
++            options: part.metadata
+           }));
+           break;
+         }

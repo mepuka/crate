@@ -13,7 +13,7 @@
  * @module
  */
 
-import { Effect, Schema, Data, Layer, Context, Option, pipe } from "effect";
+import { Effect, Schema, Data, Layer, Context, pipe } from "effect";
 import * as GoogleClientModule from "@effect/ai-google/GoogleClient";
 
 // Type alias for GoogleClient service
@@ -144,11 +144,11 @@ export type LinerNoteStyle = typeof LinerNoteStyle.Type;
  * Graph context for enriching prompts
  */
 export interface GraphContext {
-  readonly collaborators?: readonly string[];
-  readonly labels?: readonly string[];
-  readonly relatedArtists?: readonly string[];
-  readonly memberOf?: readonly string[];
-  readonly genres?: readonly string[];
+  readonly collaborators?: readonly string[] | undefined;
+  readonly labels?: readonly string[] | undefined;
+  readonly relatedArtists?: readonly string[] | undefined;
+  readonly memberOf?: readonly string[] | undefined;
+  readonly genres?: readonly string[] | undefined;
 }
 
 /**
@@ -159,21 +159,21 @@ export interface GraphContext {
  */
 export interface ResearchContext {
   /** Key findings from agent research (e.g., "First KEXP play in 3 years") */
-  readonly findings?: readonly string[];
+  readonly findings?: readonly string[] | undefined;
   /** Story hook from DiscoveryArc insight (emotional/narrative core) */
-  readonly storyHook?: string;
+  readonly storyHook?: string | undefined;
   /** Connection types discovered (e.g., "member-of", "collaborator-with") */
-  readonly connectionTypes?: readonly string[];
+  readonly connectionTypes?: readonly string[] | undefined;
   /** Scene/movement associations (e.g., "Chicago post-punk", "PNW indie") */
-  readonly sceneAssociations?: readonly string[];
+  readonly sceneAssociations?: readonly string[] | undefined;
   /** Mood/tone inferred from research (e.g., "reunion", "breakthrough", "retrospective") */
-  readonly mood?: string;
+  readonly mood?: string | undefined;
   /** DJ comment excerpt (the human curation signal) */
-  readonly djCommentExcerpt?: string;
+  readonly djCommentExcerpt?: string | undefined;
   /** Notable facts from external sources (Bandcamp, Wikipedia) */
-  readonly externalFacts?: readonly string[];
+  readonly externalFacts?: readonly string[] | undefined;
   /** Time context (e.g., "returning after hiatus", "debut", "anniversary") */
-  readonly timeContext?: string;
+  readonly timeContext?: string | undefined;
 }
 
 /**

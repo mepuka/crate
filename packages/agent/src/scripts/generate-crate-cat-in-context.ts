@@ -53,8 +53,8 @@ const EnhancementServiceLive = Layer.provide(
 const REFERENCES_DIR = path.join(__dirname, "../../references/crate-cat");
 const OUTPUT_DIR = path.join(__dirname, "../../test-output/crate-cat-in-context");
 
-// King Stingray album - the actual album art we're styling the cat to match
-const ALBUM = {
+// Default album - can be overridden with ALBUM_ART env var
+const DEFAULT_ALBUM = {
   url: "https://dn720703.ca.archive.org/0/items/mbid-aa90104a-ec1e-4de3-b954-12a63ea39747/mbid-aa90104a-ec1e-4de3-b954-12a63ea39747-33233332974_thumb500.jpg",
   context: {
     artistName: "King Stingray",
@@ -64,6 +64,20 @@ const ALBUM = {
     isLocal: false,
   },
 };
+
+// Allow overriding with ALBUM_ART env var
+const ALBUM = process.env.ALBUM_ART
+  ? {
+      url: process.env.ALBUM_ART,
+      context: {
+        artistName: process.env.ALBUM_NAME || "Custom Album",
+        albumTitle: process.env.ALBUM_NAME || "Custom Album",
+        releaseYear: parseInt(process.env.ERA || "2024"),
+        genres: (process.env.GENRES || "Rock").split(","),
+        isLocal: false,
+      },
+    }
+  : DEFAULT_ALBUM;
 
 const loadImageAsBase64 = async (imagePath: string): Promise<string> => {
   const buffer = await fs.readFile(imagePath);

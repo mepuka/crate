@@ -261,7 +261,7 @@ const makeLinkFetcherService = Effect.gen(function* () {
 
       // Check for API errors
       if (jinaData.code !== 200) {
-        yield* Effect.fail(
+        return yield* Effect.fail(
           new LinkFetchError({
             message: `Jina Reader API error: status ${jinaData.status}`,
             url: params.url,

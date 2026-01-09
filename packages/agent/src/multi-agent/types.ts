@@ -199,9 +199,31 @@ export const TokenUsage = Schema.Struct({
 export type TokenUsage = typeof TokenUsage.Type;
 
 /**
+ * Mutable version of TokenUsage for accumulation during processing
+ */
+export interface MutableTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+}
+
+/**
  * Create an empty token usage object
  */
 export const emptyTokenUsage = (): TokenUsage => ({
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+});
+
+/**
+ * Create a mutable token usage object for accumulation
+ */
+export const mutableTokenUsage = (): MutableTokenUsage => ({
   inputTokens: 0,
   outputTokens: 0,
   totalTokens: 0,

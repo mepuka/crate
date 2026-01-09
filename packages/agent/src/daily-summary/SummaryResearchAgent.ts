@@ -16,7 +16,7 @@
 import { Effect, Schema, Clock, Data } from "effect"
 import { LanguageModel, Chat, Prompt } from "@effect/ai"
 import { CrateToolkit, CrateToolkitWithContext } from "../tools/definitions.js"
-import { type TokenUsage, emptyTokenUsage } from "../multi-agent/types.js"
+import { type TokenUsage, mutableTokenUsage } from "../multi-agent/types.js"
 import {
   buildResearchSystemPrompt,
   buildDayDataMessage,
@@ -24,15 +24,7 @@ import {
 } from "./prompts/research-prompt.js"
 import type { DayData, DayDataArtifacts } from "./DayDataCollector.js"
 import {
-  ResearchContext,
   type ResearchContextType,
-  DiscoveryFinding,
-  FreshReleaseFinding,
-  RotationFinding,
-  ThemeFinding,
-  CulturalFinding,
-  NotablePlayFinding,
-  GraphConnectionFinding,
   ShowSummary
 } from "./schemas.js"
 
@@ -295,7 +287,7 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
 
           // Track tool calls and token usage
           let totalToolCalls = 0
-          const tokenUsage = emptyTokenUsage()
+          const tokenUsage = mutableTokenUsage()
 
           // =============================================================================
           // Phase 1: Research with tools
@@ -406,19 +398,120 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
           // =============================================================================
           yield* Effect.log("Phase 2: Generating structured research output")
 
-          const outputPrompt = `Based on all the research you've conducted, provide your complete findings as structured JSON.
+          const outputPrompt = `Generate structured JSON containing ALL your research findings.
 
-Include:
-- All discoveries (first plays, first artists)
-- Fresh releases you identified
-- Rotation updates
-- Themes detected across shows
-- Cultural moments extracted from DJ comments
-- Notable plays worth highlighting
-- Graph connections discovered
-- Your research notes and suggested narrative angles
+CRITICAL: Do NOT skip findings. If you found birthdays, themes, or discoveries during research, they MUST appear in the output.
 
-Output JSON matching the ResearchContext schema.`
+## Field-by-Field Instructions:
+
+### discoveries (REQUIRED if you found any first plays/first artists)
+For EACH first-ever KEXP play or first-ever artist you identified:
+{
+  "playId": <number from your research>,
+  "artist": "<artist name>",
+  "song": "<song title>",
+  "album": "<album name or null>",
+  "discoveryType": "first_play" | "first_artist" | "first_album",
+  "significance": "<why this matters - 1-2 sentences>",
+  "relatedContext": "<any DJ comment or context>"
+}
+
+### freshReleases (REQUIRED if you found recent releases)
+For EACH recently released track (2024-2025):
+{
+  "playId": <number>,
+  "artist": "<artist>",
+  "song": "<song>",
+  "album": "<album or null>",
+  "releaseDate": "<YYYY-MM-DD or null>",
+  "releaseType": "single" | "album" | "ep" | "compilation" | "unknown",
+  "isLocal": true | false,
+  "labelInfo": "<label name or null>",
+  "context": "<producer, tour info, or other context>"
+}
+
+### rotationUpdates (REQUIRED if you found rotation status changes)
+For EACH track with rotation status (Heavy, Medium, Light, New):
+{
+  "playId": <number>,
+  "artist": "<artist>",
+  "song": "<song>",
+  "rotationStatus": "Heavy" | "Medium" | "Light" | "New" | null,
+  "previousStatus": "<previous rotation status or null>",
+  "playCountToday": <number of times played today>,
+  "significance": "<why this rotation matters or null>"
+}
+
+### themes (REQUIRED if you found cross-show patterns)
+For EACH thematic pattern spanning 2+ shows or 3+ plays:
+{
+  "theme": "<short name, e.g., 'ESNS 2025 Showcase'>",
+  "description": "<1-2 sentences explaining the pattern>",
+  "playIds": [<all relevant play IDs>],
+  "showIds": [<show numbers>],
+  "crossShowConnections": "<how theme manifests across shows>",
+  "suggestedNarrative": "<story angle for the writer>"
+}
+
+### culturalMoments (REQUIRED if you found birthdays/anniversaries/events)
+For EACH birthday, anniversary, death, or cultural event from DJ comments:
+{
+  "type": "birthday" | "anniversary" | "death" | "event" | "theme_day" | "other",
+  "subject": "<person or album name>",
+  "description": "<what happened, e.g., 'Troy Van Leeuwen turns 55'>",
+  "playIds": [<related play IDs>],
+  "djComment": "<the exact DJ comment mentioning this, or null>",
+  "showId": <show number or null>,
+  "significance": "<why this matters to KEXP listeners>"
+}
+
+### notablePlays (REQUIRED - select 5-10 standout moments)
+For EACH notable play that deserves highlighting (rare spins, requests, live performances, deep cuts):
+{
+  "playId": <number>,
+  "artist": "<artist>",
+  "song": "<song>",
+  "reason": "<why this play is notable - 1-2 sentences>",
+  "category": "rare" | "request" | "live" | "deep_cut" | "connection" | "dj_pick" | "other",
+  "djComment": "<relevant DJ comment or null>",
+  "graphConnections": "<notable artist connections found via graph tools, or null>",
+  "showContext": "<show name or DJ context, or null>"
+}
+
+### graphConnections (REQUIRED if you found artist connections via graph tools)
+For EACH significant connection discovered through graph exploration:
+{
+  "sourcePlayId": <the play ID that triggered the exploration>,
+  "targetPlayIds": [<related play IDs from the same day>],
+  "connectionType": "<labelmates | collaborators | band_members | producers | same_genre>",
+  "description": "<1-2 sentences explaining the connection>",
+  "narrative": "<story angle for the writer, or null>"
+}
+
+### researchNotes (REQUIRED)
+A summary of your research process and findings. Format as bullet points:
+- Key discoveries and their significance
+- Patterns you noticed across shows
+- Suggested narrative angles for the writer
+- Any notable DJ commentary themes
+- Recommendations for headline focus
+
+### suggestedHeadlines (REQUIRED - provide 3-5 options)
+Array of 3-5 headline options (6-8 words each) that capture the day's essence.
+
+### narrativeAngles (REQUIRED - provide 2-3 angles)
+Array of 2-3 narrative approaches the writer could take.
+
+## Verification Checklist:
+Before outputting JSON, verify you have NOT omitted:
+- Any birthdays you found in DJ comments
+- Any thematic programming blocks (ESNS, genre clusters, etc.)
+- Any first plays or debut artists
+- Any notable local artists
+- Any graph connections you discovered
+- All rotation status changes
+
+Output the complete JSON now.`
 
           const structuredResponse = yield* chat
             .generateObject({
@@ -504,7 +597,7 @@ Output JSON matching the ResearchContext schema.`
 
           // Track tool calls and token usage
           let totalToolCalls = 0
-          const tokenUsage = emptyTokenUsage()
+          const tokenUsage = mutableTokenUsage()
 
           // =============================================================================
           // Phase 1: Research with tools (including context discovery)
@@ -621,19 +714,120 @@ Output JSON matching the ResearchContext schema.`
           // =============================================================================
           yield* Effect.log("Phase 2: Generating structured research output")
 
-          const outputPrompt = `Based on all the research you've conducted, provide your complete findings as structured JSON.
+          const outputPrompt = `Generate structured JSON containing ALL your research findings.
 
-Include:
-- All discoveries (first plays, first artists)
-- Fresh releases you identified
-- Rotation updates
-- Themes detected across shows
-- Cultural moments extracted from DJ comments
-- Notable plays worth highlighting
-- Graph connections discovered
-- Your research notes and suggested narrative angles
+CRITICAL: Do NOT skip findings. If you found birthdays, themes, or discoveries during research, they MUST appear in the output.
 
-Output JSON matching the ResearchContext schema.`
+## Field-by-Field Instructions:
+
+### discoveries (REQUIRED if you found any first plays/first artists)
+For EACH first-ever KEXP play or first-ever artist you identified:
+{
+  "playId": <number from your research>,
+  "artist": "<artist name>",
+  "song": "<song title>",
+  "album": "<album name or null>",
+  "discoveryType": "first_play" | "first_artist" | "first_album",
+  "significance": "<why this matters - 1-2 sentences>",
+  "relatedContext": "<any DJ comment or context>"
+}
+
+### freshReleases (REQUIRED if you found recent releases)
+For EACH recently released track (2024-2025):
+{
+  "playId": <number>,
+  "artist": "<artist>",
+  "song": "<song>",
+  "album": "<album or null>",
+  "releaseDate": "<YYYY-MM-DD or null>",
+  "releaseType": "single" | "album" | "ep" | "compilation" | "unknown",
+  "isLocal": true | false,
+  "labelInfo": "<label name or null>",
+  "context": "<producer, tour info, or other context>"
+}
+
+### rotationUpdates (REQUIRED if you found rotation status changes)
+For EACH track with rotation status (Heavy, Medium, Light, New):
+{
+  "playId": <number>,
+  "artist": "<artist>",
+  "song": "<song>",
+  "rotationStatus": "Heavy" | "Medium" | "Light" | "New" | null,
+  "previousStatus": "<previous rotation status or null>",
+  "playCountToday": <number of times played today>,
+  "significance": "<why this rotation matters or null>"
+}
+
+### themes (REQUIRED if you found cross-show patterns)
+For EACH thematic pattern spanning 2+ shows or 3+ plays:
+{
+  "theme": "<short name, e.g., 'ESNS 2025 Showcase'>",
+  "description": "<1-2 sentences explaining the pattern>",
+  "playIds": [<all relevant play IDs>],
+  "showIds": [<show numbers>],
+  "crossShowConnections": "<how theme manifests across shows>",
+  "suggestedNarrative": "<story angle for the writer>"
+}
+
+### culturalMoments (REQUIRED if you found birthdays/anniversaries/events)
+For EACH birthday, anniversary, death, or cultural event from DJ comments:
+{
+  "type": "birthday" | "anniversary" | "death" | "event" | "theme_day" | "other",
+  "subject": "<person or album name>",
+  "description": "<what happened, e.g., 'Troy Van Leeuwen turns 55'>",
+  "playIds": [<related play IDs>],
+  "djComment": "<the exact DJ comment mentioning this, or null>",
+  "showId": <show number or null>,
+  "significance": "<why this matters to KEXP listeners>"
+}
+
+### notablePlays (REQUIRED - select 5-10 standout moments)
+For EACH notable play that deserves highlighting (rare spins, requests, live performances, deep cuts):
+{
+  "playId": <number>,
+  "artist": "<artist>",
+  "song": "<song>",
+  "reason": "<why this play is notable - 1-2 sentences>",
+  "category": "rare" | "request" | "live" | "deep_cut" | "connection" | "dj_pick" | "other",
+  "djComment": "<relevant DJ comment or null>",
+  "graphConnections": "<notable artist connections found via graph tools, or null>",
+  "showContext": "<show name or DJ context, or null>"
+}
+
+### graphConnections (REQUIRED if you found artist connections via graph tools)
+For EACH significant connection discovered through graph exploration:
+{
+  "sourcePlayId": <the play ID that triggered the exploration>,
+  "targetPlayIds": [<related play IDs from the same day>],
+  "connectionType": "<labelmates | collaborators | band_members | producers | same_genre>",
+  "description": "<1-2 sentences explaining the connection>",
+  "narrative": "<story angle for the writer, or null>"
+}
+
+### researchNotes (REQUIRED)
+A summary of your research process and findings. Format as bullet points:
+- Key discoveries and their significance
+- Patterns you noticed across shows
+- Suggested narrative angles for the writer
+- Any notable DJ commentary themes
+- Recommendations for headline focus
+
+### suggestedHeadlines (REQUIRED - provide 3-5 options)
+Array of 3-5 headline options (6-8 words each) that capture the day's essence.
+
+### narrativeAngles (REQUIRED - provide 2-3 angles)
+Array of 2-3 narrative approaches the writer could take.
+
+## Verification Checklist:
+Before outputting JSON, verify you have NOT omitted:
+- Any birthdays you found in DJ comments
+- Any thematic programming blocks (ESNS, genre clusters, etc.)
+- Any first plays or debut artists
+- Any notable local artists
+- Any graph connections you discovered
+- All rotation status changes
+
+Output the complete JSON now.`
 
           const structuredResponse = yield* chat
             .generateObject({

@@ -43,7 +43,7 @@ export interface ArtifactRef {
   /** ISO timestamp of creation */
   readonly createdAt: string
   /** Optional session scope for cleanup */
-  readonly sessionId?: string
+  readonly sessionId?: string | undefined
 }
 
 // =============================================================================
@@ -75,9 +75,9 @@ export interface StoreParams {
   /** LLM-readable summary (max 200 chars) */
   readonly summary: string
   /** Searchable tags */
-  readonly tags?: readonly string[]
+  readonly tags?: readonly string[] | undefined
   /** Session scope for cleanup */
-  readonly sessionId?: string
+  readonly sessionId?: string | undefined
 }
 
 /**
@@ -85,11 +85,11 @@ export interface StoreParams {
  */
 export interface ListParams {
   /** Filter by tags (AND logic) */
-  readonly tags?: readonly string[]
+  readonly tags?: readonly string[] | undefined
   /** Filter by session */
-  readonly sessionId?: string
+  readonly sessionId?: string | undefined
   /** Maximum results */
-  readonly limit?: number
+  readonly limit?: number | undefined
 }
 
 /**
@@ -99,11 +99,11 @@ export interface SearchParams {
   /** Search pattern (regex supported) */
   readonly pattern: string
   /** Optional artifact ID to search within */
-  readonly artifactId?: string
+  readonly artifactId?: string | undefined
   /** Lines of context around matches */
-  readonly contextLines?: number
+  readonly contextLines?: number | undefined
   /** Maximum results */
-  readonly limit?: number
+  readonly limit?: number | undefined
 }
 
 /**
@@ -127,13 +127,13 @@ export interface SearchResult {
  */
 export interface RetrieveOptions {
   /** Start offset in bytes */
-  readonly offset?: number
+  readonly offset?: number | undefined
   /** Maximum bytes to return */
-  readonly byteLimit?: number
+  readonly byteLimit?: number | undefined
   /** Start line for line-based pagination */
-  readonly fromLine?: number
+  readonly fromLine?: number | undefined
   /** Maximum lines to return */
-  readonly lineLimit?: number
+  readonly lineLimit?: number | undefined
 }
 
 // =============================================================================

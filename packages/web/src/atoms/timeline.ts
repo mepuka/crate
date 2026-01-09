@@ -17,7 +17,7 @@ import type { Play } from "@/domain/Play";
 // Atom that launches the background fetching service
 export const latestItemAtom = Atom.runtime((_get) =>
   Effect.gen(function* () {
-    yield* Layer.launch(FetchLatestLive);
+    return yield* Layer.launch(FetchLatestLive);
   }).pipe(Layer.effectDiscard)
 );
 

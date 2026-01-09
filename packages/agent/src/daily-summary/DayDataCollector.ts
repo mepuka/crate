@@ -14,9 +14,9 @@
  * @module
  */
 
-import { Effect, Data, Config } from "effect"
-import { FaissClient, type PlayResult } from "../FaissClient.js"
-import type { Play } from "@crate/domain/faiss/schemas"
+import { Effect, Data } from "effect"
+import { FaissClient } from "../FaissClient.js"
+import type { Play, TimelineResponse } from "@crate/domain/faiss/schemas"
 import {
   ArtifactStoreService,
   type ArtifactRef
@@ -216,11 +216,11 @@ export class DayDataCollector extends Effect.Service<DayDataCollector>()(
           while (hasMore && !reachedDateBoundary) {
             // First request: use since/until to set the time range
             // Subsequent requests: use cursor only (cursor encodes position within range)
-            const params = isFirstRequest
+            const params: { since?: string; until?: string; cursor?: string; limit: number } = isFirstRequest
               ? { since, until, limit: 200 }
               : { cursor: cursor!, limit: 200 }
 
-            const response = yield* faiss.timeline(params).pipe(
+            const response: TimelineResponse = yield* faiss.timeline(params).pipe(
               Effect.mapError(e => new DayDataCollectorError({ message: `Timeline fetch failed: ${e.message}`, cause: e }))
             )
 

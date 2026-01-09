@@ -272,9 +272,11 @@ Output as JSON with:
 
         // Log token usage for cost attribution
         const usage = response.usage;
+        const inputTokens = usage.inputTokens ?? 0;
+        const outputTokens = usage.outputTokens ?? 0;
         yield* Effect.log(
-          `CriticAgent: Token usage - input: ${usage.inputTokens}, output: ${usage.outputTokens}, ` +
-          `cache_read: ${usage.cachedInputTokens ?? 0}, total: ${usage.inputTokens + usage.outputTokens}`
+          `CriticAgent: Token usage - input: ${inputTokens}, output: ${outputTokens}, ` +
+          `cache_read: ${usage.cachedInputTokens ?? 0}, total: ${inputTokens + outputTokens}`
         );
 
         return response.value;

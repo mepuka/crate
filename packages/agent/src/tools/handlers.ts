@@ -13,10 +13,7 @@
 import { Effect, pipe } from "effect";
 import { Toolkit } from "@effect/ai";
 import { CrateToolkit, CrateToolkitWithContext } from "./definitions.js";
-import {
-  ArtifactStoreService,
-  type ArtifactStoreServiceInterface
-} from "../services/context-store/index.js";
+import { ArtifactStoreService } from "../services/context-store/index.js";
 import {
   makeContextListHandler,
   makeContextReadHandler,
@@ -1323,7 +1320,9 @@ export const makeCrateToolWithContextHandlers: Effect.Effect<
   // Threshold: 8KB (~2K tokens) - balances usefulness vs context bloat
   // ==========================================================================
 
-  const CAPTURE_THRESHOLD = 8000; // 8KB chars
+  // Lower threshold to ensure capture triggers more often
+  // 4KB ~= 1K tokens - captures results with 10+ items
+  const CAPTURE_THRESHOLD = 4000; // 4KB chars
 
   // Wrap semantic_search - returns 20 results, each ~300 chars = ~6KB
   const wrappedSemanticSearch = withCaptureLarge(

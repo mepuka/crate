@@ -18,12 +18,7 @@
 
 import type {
   DayData,
-  ShowGroup,
-  CategorizedPlay,
-  DayStats,
-  DayDataArtifacts,
-  ShowIndexEntry,
-  NotablePlaySummary
+  DayDataArtifacts
 } from "../DayDataCollector.js"
 
 // =============================================================================

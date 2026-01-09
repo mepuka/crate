@@ -1,5 +1,5 @@
 import { SqlClient, SqlSchema } from "@effect/sql"
-import { Data, Effect, Schema } from "effect"
+import { Data, Effect, Option, Schema } from "effect"
 import { MusicKBSqlLive } from "../../sql/Sql.js"
 import { GeneratedAsset, GeneratedAssetRow, StoreAssetInput, StoreAssetResponse, transformRowToAsset } from "./schemas.js"
 
@@ -118,7 +118,7 @@ export class GeneratedAssetsService extends Effect.Service<GeneratedAssetsServic
           })
 
           const result = yield* query({ play_id: playId })
-          return result.isSome() && result.value.count > 0
+          return Option.isSome(result) && result.value.count > 0
         }).pipe(
           Effect.catchAll(() => Effect.succeed(false))
         )
@@ -188,7 +188,7 @@ export class GeneratedAssetsService extends Effect.Service<GeneratedAssetsServic
             params_hash: input.params_hash
           })
 
-          if (existing.isSome()) {
+          if (Option.isSome(existing)) {
             return {
               id: existing.value.id,
               params_hash: input.params_hash,

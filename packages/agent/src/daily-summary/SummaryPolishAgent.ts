@@ -22,7 +22,7 @@ import {
   buildPolishMessage
 } from "./prompts/polish-prompt.js"
 import type { ResearchContextType, DailySummaryType } from "./schemas.js"
-import { type TokenUsage, emptyTokenUsage } from "../multi-agent/types.js"
+import { type TokenUsage, mutableTokenUsage } from "../multi-agent/types.js"
 
 // =============================================================================
 // Types
@@ -278,7 +278,7 @@ export class SummaryPolishAgent extends Effect.Service<SummaryPolishAgent>()(
           const chat = yield* Chat.fromPrompt(prompt)
 
           // Token usage
-          const tokenUsage = emptyTokenUsage()
+          const tokenUsage = mutableTokenUsage()
 
           // Generate polished output (no tools needed)
           const response = yield* chat

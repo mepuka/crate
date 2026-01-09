@@ -12,9 +12,18 @@
  */
 
 import { Atom, Result } from "@effect-atom/atom-react";
-import { Effect, Duration, Schedule } from "effect";
+import { Effect, Duration, Schedule, Data } from "effect";
 import { TimelineRuntime } from "@/lib/http-runtime";
 import { ImageLoadState } from "@/services/image-load-service";
+
+// ============================================================================
+// Errors
+// ============================================================================
+
+export class ImageLoadError extends Data.TaggedError("ImageLoadError")<{
+  readonly message: string;
+  readonly url: string;
+}> {}
 
 // ============================================================================
 // Constants
@@ -82,12 +91,12 @@ export const loadImageAtom = Atom.family((src: string) =>
       let attempt = 0;
 
       // Create the load effect using native Image API
-      const loadOnce = Effect.async<string, Error>((resume) => {
+      const loadOnce = Effect.async<string, ImageLoadError>((resume) => {
         attempt++;
         const img = new Image();
 
         img.onload = () => resume(Effect.succeed(src));
-        img.onerror = (e) => resume(Effect.fail(new Error(`Load failed: ${e}`)));
+        img.onerror = (e) => resume(Effect.fail(new ImageLoadError({ message: `Load failed: ${e}`, url: src })));
 
         // Cache-bust on retries to bypass browser cache
         const finalSrc =

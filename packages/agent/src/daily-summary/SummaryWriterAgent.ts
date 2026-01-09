@@ -16,11 +16,12 @@ import { LanguageModel, Chat, Prompt } from "@effect/ai"
 import {
   buildWriterSystemPrompt,
   buildResearchContextMessage,
-  type ResearchContextOptions
+  buildDataRequirementsSection,
+  type DataRequirementsCounts
 } from "./prompts/writer-prompt.js"
 import type { ResearchContextType, DailySummaryType } from "./schemas.js"
 import type { PlayLookupEntry, CategorizedPlayIds } from "./play-reference.js"
-import { type TokenUsage, emptyTokenUsage } from "../multi-agent/types.js"
+import { type TokenUsage, mutableTokenUsage } from "../multi-agent/types.js"
 
 // =============================================================================
 // Types
@@ -253,17 +254,30 @@ The "Play ID Population Guide" section above lists ALL playIds you must include.
 These arrays MUST NOT be empty. Use the exact IDs from the guide.`
             : ""
 
+          // Build data requirements section with exact counts from research
+          const researchCounts: DataRequirementsCounts = {
+            discoveries: research.discoveries.length,
+            freshReleases: research.freshReleases.length,
+            rotationUpdates: research.rotationUpdates.length,
+            themes: research.themes.length,
+            culturalMoments: research.culturalMoments.length,
+            notablePlays: research.notablePlays.length
+          }
+          const dataRequirements = buildDataRequirementsSection(researchCounts)
+
           const writerInstructions = `${userMessage}
+
+${dataRequirements}
 
 Write the complete daily summary as JSON. Include:
 - A compelling headline (6-8 words, specific, KEXP voice)
 - Opening narrative (2-3 paragraphs)
 - 5-8 highlights with play IDs
-- All discoveries from the research
-- Fresh releases
-- Rotation updates
-- Themes with representative play IDs
-- Cultural moments with associated play IDs
+- All discoveries from the research (EXACTLY ${research.discoveries.length})
+- Fresh releases (EXACTLY ${research.freshReleases.length})
+- Rotation updates (EXACTLY ${research.rotationUpdates.length})
+- Themes with representative play IDs (EXACTLY ${research.themes.length})
+- Cultural moments with associated play IDs (EXACTLY ${research.culturalMoments.length})
 ${playIdGuidance}
 
 Stats will be computed automatically - do not include them.`
@@ -284,7 +298,7 @@ Stats will be computed automatically - do not include them.`
           const chat = yield* Chat.fromPrompt(prompt)
 
           // Token usage
-          const tokenUsage = emptyTokenUsage()
+          const tokenUsage = mutableTokenUsage()
 
           // Generate structured output (no tools needed)
           const response = yield* chat

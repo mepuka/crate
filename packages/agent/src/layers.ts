@@ -394,8 +394,15 @@ export const GoogleModelLive = GoogleModelLayer.pipe(
 
 /**
  * Create an Anthropic model layer with a specific model name
+ *
+ * @example
+ * ```ts
+ * const opusLayer = makeAnthropicModelLayer("claude-opus-4").pipe(
+ *   Layer.provide(AnthropicConfig.Default)
+ * )
+ * ```
  */
-const makeAnthropicModelLayer = (model: string) =>
+export const makeAnthropicModelLayer = (model: string) =>
   Layer.unwrapEffect(
     Effect.gen(function* () {
       const config = yield* AnthropicConfig;
@@ -412,8 +419,15 @@ const makeAnthropicModelLayer = (model: string) =>
 
 /**
  * Create a Google model layer with a specific model name
+ *
+ * @example
+ * ```ts
+ * const flashLayer = makeGoogleModelLayer("gemini-3-flash-preview").pipe(
+ *   Layer.provide(GoogleAIConfig.Default)
+ * )
+ * ```
  */
-const makeGoogleModelLayer = (model: string) =>
+export const makeGoogleModelLayer = (model: string) =>
   Layer.unwrapEffect(
     Effect.gen(function* () {
       const config = yield* GoogleAIConfig;

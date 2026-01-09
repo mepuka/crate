@@ -31,10 +31,10 @@
   "dependencies": {
     "@crate/api": "workspace:^",
     "@crate/domain": "workspace:^",
-    "@effect/ai": "^0.33.0",
+    "@effect/ai": "^0.33.2",
     "@effect/ai-anthropic": "^0.23.0",
-    "@effect/ai-google": "^0.12.0",
-    "@effect/ai-openai": "^0.37.0",
+    "@effect/ai-google": "^0.12.1",
+    "@effect/ai-openai": "^0.37.2",
     "@effect/platform": "^0.94.0",
     "@effect/platform-node": "^0.104.0",
     "effect": "^3.19.13",

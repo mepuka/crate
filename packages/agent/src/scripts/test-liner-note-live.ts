@@ -19,7 +19,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
-  LinerNoteGenerationService,
   LinerNoteGenerationServiceLive,
   generateLinerNote,
   type LinerNoteRequest,

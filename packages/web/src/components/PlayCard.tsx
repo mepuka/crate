@@ -1,4 +1,4 @@
-import { Play } from '@/domain'
+import type { Play } from '@/domain'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn, getEra } from '@/lib/utils'
 import { formatSemanticTime, formatRelativeTime } from '@/lib/date-utils'

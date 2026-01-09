@@ -138,7 +138,7 @@ const program = Effect.gen(function* () {
 
   // Exit with non-zero status if unhealthy
   if (report.overallStatus === "unhealthy") {
-    yield* Effect.fail(new Error("Infrastructure verification failed"));
+    return yield* Effect.fail(new Error("Infrastructure verification failed"));
   }
 
   return report;
@@ -146,7 +146,7 @@ const program = Effect.gen(function* () {
   Effect.catchAll((error) =>
     Effect.gen(function* () {
       yield* Console.error(`\nVerification failed: ${error}`);
-      yield* Effect.die(error);
+      return yield* Effect.die(error);
     })
   )
 );

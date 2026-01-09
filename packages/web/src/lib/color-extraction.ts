@@ -7,7 +7,20 @@
  * Inspired by ColorThief but lightweight and Effect-integrated.
  */
 
-import { Effect, Schema, Duration, Option, pipe } from "effect";
+import { Effect, Schema, Duration, Option, pipe, Data } from "effect";
+
+// ============================================================================
+// Errors
+// ============================================================================
+
+export class CanvasContextError extends Data.TaggedError("CanvasContextError")<{
+  readonly message: string;
+}> {}
+
+export class ImageExtractionError extends Data.TaggedError("ImageExtractionError")<{
+  readonly message: string;
+  readonly url: string;
+}> {}
 
 // ============================================================================
 // Types
@@ -162,8 +175,8 @@ const kMeans = (pixels: RGB[], k: number, iterations = 10): RGB[] => {
 /**
  * Load image and extract pixels via canvas
  */
-const extractPixels = (imageUrl: string): Effect.Effect<RGB[], Error> =>
-  Effect.async<RGB[], Error>((resume) => {
+const extractPixels = (imageUrl: string): Effect.Effect<RGB[], CanvasContextError | ImageExtractionError> =>
+  Effect.async<RGB[], CanvasContextError | ImageExtractionError>((resume) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
 
@@ -177,7 +190,7 @@ const extractPixels = (imageUrl: string): Effect.Effect<RGB[], Error> =>
         const ctx = canvas.getContext("2d");
 
         if (!ctx) {
-          resume(Effect.fail(new Error("Failed to get canvas context")));
+          resume(Effect.fail(new CanvasContextError({ message: "Failed to get canvas context" })));
           return;
         }
 
@@ -202,12 +215,12 @@ const extractPixels = (imageUrl: string): Effect.Effect<RGB[], Error> =>
 
         resume(Effect.succeed(pixels));
       } catch (e) {
-        resume(Effect.fail(e instanceof Error ? e : new Error(String(e))));
+        resume(Effect.fail(new ImageExtractionError({ message: e instanceof Error ? e.message : String(e), url: imageUrl })));
       }
     };
 
     img.onerror = () => {
-      resume(Effect.fail(new Error(`Failed to load image: ${imageUrl}`)));
+      resume(Effect.fail(new ImageExtractionError({ message: `Failed to load image`, url: imageUrl })));
     };
 
     img.src = imageUrl;
@@ -222,7 +235,7 @@ const extractPixels = (imageUrl: string): Effect.Effect<RGB[], Error> =>
  *
  * Returns AlbumPalette with dominant color, accent, temperature, and derived assets.
  */
-export const extractPalette = (imageUrl: string): Effect.Effect<AlbumPalette, Error> =>
+export const extractPalette = (imageUrl: string): Effect.Effect<AlbumPalette, CanvasContextError | ImageExtractionError> =>
   pipe(
     extractPixels(imageUrl),
     Effect.map((pixels) => {
@@ -332,7 +345,7 @@ export const cachePalette = (imageUrl: string, palette: AlbumPalette): void => {
 /**
  * Extract palette with caching
  */
-export const extractPaletteWithCache = (imageUrl: string): Effect.Effect<AlbumPalette, Error> =>
+export const extractPaletteWithCache = (imageUrl: string): Effect.Effect<AlbumPalette, CanvasContextError | ImageExtractionError> =>
   Effect.gen(function* () {
     // Check cache first
     const cached = getCachedPalette(imageUrl);

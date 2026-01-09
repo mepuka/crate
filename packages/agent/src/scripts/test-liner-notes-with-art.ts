@@ -26,13 +26,12 @@ const OUTPUT_DIR = "/tmp/liner-notes-test";
 // ============================================================================
 
 const TEST_PLAY = {
-  // The Hives - recent album
   albumArtUrl: process.env.ALBUM_ART || "https://i.scdn.co/image/ab67616d0000b273a7b3e428b3f7f0a9e8e6e5a4",
-  title: "The Hives's KEXP Journey",
-  narrative: "Produced by Beastie Boys legend Mike D and Viagra Boys' Pelle Gunnerfeldt, with contributions from Josh Homme of Queens of the Stone Age, this album showcases The Hives at their most focused and ferocious.",
+  title: process.env.TITLE || `${process.env.ARTIST || "The Hives"}'s KEXP Journey`,
+  narrative: process.env.NARRATIVE || "Produced by Beastie Boys legend Mike D and Viagra Boys' Pelle Gunnerfeldt, with contributions from Josh Homme of Queens of the Stone Age, this album showcases The Hives at their most focused and ferocious.",
   releaseYear: parseInt(process.env.ERA || "2024"),
-  artist: "The Hives",
-  album: "The Death of Randy Fitzsimmons"
+  artist: process.env.ARTIST || "The Hives",
+  album: process.env.ALBUM || "The Death of Randy Fitzsimmons"
 };
 
 // ============================================================================

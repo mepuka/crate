@@ -37,11 +37,11 @@ export interface PlayContext {
   readonly playId: number;
   readonly artist: string;
   readonly song: string;
-  readonly album?: string;
-  readonly imageUri?: string | null;
-  readonly releaseYear?: number | null;
-  readonly artistMbids?: readonly string[];
-  readonly comment?: string | null;
+  readonly album?: string | undefined;
+  readonly imageUri?: string | null | undefined;
+  readonly releaseYear?: number | null | undefined;
+  readonly artistMbids?: readonly string[] | undefined;
+  readonly comment?: string | null | undefined;
 }
 
 /**
@@ -67,30 +67,14 @@ export interface ArtGenerationResult {
  * Generation parameters for hashing/deduplication
  */
 export interface GenerationParams {
-  readonly style?: string;
-  readonly releaseYear?: number | null;
-  readonly narrative?: string;
-  readonly artistMbid?: string;
-  readonly placement?: string;
-  readonly mood?: string;
-  readonly description?: string;
+  readonly style?: string | undefined;
+  readonly releaseYear?: number | null | undefined;
+  readonly narrative?: string | undefined;
+  readonly artistMbid?: string | undefined;
+  readonly placement?: string | undefined;
+  readonly mood?: string | undefined;
+  readonly description?: string | undefined;
 }
-
-/**
- * Store asset request schema (matches server-side StoreAssetInput)
- */
-const StoreAssetRequest = Schema.Struct({
-  play_id: Schema.optional(Schema.Number),
-  asset_type: Schema.String,
-  params_hash: Schema.String,
-  generation_params: Schema.optional(Schema.String),
-  image_base64: Schema.String,
-  mime_type: Schema.optionalWith(Schema.String, { default: () => "image/png" }),
-  era: Schema.optional(Schema.String),
-  style: Schema.optional(Schema.String),
-  model_notes: Schema.optional(Schema.String),
-  prompt_used: Schema.optional(Schema.String),
-});
 
 /**
  * Store asset response schema (matches server-side StoreAssetResponse)
@@ -342,8 +326,8 @@ const makeArtGenerationOrchestrator = Effect.gen(function* () {
     mimeType: string;
     era: string;
     style: string;
-    modelNotes?: string;
-    promptUsed?: string;
+    modelNotes?: string | undefined;
+    promptUsed?: string | undefined;
   }): Effect.Effect<{ id: number; paramsHash: string; wasExisting: boolean }, ArtGenerationError> =>
     Effect.gen(function* () {
       const paramsHash = hashParams(input.params);

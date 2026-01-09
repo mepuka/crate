@@ -91,6 +91,10 @@ const generateSummary = (
 
 /**
  * Truncate result for inline return with artifact hint
+ *
+ * IMPORTANT: We do NOT insert marker objects into arrays because
+ * typed arrays (e.g., HybridPlayResult[]) require specific schema fields.
+ * Instead, we just slice arrays and add truncation info to _artifact.
  */
 const truncateWithHint = <T>(
   result: T,
@@ -100,25 +104,27 @@ const truncateWithHint = <T>(
   // For objects, add _artifact_ref hint
   if (typeof result === "object" && result !== null) {
     const truncated = { ...result } as Record<string, unknown>
+    const truncatedArrays: Array<{ key: string; shown: number; total: number }> = []
 
-    // Truncate large arrays
+    // Truncate large arrays (just slice, no marker objects to preserve schema validity)
     for (const key of Object.keys(truncated)) {
       const value = truncated[key]
       if (Array.isArray(value) && value.length > 3) {
-        truncated[key] = [
-          ...value.slice(0, 3),
-          { _truncated: true, _total: value.length }
-        ]
+        truncatedArrays.push({ key, shown: 3, total: value.length })
+        truncated[key] = value.slice(0, 3)
       } else if (typeof value === "string" && value.length > previewLength) {
         truncated[key] = value.substring(0, previewLength) + "..."
       }
     }
 
-    // Add artifact reference hint
+    // Add artifact reference hint with truncation metadata
     truncated._artifact = {
       id: artifactRef.id,
       summary: artifactRef.summary,
-      hint: "Full result stored. Use context_read(artifact_id) to retrieve."
+      hint: "Full result stored. Use context_read(artifact_id) to retrieve.",
+      ...(truncatedArrays.length > 0 && {
+        truncated: truncatedArrays.map(t => `${t.key}: showing ${t.shown}/${t.total}`).join(", ")
+      })
     }
 
     return truncated as T
