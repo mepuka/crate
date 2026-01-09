@@ -8,7 +8,7 @@
  * the FAISS API is unavailable.
  */
 
-import { Data, Effect, Schema, Duration } from "effect";
+import { Data, Effect, Schema, Duration, Option } from "effect";
 import {
   FetchHttpClient,
   HttpBody,
@@ -61,6 +61,58 @@ const StoreGeneratedAssetResponse = Schema.Struct({
 
 export type StoreGeneratedAssetRequest = typeof StoreGeneratedAssetRequest.Type;
 export type StoreGeneratedAssetResponse = typeof StoreGeneratedAssetResponse.Type;
+
+// Daily summary persistence schemas
+const TokenUsageSchema = Schema.Struct({
+  inputTokens: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+  outputTokens: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+  cacheReadTokens: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+  cacheWriteTokens: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+  totalTokens: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+});
+
+const SaveResearchRequest = Schema.Struct({
+  date: Schema.String,
+  research_context: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  duration_ms: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+  tool_call_count: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+  token_usage: Schema.optional(TokenUsageSchema),
+});
+
+const SaveResearchResponse = Schema.Struct({
+  id: Schema.Number,
+  date: Schema.String,
+  status: Schema.String,
+});
+
+const SaveSummaryRequest = Schema.Struct({
+  date: Schema.String,
+  summary: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  research_id: Schema.Number,
+});
+
+const SaveSummaryResponse = Schema.Struct({
+  id: Schema.Number,
+  date: Schema.String,
+  status: Schema.String,
+  regenerated_count: Schema.Number,
+});
+
+// Schema for GET /api/summary/{date} response
+const GetDailySummaryResponse = Schema.Struct({
+  id: Schema.Number,
+  date: Schema.String,
+  summary: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  plays: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  created_at: Schema.String,
+  regenerated_count: Schema.Number,
+});
+
+export type SaveResearchRequest = typeof SaveResearchRequest.Type;
+export type SaveResearchResponse = typeof SaveResearchResponse.Type;
+export type SaveSummaryRequest = typeof SaveSummaryRequest.Type;
+export type SaveSummaryResponse = typeof SaveSummaryResponse.Type;
+export type GetDailySummaryResponse = typeof GetDailySummaryResponse.Type;
 
 // Export type aliases for convenience
 export type PlayResult = typeof PlayResultSchema.Type;
@@ -495,6 +547,144 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                 (error) =>
                   new FaissApiError({
                     message: `Store generated asset failed`,
+                    cause: error,
+                  })
+              )
+            )
+        ),
+
+      /**
+       * Save daily research context (Phase 1 output)
+       * Protected by circuit breaker
+       *
+       * Persists the research findings from the research agent to the database.
+       * Upserts by date - if research exists for this date, it will be updated.
+       *
+       * @param date - Date in YYYY-MM-DD format
+       * @param researchContext - Full research context object
+       * @param durationMs - How long research phase took
+       * @param toolCallCount - Number of tool calls made during research
+       * @param tokenUsage - Optional token usage statistics
+       */
+      saveDailyResearch: (
+        date: string,
+        researchContext: Record<string, unknown>,
+        durationMs: number = 0,
+        toolCallCount: number = 0,
+        tokenUsage?: typeof TokenUsageSchema.Type
+      ) =>
+        withProtection(
+          client
+            .post("/api/summary/research", {
+              body: HttpBody.unsafeJson({
+                date,
+                research_context: researchContext,
+                duration_ms: durationMs,
+                tool_call_count: toolCallCount,
+                token_usage: tokenUsage,
+              }),
+            })
+            .pipe(
+              Effect.flatMap(
+                HttpClientResponse.schemaBodyJson(SaveResearchResponse)
+              ),
+              Effect.mapError(
+                (error) =>
+                  new FaissApiError({
+                    message: `Save daily research failed`,
+                    cause: error,
+                  })
+              )
+            )
+        ),
+
+      /**
+       * Save daily summary (Phase 2 output)
+       * Protected by circuit breaker
+       *
+       * Persists the final summary from the writer agent to the database.
+       * Upserts by date - if summary exists for this date, it will be updated.
+       *
+       * @param date - Date in YYYY-MM-DD format
+       * @param summary - Full summary object
+       * @param researchId - Reference to the research phase ID
+       */
+      saveDailySummary: (
+        date: string,
+        summary: Record<string, unknown>,
+        researchId: number
+      ) =>
+        withProtection(
+          client
+            .post("/api/summary/save", {
+              body: HttpBody.unsafeJson({
+                date,
+                summary,
+                research_id: researchId,
+              }),
+            })
+            .pipe(
+              Effect.flatMap(
+                HttpClientResponse.schemaBodyJson(SaveSummaryResponse)
+              ),
+              Effect.mapError(
+                (error) =>
+                  new FaissApiError({
+                    message: `Save daily summary failed`,
+                    cause: error,
+                  })
+              )
+            )
+        ),
+
+      /**
+       * Get daily summary by date
+       * Protected by circuit breaker
+       *
+       * Returns Option.some with the summary if found, Option.none if not found.
+       * Throws FaissApiError for other failures.
+       *
+       * @param date - Date in YYYY-MM-DD format
+       */
+      getDailySummary: (date: string) =>
+        withProtection(
+          client
+            .get(`/api/summary/${date}`)
+            .pipe(
+              Effect.flatMap((response) =>
+                response.status === 404
+                  ? Effect.succeed(Option.none<GetDailySummaryResponse>())
+                  : HttpClientResponse.schemaBodyJson(GetDailySummaryResponse)(response).pipe(
+                      Effect.map(Option.some)
+                    )
+              ),
+              Effect.mapError(
+                (error) =>
+                  new FaissApiError({
+                    message: `Get daily summary failed for ${date}`,
+                    cause: error,
+                  })
+              )
+            )
+        ),
+
+      /**
+       * Check if daily summary exists for a date
+       * Protected by circuit breaker
+       *
+       * @param date - Date in YYYY-MM-DD format
+       * @returns true if summary exists, false otherwise
+       */
+      dailySummaryExists: (date: string) =>
+        withProtection(
+          client
+            .get(`/api/summary/${date}`)
+            .pipe(
+              Effect.map((response) => response.status !== 404),
+              Effect.mapError(
+                (error) =>
+                  new FaissApiError({
+                    message: `Check daily summary exists failed for ${date}`,
                     cause: error,
                   })
               )

@@ -483,9 +483,15 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
 
       const exists = (date: string): Effect.Effect<boolean, DailySummaryError> =>
         Effect.gen(function* () {
-          // TODO: Call GET /api/summary/{date} and check if exists
           yield* Effect.log(`Checking if summary exists for ${date}`)
-          return false
+          const summaryExists = yield* faissClient.dailySummaryExists(date).pipe(
+            Effect.mapError(e => new DailySummaryError({
+              message: `Failed to check if summary exists: ${e.message}`,
+              phase: "persistence"
+            }))
+          )
+          yield* Effect.log(`Summary exists for ${date}: ${summaryExists}`)
+          return summaryExists
         })
 
       return { run, exists } satisfies DailySummaryAgentInterface
