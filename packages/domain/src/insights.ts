@@ -1,128 +1,224 @@
 import { Schema } from "effect";
 
-// Base Entities
-export const ArtistRef = Schema.Struct({
-  name: Schema.String,
-  mbid: Schema.NullOr(Schema.String)
-});
+// -----------------------------------------------------------------------------
+// Entity References (using Schema.Class for consistency)
+// -----------------------------------------------------------------------------
 
-export const RecordingRef = Schema.Struct({
+/**
+ * Reference to an artist with optional MusicBrainz ID
+ */
+export class ArtistRef extends Schema.Class<ArtistRef>("ArtistRef")({
+  name: Schema.String,
+  mbid: Schema.NullOr(Schema.String),
+}) {}
+
+/**
+ * Reference to a recording with optional MusicBrainz ID and artists
+ */
+export class RecordingRef extends Schema.Class<RecordingRef>("RecordingRef")({
   title: Schema.String,
   mbid: Schema.NullOr(Schema.String),
-  artists: Schema.Array(ArtistRef)
-});
+  artists: Schema.Array(ArtistRef),
+}) {}
 
-export const LabelRef = Schema.Struct({
+/**
+ * Reference to a label with optional MusicBrainz ID
+ */
+export class LabelRef extends Schema.Class<LabelRef>("LabelRef")({
   name: Schema.String,
-  mbid: Schema.NullOr(Schema.String)
-});
+  mbid: Schema.NullOr(Schema.String),
+}) {}
 
-// Insight Variants
-export const ConcertInsight = Schema.Struct({
-  _tag: Schema.Literal("Concert"),
-  artist: ArtistRef,
-  venue: Schema.NullOr(Schema.String),
-  date: Schema.NullOr(Schema.String), // ISO Date
-  sourceQuote: Schema.String
-});
+// -----------------------------------------------------------------------------
+// Supporting Schemas
+// -----------------------------------------------------------------------------
 
-export const CoverInsight = Schema.Struct({
-  _tag: Schema.Literal("Cover"),
-  original: RecordingRef,
-  sourceQuote: Schema.String
-});
-
-export const SampleInsight = Schema.Struct({
-  _tag: Schema.Literal("Sample"),
-  sampled: RecordingRef,
-  direction: Schema.Literal("samples", "sampled_by"),
-  sourceQuote: Schema.String
-});
-
-export const PlayHistoryInsight = Schema.Struct({
-  _tag: Schema.Literal("PlayHistory"),
-  entityMbid: Schema.String,
-  entityType: Schema.Literal("recording", "artist", "release", "release_group"),
-  totalPlays: Schema.Number,
-  firstPlay: Schema.NullOr(Schema.Struct({
-      date: Schema.String,
-      showName: Schema.String,
-      playId: Schema.Number
-  })),
-  lastPlay: Schema.NullOr(Schema.Struct({
-      date: Schema.String,
-      showName: Schema.String,
-      playId: Schema.Number
-  }))
-});
-
-export const ConnectionInsight = Schema.Struct({
-  _tag: Schema.Literal("Connection"),
-  fromArtist: ArtistRef,
-  toArtist: ArtistRef,
-  connectionType: Schema.Literal("labelmate", "collaborator", "member_of", "same_release_group"),
-  viaLabel: Schema.NullOr(LabelRef),
-  explanation: Schema.String
-});
-
-export const LinkInsight = Schema.Struct({
-  _tag: Schema.Literal("Link"),
-  url: Schema.String,
-  title: Schema.String,
-  summary: Schema.String,
-  linkType: Schema.Literal("bandcamp", "wikipedia", "discogs", "article", "video", "social", "other")
-});
-
-// Phase 2: Culture Insights
-export const PlayReference = Schema.Struct({
+/**
+ * Reference to a play (for history insights)
+ */
+export class PlayReference extends Schema.Class<PlayReference>("PlayReference")({
   date: Schema.String,
   showName: Schema.String,
-  playId: Schema.Number
-});
+  playId: Schema.Number,
+}) {}
 
-export const RotationPhase = Schema.Struct({
+/**
+ * A phase in the rotation journey
+ */
+export class RotationPhase extends Schema.Class<RotationPhase>("RotationPhase")({
   status: Schema.Literal("Heavy Rotation", "Medium Rotation", "Light Rotation", "Library", "R/N"),
   firstDate: Schema.String,
   lastDate: Schema.String,
-  playCount: Schema.Number
-});
+  playCount: Schema.Number,
+}) {}
 
-export const DiscoveryArcInsight = Schema.Struct({
-  _tag: Schema.Literal("DiscoveryArc"),
-  artist: ArtistRef,
-  entityMbid: Schema.NullOr(Schema.String),
-  entityType: Schema.Literal("recording", "artist", "release", "release_group"),
-  firstPlay: PlayReference,
-  totalPlays: Schema.Number,
-  rotationJourney: Schema.Array(RotationPhase),
-  currentStatus: Schema.Literal("Heavy Rotation", "Medium Rotation", "Light Rotation", "Library", "R/N"),
-  peakStatus: Schema.NullOr(Schema.Literal("Heavy Rotation", "Medium Rotation", "Light Rotation", "Library", "R/N")),
-  breakthroughPlay: Schema.NullOr(PlayReference),
-  narrative: Schema.String
-});
+// -----------------------------------------------------------------------------
+// Type Literals
+// -----------------------------------------------------------------------------
 
-export const LocalSceneInsight = Schema.Struct({
-  _tag: Schema.Literal("LocalScene"),
-  artist: ArtistRef,
-  sceneType: Schema.Literal("venue", "label", "geographic", "studio"),
-  localContext: Schema.String,
-  labelName: Schema.NullOr(Schema.String),
-  venueName: Schema.NullOr(Schema.String),
-  sceneArtists: Schema.NullOr(Schema.Array(ArtistRef)),
-  sceneConnection: Schema.NullOr(Schema.String),
-  narrative: Schema.String
-});
+export const SampleDirection = Schema.Literal("samples", "sampled_by");
+export type SampleDirection = typeof SampleDirection.Type;
 
-export const DJRecommendationInsight = Schema.Struct({
-  _tag: Schema.Literal("DJRecommendation"),
-  recommendationType: Schema.Literal("personal_story", "emotional_connection", "similar_artist", "genre_bridge"),
-  narrative: Schema.String,
-  relatedArtist: Schema.NullOr(ArtistRef),
-  emotionalContext: Schema.NullOr(Schema.String),
-  sourceQuote: Schema.String
-});
+export const EntityType = Schema.Literal("recording", "artist", "release", "release_group");
+export type EntityType = typeof EntityType.Type;
 
+export const ConnectionType = Schema.Literal("labelmate", "collaborator", "member_of", "same_release_group");
+export type ConnectionType = typeof ConnectionType.Type;
+
+export const LinkType = Schema.Literal("bandcamp", "wikipedia", "discogs", "article", "video", "social", "other");
+export type LinkType = typeof LinkType.Type;
+
+export const RotationStatus = Schema.Literal("Heavy Rotation", "Medium Rotation", "Light Rotation", "Library", "R/N");
+export type RotationStatus = typeof RotationStatus.Type;
+
+export const SceneType = Schema.Literal("venue", "label", "geographic", "studio");
+export type SceneType = typeof SceneType.Type;
+
+export const RecommendationType = Schema.Literal("personal_story", "emotional_connection", "similar_artist", "genre_bridge");
+export type RecommendationType = typeof RecommendationType.Type;
+
+// -----------------------------------------------------------------------------
+// Insight Variants (using Schema.TaggedClass)
+// -----------------------------------------------------------------------------
+
+/**
+ * Concert/show mention insight
+ */
+export class ConcertInsight extends Schema.TaggedClass<ConcertInsight>()(
+  "Concert",
+  {
+    artist: ArtistRef,
+    venue: Schema.NullOr(Schema.String),
+    date: Schema.NullOr(Schema.String), // ISO Date
+    sourceQuote: Schema.String,
+  }
+) {}
+
+/**
+ * Cover song reference insight
+ */
+export class CoverInsight extends Schema.TaggedClass<CoverInsight>()(
+  "Cover",
+  {
+    original: RecordingRef,
+    sourceQuote: Schema.String,
+  }
+) {}
+
+/**
+ * Sample/sampling relationship insight
+ */
+export class SampleInsight extends Schema.TaggedClass<SampleInsight>()(
+  "Sample",
+  {
+    sampled: RecordingRef,
+    direction: SampleDirection,
+    sourceQuote: Schema.String,
+  }
+) {}
+
+/**
+ * Play history insight for an entity
+ */
+export class PlayHistoryInsight extends Schema.TaggedClass<PlayHistoryInsight>()(
+  "PlayHistory",
+  {
+    entityMbid: Schema.String,
+    entityType: EntityType,
+    totalPlays: Schema.Number,
+    firstPlay: Schema.NullOr(PlayReference),
+    lastPlay: Schema.NullOr(PlayReference),
+  }
+) {}
+
+/**
+ * Artist/label connection insight
+ */
+export class ConnectionInsight extends Schema.TaggedClass<ConnectionInsight>()(
+  "Connection",
+  {
+    fromArtist: ArtistRef,
+    toArtist: ArtistRef,
+    connectionType: ConnectionType,
+    viaLabel: Schema.NullOr(LabelRef),
+    explanation: Schema.String,
+  }
+) {}
+
+/**
+ * Link content insight
+ */
+export class LinkInsight extends Schema.TaggedClass<LinkInsight>()(
+  "Link",
+  {
+    url: Schema.String,
+    title: Schema.String,
+    summary: Schema.String,
+    linkType: LinkType,
+  }
+) {}
+
+// -----------------------------------------------------------------------------
+// Phase 2: Culture Insights
+// -----------------------------------------------------------------------------
+
+/**
+ * Discovery Arc Insight - Track's journey from debut to KEXP staple
+ */
+export class DiscoveryArcInsight extends Schema.TaggedClass<DiscoveryArcInsight>()(
+  "DiscoveryArc",
+  {
+    artist: ArtistRef,
+    entityMbid: Schema.NullOr(Schema.String),
+    entityType: EntityType,
+    firstPlay: PlayReference,
+    totalPlays: Schema.Number,
+    rotationJourney: Schema.Array(RotationPhase),
+    currentStatus: RotationStatus,
+    peakStatus: Schema.NullOr(RotationStatus),
+    breakthroughPlay: Schema.NullOr(PlayReference),
+    narrative: Schema.String,
+  }
+) {}
+
+/**
+ * Local Scene Insight - Celebrate Seattle/PNW artists
+ */
+export class LocalSceneInsight extends Schema.TaggedClass<LocalSceneInsight>()(
+  "LocalScene",
+  {
+    artist: ArtistRef,
+    sceneType: SceneType,
+    localContext: Schema.String,
+    labelName: Schema.NullOr(Schema.String),
+    venueName: Schema.NullOr(Schema.String),
+    sceneArtists: Schema.NullOr(Schema.Array(ArtistRef)),
+    sceneConnection: Schema.NullOr(Schema.String),
+    narrative: Schema.String,
+  }
+) {}
+
+/**
+ * DJ Recommendation Insight - Personal DJ stories and recommendations
+ */
+export class DJRecommendationInsight extends Schema.TaggedClass<DJRecommendationInsight>()(
+  "DJRecommendation",
+  {
+    recommendationType: RecommendationType,
+    narrative: Schema.String,
+    relatedArtist: Schema.NullOr(ArtistRef),
+    emotionalContext: Schema.NullOr(Schema.String),
+    sourceQuote: Schema.String,
+  }
+) {}
+
+// -----------------------------------------------------------------------------
 // Discriminated Union
+// -----------------------------------------------------------------------------
+
+/**
+ * Union of all insight types
+ */
 export const Insight = Schema.Union(
   ConcertInsight,
   CoverInsight,
