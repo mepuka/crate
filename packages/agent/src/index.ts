@@ -34,12 +34,14 @@ export {
 // Configuration Services
 // =============================================================================
 export {
+  ServerConfig,
   FaissConfig as FaissApiConfig,
   MusicBrainzConfig,
   JinaConfig,
   AnthropicConfig,
   PubSubConfig,
   AgentConfigLive,
+  type ServerConfigShape,
   type FaissConfigShape,
   type MusicBrainzConfigShape,
   type JinaConfigShape,

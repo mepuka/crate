@@ -5,6 +5,7 @@
  * Uses Effect.Service pattern with Config composition.
  *
  * Environment variables:
+ * - PORT: HTTP server port (default: 8080)
  * - FAISS_API_URL: URL for FAISS search API (default: http://localhost:8000)
  * - FAISS_TIMEOUT_MS: Request timeout in milliseconds (default: 30000)
  * - MUSICBRAINZ_API_URL: URL for MusicBrainz API (default: https://musicbrainz.org/ws/2)
@@ -18,6 +19,30 @@
  */
 
 import { Config, Duration, Effect, Layer, Option, Redacted } from "effect"
+
+// =============================================================================
+// Server Configuration
+// =============================================================================
+
+/**
+ * Configuration for HTTP server
+ */
+export interface ServerConfigShape {
+  readonly port: number
+}
+
+/**
+ * Server configuration service
+ *
+ * Environment variables:
+ * - PORT: HTTP server port (default: 8080)
+ */
+export class ServerConfig extends Effect.Service<ServerConfig>()("ServerConfig", {
+  effect: Effect.gen(function* () {
+    const port = yield* Config.integer("PORT").pipe(Config.withDefault(8080))
+    return { port } satisfies ServerConfigShape
+  })
+}) {}
 
 // =============================================================================
 // FAISS API Configuration
