@@ -9,10 +9,12 @@ Handles:
 
 All operations are designed to stay within 4GB RAM constraint.
 """
+import gc
 import numpy as np
 import faiss
 import tempfile
 import os
+import shutil
 import hashlib
 import base64
 import sqlite3
@@ -86,7 +88,7 @@ class EmbeddingIntegrationService:
         """
         Find plays that don't have embeddings yet.
 
-        Memory-efficient: Uses HashSet lookup instead of loading all plays.
+        Optimized approach: Uses temporary table for SQL-level filtering.
 
         Args:
             limit: Maximum number of pending IDs to return
@@ -97,36 +99,37 @@ class EmbeddingIntegrationService:
         """
         embedded_ids = self._load_embedded_ids()
 
-        # Query database for all play IDs (streaming)
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Get pending plays by excluding embedded IDs
-        # SQLite query with NOT IN for efficiency
-        logger.info("Querying database for pending plays")
+        logger.info("Querying database for pending plays using temp table approach")
 
+        # Create temporary table with embedded IDs for efficient SQL filtering
+        # This is faster than Python-side filtering for large datasets
+        cursor.execute("CREATE TEMP TABLE IF NOT EXISTS temp_embedded_ids (id INTEGER PRIMARY KEY)")
+        cursor.execute("DELETE FROM temp_embedded_ids")  # Clear previous data
+
+        # Insert embedded IDs in batches (SQLite has a limit on INSERT values)
+        batch_size = 500
+        embedded_list = list(embedded_ids)
+        for i in range(0, len(embedded_list), batch_size):
+            batch = embedded_list[i:i + batch_size]
+            placeholders = ','.join(['(?)'] * len(batch))
+            cursor.execute(f"INSERT INTO temp_embedded_ids (id) VALUES {placeholders}", batch)
+
+        logger.info(f"Loaded {len(embedded_ids)} embedded IDs into temp table")
+
+        # Query for pending plays using LEFT JOIN (much faster than NOT IN for large sets)
         cursor.execute("""
-            SELECT id FROM fact_plays
-            ORDER BY id DESC
-        """)
+            SELECT fp.id
+            FROM fact_plays fp
+            LEFT JOIN temp_embedded_ids te ON fp.id = te.id
+            WHERE te.id IS NULL
+            ORDER BY fp.id DESC
+            LIMIT ? OFFSET ?
+        """, (limit, offset))
 
-        # Filter in Python (more memory efficient than large NOT IN clause)
-        pending_ids = []
-        skipped = 0
-
-        for row in cursor:
-            play_id = row[0]
-            if play_id not in embedded_ids:
-                # Apply offset/limit
-                if skipped < offset:
-                    skipped += 1
-                    continue
-
-                pending_ids.append(play_id)
-
-                if len(pending_ids) >= limit:
-                    break
-
+        pending_ids = [row[0] for row in cursor.fetchall()]
         conn.close()
 
         logger.info(f"Found {len(pending_ids)} pending plays (offset={offset}, limit={limit})")
@@ -152,6 +155,93 @@ class EmbeddingIntegrationService:
         logger.info(f"Total pending: {pending_count} ({total_plays} total - {len(embedded_ids)} embedded)")
 
         return max(0, pending_count)
+
+    def detect_pending_plays_optimized(self, limit: int = 1000, offset: int = 0) -> List[int]:
+        """
+        Find plays without embeddings using indexed LEFT JOIN.
+
+        Optimized O(log n) query using embedded_play_ids table.
+        Falls back to detect_pending_plays() if table doesn't exist.
+
+        Args:
+            limit: Maximum number of pending IDs to return
+            offset: Pagination offset
+
+        Returns:
+            List of play IDs without embeddings
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        try:
+            # Check if embedded_play_ids table exists
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='embedded_play_ids'"
+            )
+            if cursor.fetchone() is None:
+                logger.warning("embedded_play_ids table not found, falling back to temp table approach")
+                conn.close()
+                return self.detect_pending_plays(limit, offset)
+
+            # Optimized query using indexed LEFT JOIN
+            cursor.execute("""
+                SELECT fp.id FROM fact_plays fp
+                LEFT JOIN embedded_play_ids ep ON fp.id = ep.play_id
+                WHERE ep.play_id IS NULL
+                ORDER BY fp.id DESC
+                LIMIT ? OFFSET ?
+            """, (limit, offset))
+
+            pending_ids = [row[0] for row in cursor.fetchall()]
+            logger.info(f"Found {len(pending_ids)} pending plays (optimized, offset={offset}, limit={limit})")
+            return pending_ids
+
+        finally:
+            conn.close()
+
+    def mark_plays_embedded(self, play_ids: List[int]) -> int:
+        """
+        Mark plays as embedded in the tracking table.
+
+        Called from three places:
+        1. /add endpoint - after add succeeds
+        2. /integrate endpoint - after hot reload succeeds
+        3. embed_pending.py script - after API call succeeds
+
+        Args:
+            play_ids: List of play IDs that have been embedded
+
+        Returns:
+            Number of plays marked (may be less if some already existed)
+        """
+        if not play_ids:
+            return 0
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        try:
+            # Ensure table exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS embedded_play_ids (
+                    play_id INTEGER PRIMARY KEY,
+                    embedded_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+
+            # Insert with INSERT OR IGNORE to handle duplicates
+            cursor.executemany(
+                "INSERT OR IGNORE INTO embedded_play_ids (play_id) VALUES (?)",
+                [(pid,) for pid in play_ids]
+            )
+            marked_count = cursor.rowcount
+            conn.commit()
+
+            logger.info(f"Marked {marked_count} plays as embedded (of {len(play_ids)} requested)")
+            return marked_count
+
+        finally:
+            conn.close()
 
     def enrich_play_text(self, play: Dict[str, Any]) -> str:
         """
@@ -234,7 +324,7 @@ class EmbeddingIntegrationService:
         - Atomic file swaps
 
         Args:
-            new_embeddings_b64: Base64-encoded numpy array (256d embeddings)
+            new_embeddings_b64: Base64-encoded numpy array (384d embeddings, BGE-small)
             new_ids: List of play IDs for new embeddings
             expected_checksum: SHA256 checksum for verification (format: 'sha256:hex')
 
@@ -343,10 +433,20 @@ class EmbeddingIntegrationService:
             # Step 5: Create memory-mapped output files (write directly to disk, no RAM copy)
             logger.info("Creating memory-mapped output files")
 
-            # Create temp file paths
-            with tempfile.NamedTemporaryFile(delete=False, suffix='_embeddings.npy') as tmp_emb:
+            # Create temp files in same directory as target for atomic rename
+            # Cross-filesystem moves require copy+delete which is slow
+            target_dir = self.embeddings_path.parent
+            with tempfile.NamedTemporaryFile(
+                dir=target_dir,
+                delete=False,
+                suffix='_embeddings.npy'
+            ) as tmp_emb:
                 tmp_embeddings_path = tmp_emb.name
-            with tempfile.NamedTemporaryFile(delete=False, suffix='_ids.npy') as tmp_ids:
+            with tempfile.NamedTemporaryFile(
+                dir=target_dir,
+                delete=False,
+                suffix='_ids.npy'
+            ) as tmp_ids:
                 tmp_ids_path = tmp_ids.name
 
             # Create memory-mapped arrays for output (writes directly to disk)
@@ -365,15 +465,22 @@ class EmbeddingIntegrationService:
 
             logger.info("✓ Created mmap output files")
 
-            # Copy existing data to output files (disk-to-disk, minimal RAM)
-            logger.info("Copying existing data...")
-            combined_embeddings[:total_before] = existing_embeddings
-            combined_ids[:total_before] = existing_ids
-            logger.info("✓ Copied existing data")
+            # Copy existing data to output files in batches (memory-efficient)
+            # Full array copy would spike memory; batch by 25k vectors (~38MB per batch)
+            batch_size = 25000
+            logger.info(f"Copying existing data in batches of {batch_size:,}...")
+            for i in range(0, total_before, batch_size):
+                batch_end = min(i + batch_size, total_before)
+                # Materialize batch from mmap, copy to output mmap
+                batch = np.array(existing_embeddings[i:batch_end])
+                combined_embeddings[i:batch_end] = batch
+                combined_ids[i:batch_end] = np.array(existing_ids[i:batch_end])
+                del batch
+                gc.collect()
+            logger.info("✓ Copied existing data (batch-wise)")
 
             # Free memory from existing mmap arrays
             del existing_embeddings, existing_ids
-            import gc
             gc.collect()
             logger.info("✓ Freed existing array references")
 
@@ -411,10 +518,10 @@ class EmbeddingIntegrationService:
                 if backup_idx.exists():
                     backup_idx.unlink()
 
-                os.rename(self.embeddings_path, backup_emb)
-                os.rename(self.play_ids_path, backup_ids)
+                shutil.move(self.embeddings_path, backup_emb)
+                shutil.move(self.play_ids_path, backup_ids)
                 if self.index_path.exists():
-                    os.rename(self.index_path, backup_idx)
+                    shutil.move(self.index_path, backup_idx)
 
                 logger.info("✓ Created backups")
 
@@ -423,10 +530,10 @@ class EmbeddingIntegrationService:
                 tmp_index_path = tmp_idx.name
                 faiss.write_index(index, tmp_index_path)
 
-            # Atomic renames (files already have .npy extension from open_memmap)
-            os.rename(tmp_embeddings_path, self.embeddings_path)
-            os.rename(tmp_ids_path, self.play_ids_path)
-            os.rename(tmp_index_path, self.index_path)
+            # Move temp files to final locations (shutil.move handles cross-filesystem)
+            shutil.move(tmp_embeddings_path, self.embeddings_path)
+            shutil.move(tmp_ids_path, self.play_ids_path)
+            shutil.move(tmp_index_path, self.index_path)
 
             logger.info("✓ Atomic swaps complete")
 
@@ -475,8 +582,10 @@ class EmbeddingIntegrationService:
 
         logger.info(f"Index dimensions: {n_vectors:,} vectors × {d}d")
 
-        # FAISS index configuration
-        nlist = 1024  # Number of clusters (same as original)
+        # FAISS index configuration - adaptive nlist based on vector count
+        # nlist must be <= n_vectors; use ~4*sqrt(n) as rule of thumb, capped at 1024
+        nlist = min(1024, max(1, int(4 * (n_vectors ** 0.5))))
+        logger.info(f"Using nlist={nlist} for {n_vectors:,} vectors")
 
         # Create index
         quantizer = faiss.IndexFlatIP(d)
@@ -507,7 +616,6 @@ class EmbeddingIntegrationService:
 
             # Explicit cleanup to free batch memory immediately
             del batch
-            import gc
             gc.collect()
 
         logger.info(f"✓ Added all {index.ntotal:,} vectors to index")

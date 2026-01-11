@@ -18,6 +18,7 @@ import asyncio
 from .services.search_service import FAISSSearchService
 from .services.db_service import DatabaseService
 from .services.hybrid_search_service import HybridSearchService
+from .services.sync import IndexSynchronizer
 from .models import (
     SearchRequest, SearchResponse, HealthResponse, PlayResult, TimelineResponse,
     EnrichmentRequest, EnrichmentResponse, BatchPlaysResponse,
@@ -40,7 +41,7 @@ from .models.generated_assets import (
     GeneratedAsset, GetGeneratedAssetsResponse,
 )
 from .config import settings
-from .routes import embeddings, graph
+from .routes import embeddings, graph, summary
 import json
 import os
 from fastapi import Header
@@ -56,8 +57,12 @@ logger = logging.getLogger(__name__)
 search_service: Optional[FAISSSearchService] = None
 hybrid_search_service: Optional[HybridSearchService] = None
 db_service: Optional[DatabaseService] = None
+index_synchronizer: IndexSynchronizer = IndexSynchronizer()  # Shared lock for /add vs /integrate
 startup_time: float = 0
 persistence_task: Optional[asyncio.Task] = None
+
+# Request size limits
+MAX_EMBEDDING_REQUEST_SIZE = 500 * 1024 * 1024  # 500MB - aligned with nginx
 
 async def background_persistence_loop():
     """Background task to persist index periodically.
@@ -93,6 +98,9 @@ async def lifespan(app: FastAPI):
         # Initialize database service (required for timeline)
         db_service = DatabaseService(settings.DATABASE_PATH)
         logger.info("Database service initialized")
+
+        # Initialize daily summary tables
+        db_service.init_daily_summary_tables()
 
         # Initialize search service (requires embedding files)
         # For BGE-small: play_ids.npy, embeddings_384d.index, metadata.json
@@ -155,6 +163,31 @@ async def lifespan(app: FastAPI):
 
     if db_service:
         db_service.close()
+
+
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware to enforce request size limits on embedding endpoints.
+
+    Prevents memory exhaustion from oversized requests.
+    Returns 413 (Request Entity Too Large) if limit exceeded.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        """Check content-length for embedding endpoints."""
+        if request.url.path.startswith("/api/embeddings"):
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    if int(content_length) > MAX_EMBEDDING_REQUEST_SIZE:
+                        return Response(
+                            content=f"Request too large. Max: {MAX_EMBEDDING_REQUEST_SIZE // (1024*1024)}MB",
+                            status_code=413,
+                            headers={"Content-Type": "text/plain"}
+                        )
+                except ValueError:
+                    pass  # Invalid content-length header, let it through
+        return await call_next(request)
 
 
 class CacheHeadersMiddleware(BaseHTTPMiddleware):
@@ -245,10 +278,12 @@ app = FastAPI(
 # )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(CacheHeadersMiddleware)
+app.add_middleware(RequestSizeLimitMiddleware)  # Enforce 500MB limit on embedding endpoints
 
 # Include routers
 app.include_router(embeddings.router)
 app.include_router(graph.router)
+app.include_router(summary.router)
 
 
 # Dependency injection
@@ -477,13 +512,27 @@ async def search(
     db_svc: DatabaseService = Depends(get_db_service)
 ) -> SearchResponse:
     """Semantic search endpoint."""
+    # FAISS limitation: we can only retrieve top-k results, not true pagination
+    # Max offset of 900 allows for limit up to 100 within the 1000 result cap
+    MAX_OFFSET = 900
+    if request.offset > MAX_OFFSET:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Offset exceeds maximum of {MAX_OFFSET}. "
+                   "FAISS semantic search is limited to the top ~1000 most similar results. "
+                   "Consider using more specific search terms to narrow results."
+        )
+
     try:
         start_time = time.time()
 
         # FAISS search - fetch only what's needed for pagination
         # Add buffer of 100 to handle potential filtering
         internal_k = min(1000, request.offset + request.limit + 100)
-        faiss_indices, distances = search_svc.search(request.query, k=internal_k)
+        # Run embedding + FAISS search in thread pool to avoid blocking event loop
+        faiss_indices, distances = await asyncio.to_thread(
+            search_svc.search, request.query, internal_k
+        )
 
         # Map to play IDs
         play_ids = search_svc.get_play_ids(faiss_indices)
@@ -492,8 +541,10 @@ async def search(
         paginated_ids = play_ids[request.offset:request.offset + request.limit]
         paginated_distances = distances[request.offset:request.offset + request.limit]
 
-        # Fetch from SQL
-        plays_dict = db_svc.get_plays_by_ids(paginated_ids.tolist())
+        # Fetch from SQL (run in thread pool for consistency)
+        plays_dict = await asyncio.to_thread(
+            db_svc.get_plays_by_ids, paginated_ids.tolist()
+        )
 
         # Merge with similarity scores
         results = []
@@ -504,11 +555,20 @@ async def search(
 
         query_time = (time.time() - start_time) * 1000
 
+        # Add note if results may be capped by FAISS limit
+        note = None
+        if len(play_ids) >= internal_k - 10:  # Close to the cap
+            note = (
+                f"Showing top {len(play_ids)} most similar results. "
+                "FAISS returns approximate nearest neighbors, not exhaustive search."
+            )
+
         return SearchResponse(
             results=results,
             total=len(play_ids),
             query_time_ms=query_time,
-            query=request.query
+            query=request.query,
+            note=note
         )
 
     except Exception as e:
@@ -555,20 +615,23 @@ async def hybrid_search(
     try:
         start_time = time.time()
 
-        # Perform hybrid search
-        results = hybrid_svc.search(
-            query=request.query,
-            k=request.limit,
-            bm25_weight=request.bm25_weight,
-            faiss_weight=request.faiss_weight,
-            use_expansion=request.use_expansion
+        # Perform hybrid search (run in thread pool - involves embedding + FAISS)
+        results = await asyncio.to_thread(
+            hybrid_svc.search,
+            request.query,
+            request.limit,
+            request.bm25_weight,
+            request.faiss_weight,
+            request.use_expansion
         )
 
         # Get play IDs for database lookup
         play_ids = [r.play_id for r in results]
 
-        # Fetch full play data from database
-        plays_dict = db_svc.get_plays_by_ids(play_ids)
+        # Fetch full play data from database (run in thread pool)
+        plays_dict = await asyncio.to_thread(
+            db_svc.get_plays_by_ids, play_ids
+        )
 
         # Merge hybrid results with play data
         hybrid_results = []
@@ -1637,6 +1700,22 @@ ALLOWED_IMAGE_DOMAINS = {
     "static.kexp.org",
 }
 
+# Maximum redirects to follow for image proxy (prevents redirect loops)
+MAX_IMAGE_PROXY_REDIRECTS = 5
+
+
+def is_domain_allowed(domain: str) -> bool:
+    """Check if a domain is in the allowed list for image proxy."""
+    domain = domain.lower()
+    if domain in ALLOWED_IMAGE_DOMAINS:
+        return True
+    # Check if it's a subdomain of an allowed domain
+    # SECURITY: Must use '.' prefix to prevent evilarchive.org from matching archive.org
+    for allowed_domain in ALLOWED_IMAGE_DOMAINS:
+        if domain.endswith('.' + allowed_domain):
+            return True
+    return False
+
 
 @app.get(
     "/api/image-proxy",
@@ -1678,28 +1757,60 @@ async def image_proxy(url: str):
             detail=f"Invalid URL: {str(e)}"
         )
 
-    # Check domain is allowed - also check if it ends with allowed domain (for CDN subdomains)
+    # Check domain is allowed
     domain = parsed.netloc.lower()
-    allowed = domain in ALLOWED_IMAGE_DOMAINS
-    if not allowed:
-        # Check if it's a subdomain of an allowed domain
-        # SECURITY: Must use '.' prefix to prevent evilarchive.org from matching archive.org
-        for allowed_domain in ALLOWED_IMAGE_DOMAINS:
-            if domain.endswith('.' + allowed_domain):
-                allowed = True
-                break
-
-    if not allowed:
+    if not is_domain_allowed(domain):
         logger.warning(f"Image proxy: blocked domain {domain}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Domain not allowed: {domain}. Only archive.org, kexp.org, and coverartarchive.org images can be proxied."
         )
 
-    # Fetch the image
+    # Fetch the image with manual redirect handling (SSRF protection)
+    # We validate each redirect target to prevent redirecting to internal/disallowed hosts
     try:
+        current_url = url
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, follow_redirects=True)
+            for redirect_count in range(MAX_IMAGE_PROXY_REDIRECTS + 1):
+                response = await client.get(current_url, follow_redirects=False)
+
+                # Handle redirects manually
+                if response.status_code in (301, 302, 303, 307, 308):
+                    redirect_url = response.headers.get('location')
+                    if not redirect_url:
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail="Redirect response missing location header"
+                        )
+
+                    # Resolve relative redirects
+                    from urllib.parse import urljoin
+                    redirect_url = urljoin(current_url, redirect_url)
+
+                    # Validate redirect target domain
+                    redirect_parsed = urlparse(redirect_url)
+                    redirect_domain = redirect_parsed.netloc.lower()
+
+                    if not is_domain_allowed(redirect_domain):
+                        logger.warning(
+                            f"Image proxy: blocked redirect to {redirect_domain} (from {domain})"
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Redirect to disallowed domain: {redirect_domain}"
+                        )
+
+                    current_url = redirect_url
+                    continue  # Follow the redirect
+
+                # Not a redirect, break the loop
+                break
+            else:
+                # Exceeded max redirects
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Too many redirects (>{MAX_IMAGE_PROXY_REDIRECTS})"
+                )
 
             if response.status_code == 404:
                 # Return cacheable 404 to prevent repeated requests for known-broken images

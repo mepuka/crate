@@ -20,6 +20,7 @@ from pathlib import Path
 
 from ..services.db_service import DatabaseService
 from ..services.embedding_integration_service import EmbeddingIntegrationService
+from ..services.sync import IntegrationInProgressError
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ class PendingPlaysResponse(BaseModel):
 class IntegrationMetadata(BaseModel):
     """Metadata about embedding generation."""
     generated_by: str = "colab"
-    model_name: str = "sentence-transformers/multi-qa-mpnet-base-dot-v1"
+    model_name: str = "BAAI/bge-small-en-v1.5"
     generation_time: str
     device: str = "cpu"
 
@@ -60,9 +61,10 @@ class IntegrationRequest(BaseModel):
     """Request to integrate new embeddings."""
     batch_id: str
     play_ids: List[int]
-    embeddings_256d_b64: str = Field(
+    embeddings_b64: str = Field(
         ...,
-        description="Base64-encoded numpy array of 256d embeddings"
+        description="Base64-encoded numpy array of 384d embeddings (BGE-small)",
+        alias="embeddings_256d_b64"  # Backwards compatibility
     )
     checksum: str = Field(
         ...,
@@ -177,8 +179,8 @@ async def get_pending_embeddings(
     try:
         logger.info(f"Fetching pending plays (limit={limit}, offset={offset})")
 
-        # Get pending play IDs (memory-efficient)
-        pending_ids = integration_svc.detect_pending_plays(limit=limit, offset=offset)
+        # Get pending play IDs (uses optimized indexed query if embedded_play_ids table exists)
+        pending_ids = integration_svc.detect_pending_plays_optimized(limit=limit, offset=offset)
 
         if not pending_ids:
             logger.info("No pending plays found")
@@ -273,8 +275,12 @@ async def get_pca_model() -> FileResponse:
     - Uses mmap to read large arrays
     - Rebuilds FAISS index in batches
     - Atomic file swaps
+    - Hot reloads in-memory index after integration
 
     Maximum memory usage: ~100MB (no large arrays in memory)
+
+    **Concurrency:** Blocks /add requests during integration.
+    Holds exclusive lock from start through hot_reload completion.
 
     Requires X-API-Key header for authentication.
     """
@@ -287,6 +293,9 @@ async def integrate_embeddings(
     """
     Integrate new embeddings into the index.
 
+    Uses IndexSynchronizer to block /add during integration.
+    Holds lock from start through hot_reload completion.
+
     Args:
         request: Integration request with embeddings and metadata
         x_api_key: API key for authentication
@@ -295,8 +304,11 @@ async def integrate_embeddings(
     Returns:
         IntegrationResponse with status and integration details
     """
-    # Validate API key
+    import anyio
     import os
+    from ..main import search_service, index_synchronizer
+
+    # Validate API key
     expected_key = os.getenv("FAISS_API_KEY")
     if expected_key:
         if not x_api_key or x_api_key != expected_key:
@@ -305,52 +317,67 @@ async def integrate_embeddings(
                 detail="Invalid or missing API key"
             )
 
-    try:
-        logger.info(f"Starting embedding integration for batch {request.batch_id}")
-        logger.info(f"Integrating {len(request.play_ids)} plays")
-        logger.info(f"Metadata: {request.metadata.model_dump()}")
+    # Blocking acquire - waits for any /add to finish
+    async with index_synchronizer.integration_context():
+        try:
+            logger.info(f"Starting embedding integration for batch {request.batch_id}")
+            logger.info(f"Integrating {len(request.play_ids)} plays")
+            logger.info(f"Metadata: {request.metadata.model_dump()}")
 
-        # Validate play IDs
-        if not request.play_ids:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No play IDs provided"
+            # Validate play IDs
+            if not request.play_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No play IDs provided"
+                )
+
+            # Integrate embeddings (memory-efficient, runs in thread pool)
+            result = await anyio.to_thread.run_sync(
+                lambda: integration_svc.integrate_embeddings(
+                    new_embeddings_b64=request.embeddings_b64,
+                    new_ids=request.play_ids,
+                    expected_checksum=request.checksum
+                )
             )
 
-        # Integrate embeddings (memory-efficient)
-        result = integration_svc.integrate_embeddings(
-            new_embeddings_b64=request.embeddings_256d_b64,
-            new_ids=request.play_ids,
-            expected_checksum=request.checksum
-        )
+            logger.info(f"Integration complete: {result}")
 
-        logger.info(f"Integration complete: {result}")
+            # Hot reload in-memory index under same synchronizer lock
+            # FAISSSearchService._mutex provides internal thread safety for atomic swap
+            if search_service is not None:
+                await anyio.to_thread.run_sync(search_service.hot_reload)
+                logger.info("In-memory index hot reloaded")
 
-        return IntegrationResponse(
-            status="success",
-            integration=IntegrationResult(
-                plays_integrated=result['plays_integrated'],
-                total_embeddings_before=result['total_before'],
-                total_embeddings_after=result['total_after'],
-                index_rebuilt=result['index_rebuilt']
-            ),
-            checksum_verified=result['checksum_verified'],
-            message=f"Successfully integrated {result['plays_integrated']} embeddings"
-        )
+            # Mark plays as embedded in tracking table
+            await anyio.to_thread.run_sync(
+                lambda: integration_svc.mark_plays_embedded(request.play_ids)
+            )
 
-    except ValueError as e:
-        # Validation errors (checksum mismatch, invalid data, etc.)
-        logger.error(f"Validation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        logger.error(f"Integration failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Integration failed: {str(e)}"
-        )
+            return IntegrationResponse(
+                status="success",
+                integration=IntegrationResult(
+                    plays_integrated=result['plays_integrated'],
+                    total_embeddings_before=result['total_before'],
+                    total_embeddings_after=result['total_after'],
+                    index_rebuilt=result['index_rebuilt']
+                ),
+                checksum_verified=result['checksum_verified'],
+                message=f"Successfully integrated {result['plays_integrated']} embeddings and reloaded index"
+            )
+
+        except ValueError as e:
+            # Validation errors (checksum mismatch, invalid data, etc.)
+            logger.error(f"Validation error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+        except Exception as e:
+            logger.error(f"Integration failed: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Integration failed: {str(e)}"
+            )
 
 
 @router.post(
@@ -365,14 +392,23 @@ async def integrate_embeddings(
 
     Memory usage: Minimal - only the batch is held in memory.
 
+    **Concurrency:** Returns 409 if integration is in progress.
+    Use Retry-After header to know when to retry.
+
     Requires localhost access (cron job runs inside container).
-    """
+    """,
+    responses={
+        409: {"description": "Integration in progress - retry later"}
+    }
 )
 async def add_embeddings(
     request: AddEmbeddingsRequest
 ) -> AddEmbeddingsResponse:
     """
     Add embeddings to the in-memory FAISS index.
+
+    Uses IndexSynchronizer to prevent /add during /integrate.
+    Returns 409 Conflict if integration is running.
 
     Args:
         request: AddEmbeddingsRequest with play_ids and embeddings
@@ -381,7 +417,7 @@ async def add_embeddings(
         AddEmbeddingsResponse with status and counts
     """
     import anyio
-    from ..main import search_service
+    from ..main import search_service, index_synchronizer
 
     if search_service is None:
         raise HTTPException(
@@ -390,35 +426,50 @@ async def add_embeddings(
         )
 
     try:
-        logger.info(f"Adding {len(request.play_ids)} embeddings to index")
+        # Non-blocking acquire - fails fast if integration running
+        async with index_synchronizer.add_context():
+            logger.info(f"Adding {len(request.play_ids)} embeddings to index")
 
-        # Validate counts match
-        if len(request.play_ids) != len(request.embeddings):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Mismatch: {len(request.play_ids)} play_ids vs {len(request.embeddings)} embeddings"
+            # Validate counts match
+            if len(request.play_ids) != len(request.embeddings):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Mismatch: {len(request.play_ids)} play_ids vs {len(request.embeddings)} embeddings"
+                )
+
+            # Convert to numpy array
+            import numpy as np
+            embeddings = np.array(request.embeddings, dtype=np.float32)
+
+            # Run in thread pool to avoid blocking the event loop
+            # FAISSSearchService._mutex provides internal thread safety
+            result = await anyio.to_thread.run_sync(
+                lambda: search_service.add_embeddings(
+                    play_ids=request.play_ids,
+                    embeddings=embeddings
+                )
             )
 
-        # Convert to numpy array
-        import numpy as np
-        embeddings = np.array(request.embeddings, dtype=np.float32)
-
-        # Run in thread pool to avoid blocking the event loop
-        # This operation can take 30-90 seconds for large batches
-        result = await anyio.to_thread.run_sync(
-            lambda: search_service.add_embeddings(
-                play_ids=request.play_ids,
-                embeddings=embeddings
+            # Mark plays as embedded in tracking table
+            integration_svc = get_integration_service()
+            await anyio.to_thread.run_sync(
+                lambda: integration_svc.mark_plays_embedded(request.play_ids)
             )
-        )
 
-        return AddEmbeddingsResponse(
-            status="success",
-            added=result["added"],
-            total_vectors=result["total_vectors"],
-            persisted=result["persisted"]
-        )
+            return AddEmbeddingsResponse(
+                status="success",
+                added=result["added"],
+                total_vectors=result["total_vectors"],
+                persisted=result["persisted"]
+            )
 
+    except IntegrationInProgressError as e:
+        # Return 409 with Retry-After header
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+            headers={"Retry-After": "60"}
+        )
     except ValueError as e:
         logger.error(f"Validation error adding embeddings: {e}")
         raise HTTPException(

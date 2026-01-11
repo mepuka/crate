@@ -95,10 +95,12 @@ class HybridSearchService:
                 logger.warning(f"FTS5 search failed: {e}")
 
         # FAISS search (if enabled and weighted)
+        # Uses search_and_map() for atomic search + ID mapping under single mutex lock
+        # Prevents hot_reload() from interleaving between search and ID mapping
         if faiss_weight > 0:
             try:
-                indices, distances = self.faiss.search(query, k=fetch_k)
-                play_ids = self.faiss.get_play_ids(indices)
+                # ATOMIC: search + ID mapping under same lock
+                play_ids, distances = self.faiss.search_and_map(query, k=fetch_k)
 
                 for rank, (play_id, score) in enumerate(
                     zip(play_ids.tolist(), distances.tolist()),

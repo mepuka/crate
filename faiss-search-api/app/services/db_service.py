@@ -3,6 +3,8 @@ import sqlite3
 import json
 import base64
 import time
+import threading
+import weakref
 from pathlib import Path
 from typing import Optional, Dict, List, Any, Tuple, TypeVar, Callable
 from datetime import datetime
@@ -18,6 +20,10 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
+
+# SQLite has a limit of 999 variables per query (compile-time default)
+# Use 500 as a safe chunk size for queries with dynamic placeholders
+SQLITE_MAX_VARIABLES = 500
 
 
 def retry_on_locked(
@@ -67,6 +73,9 @@ def retry_on_locked(
 class DatabaseService:
     """Service for querying play metadata from SQLite."""
 
+    # Thread-local storage for database connections
+    _thread_local = threading.local()
+
     def __init__(self, db_path: Path):
         """
         Initialize database service.
@@ -75,29 +84,44 @@ class DatabaseService:
             db_path: Path to SQLite database file
         """
         self.db_path = Path(db_path)
-        self._conn: Optional[sqlite3.Connection] = None
 
         if not self.db_path.exists():
             raise FileNotFoundError(f"Database not found: {self.db_path}")
 
-        logger.info(f"Connected to database: {self.db_path}")
+        # Track all connections with weakrefs for proper shutdown
+        # Each thread gets its own connection; we track them all for close()
+        self._all_connections: list[weakref.ref] = []
+        self._connections_lock = threading.Lock()
+
+        logger.info(f"Database service initialized: {self.db_path}")
 
     @property
     def conn(self) -> sqlite3.Connection:
-        """Lazy database connection (thread-safe for read operations)."""
-        if self._conn is None:
-            # Allow SQLite connection to be used across threads for read-only operations
-            # Set timeout to 30 seconds to wait for locks
-            self._conn = sqlite3.connect(
+        """Thread-local database connection (each thread gets its own connection)."""
+        # Check if this thread already has a connection
+        if not hasattr(self._thread_local, 'connections'):
+            self._thread_local.connections = {}
+
+        db_key = str(self.db_path)
+        if db_key not in self._thread_local.connections:
+            # Create new connection for this thread
+            conn = sqlite3.connect(
                 self.db_path,
-                check_same_thread=False,
                 timeout=30.0
             )
-            self._conn.row_factory = sqlite3.Row
+            conn.row_factory = sqlite3.Row
             # Enable WAL mode for better concurrent access
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA busy_timeout=30000")
-        return self._conn
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=30000")
+            self._thread_local.connections[db_key] = conn
+
+            # Track with weakref for shutdown
+            with self._connections_lock:
+                self._all_connections.append(weakref.ref(conn))
+
+            logger.debug(f"Created new connection for thread {threading.current_thread().name}")
+
+        return self._thread_local.connections[db_key]
 
     def get_play_by_id(self, play_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -122,6 +146,8 @@ class DatabaseService:
         """
         Fetch multiple plays by IDs.
 
+        Uses chunking to avoid SQLite's 999 variable limit.
+
         Args:
             play_ids: List of play IDs
 
@@ -131,15 +157,19 @@ class DatabaseService:
         if not play_ids:
             return {}
 
-        cursor = self.conn.cursor()
-        placeholders = ','.join('?' * len(play_ids))
-        query = f"SELECT * FROM fact_plays WHERE id IN ({placeholders})"
-        cursor.execute(query, play_ids)
-
         results = {}
-        for row in cursor.fetchall():
-            play_dict = self._row_to_dict(row)
-            results[play_dict['id']] = play_dict
+        cursor = self.conn.cursor()
+
+        # Process in chunks to avoid SQLite variable limit
+        for i in range(0, len(play_ids), SQLITE_MAX_VARIABLES):
+            chunk = play_ids[i:i + SQLITE_MAX_VARIABLES]
+            placeholders = ','.join('?' * len(chunk))
+            query = f"SELECT * FROM fact_plays WHERE id IN ({placeholders})"
+            cursor.execute(query, chunk)
+
+            for row in cursor.fetchall():
+                play_dict = self._row_to_dict(row)
+                results[play_dict['id']] = play_dict
 
         return results
 
@@ -1388,35 +1418,40 @@ class DatabaseService:
         limit: int = 20,
         include_attributes: bool = True
     ) -> List[dict]:
-        """Get band members for given band MBIDs."""
+        """Get band members for given band MBIDs.
+
+        Data model: artist_edges stores (source=artist, target=band, type='member of band')
+        To find members OF a band, we query where target_mbid = the band.
+        """
         if not mbids:
             return []
 
         placeholders = ','.join('?' * len(mbids))
         cursor = self.conn.cursor()
 
+        # Query where target = band (the band is what the artist is a member OF)
         cursor.execute(f"""
             SELECT
-                target_mbid, target_name, relationship_type,
+                source_mbid, source_name, relationship_type,
                 attributes, begin_date, end_date,
-                source_mbid, source_name
+                target_mbid, target_name
             FROM artist_edges
-            WHERE source_mbid IN ({placeholders})
+            WHERE target_mbid IN ({placeholders})
               AND relationship_type = 'member of band'
-            ORDER BY target_name
+            ORDER BY source_name
             LIMIT ?
         """, [*mbids, limit])
 
         return [
             {
-                'mbid': row[0],
+                'mbid': row[0],  # source = the member artist
                 'name': row[1],
                 'node_type': 'artist',
                 'relationship_type': row[2],
                 'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
                 'begin_date': row[4],
                 'end_date': row[5],
-                'via_mbid': row[6],
+                'via_mbid': row[6],  # target = the band being queried
                 'via_name': row[7]
             }
             for row in cursor.fetchall()
@@ -1428,7 +1463,11 @@ class DatabaseService:
         limit: int = 20,
         include_attributes: bool = True
     ) -> List[dict]:
-        """Get bands an artist is member of."""
+        """Get bands an artist is member of.
+
+        Data model: artist_edges stores (source=artist, target=band, type='member of band')
+        To find bands an artist is a member OF, we query where source_mbid = the artist.
+        """
         if not mbids:
             return []
 
@@ -1749,7 +1788,7 @@ class DatabaseService:
                 SELECT DISTINCT target_mbid as band_mbid, target_name as band_name
                 FROM artist_edges
                 WHERE source_mbid IN ({placeholders})
-                  AND relationship_type = 'member of band'
+                  AND relationship_type = 'member_of'
             )
             SELECT DISTINCT
                 ae.source_mbid,
@@ -1762,7 +1801,7 @@ class DatabaseService:
             FROM artist_edges ae
             JOIN source_bands sb ON ae.target_mbid = sb.band_mbid
             WHERE ae.source_mbid NOT IN ({placeholders})
-              AND ae.relationship_type = 'member of band'
+              AND ae.relationship_type = 'member_of'
             ORDER BY ae.source_name
             LIMIT ?
         """, [*mbids, *mbids, limit])
@@ -1963,7 +2002,7 @@ class DatabaseService:
                 primary_role
             FROM artist_edges
             WHERE target_mbid IN ({placeholders})
-              AND relationship_type = 'member of band'
+              AND relationship_type = 'member_of'
               AND {instrument_column} = 1
             ORDER BY source_name
             LIMIT ?
@@ -2569,11 +2608,66 @@ class DatabaseService:
         if strategy == "newest_first":
             order_clause = "ORDER BY fp.id DESC"
         elif strategy == "random":
-            order_clause = "ORDER BY RANDOM()"
+            # Use efficient random sampling via multiple random ID ranges
+            # This is O(limit) instead of O(n) for ORDER BY RANDOM()
+            if total_unprocessed > 0:
+                # Get ID range for unprocessed plays
+                cursor.execute(f"""
+                    SELECT MIN(fp.id), MAX(fp.id)
+                    FROM fact_plays fp
+                    LEFT JOIN insights i ON fp.id = i.play_id AND i.deleted_at IS NULL
+                    {base_where}
+                """, params)
+                min_id, max_id = cursor.fetchone()
+
+                if min_id and max_id:
+                    # Sample using random offsets within the ID range
+                    # Oversample to account for gaps and already-processed plays
+                    import random
+                    oversample_factor = 5
+                    random_ids = set()
+                    attempts = 0
+                    max_attempts = limit * oversample_factor * 2
+
+                    while len(random_ids) < limit * oversample_factor and attempts < max_attempts:
+                        random_id = random.randint(min_id, max_id)
+                        random_ids.add(random_id)
+                        attempts += 1
+
+                    # Query for actual unprocessed plays from random IDs
+                    random_ids_list = list(random_ids)
+                    placeholders = ','.join('?' * len(random_ids_list))
+                    cursor.execute(f"""
+                        SELECT fp.id
+                        FROM fact_plays fp
+                        LEFT JOIN insights i ON fp.id = i.play_id AND i.deleted_at IS NULL
+                        WHERE fp.id IN ({placeholders})
+                          AND i.id IS NULL
+                        LIMIT ?
+                    """, random_ids_list + [limit])
+                    play_ids = [row[0] for row in cursor.fetchall()]
+
+                    logger.info(f"Found {len(play_ids)} unprocessed plays via random sampling (total: {total_unprocessed})")
+                    return {
+                        'play_ids': play_ids,
+                        'count': len(play_ids),
+                        'total_unprocessed': total_unprocessed,
+                        'strategy': strategy
+                    }
+
+            # Fallback if no unprocessed plays
+            play_ids = []
+            logger.info(f"No unprocessed plays found for random sampling")
+            return {
+                'play_ids': play_ids,
+                'count': 0,
+                'total_unprocessed': total_unprocessed,
+                'strategy': strategy
+            }
         else:  # oldest_first (default)
             order_clause = "ORDER BY fp.id ASC"
 
-        # Get the play IDs
+        # Get the play IDs (for non-random strategies)
         query = f"""
             SELECT fp.id
             FROM fact_plays fp
@@ -2800,9 +2894,310 @@ class DatabaseService:
 
         return assets
 
+    # =========================================================================
+    # Daily Summary Methods
+    # =========================================================================
+
+    def init_daily_summary_tables(self):
+        """
+        Initialize daily research and summary tables if they don't exist.
+
+        Should be called during startup.
+        """
+        cursor = self.conn.cursor()
+
+        # Daily research table - stores Phase 1 output
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS daily_research (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT UNIQUE NOT NULL,
+                research_context JSON NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                duration_ms INTEGER,
+                tool_call_count INTEGER DEFAULT 0,
+                token_usage JSON
+            )
+        """)
+
+        # Daily summaries table - stores Phase 2 output
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS daily_summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT UNIQUE NOT NULL,
+                summary JSON NOT NULL,
+                research_id INTEGER REFERENCES daily_research(id),
+                created_at TEXT DEFAULT (datetime('now')),
+                regenerated_count INTEGER DEFAULT 0
+            )
+        """)
+
+        # Index for efficient date lookups
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_daily_research_date ON daily_research(date)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_daily_summaries_date ON daily_summaries(date)
+        """)
+
+        self.conn.commit()
+        logger.info("Daily summary tables initialized")
+
+    @retry_on_locked(max_retries=3, base_delay=0.2, max_delay=2.0)
+    def save_daily_research(
+        self,
+        date: str,
+        research_context: Dict[str, Any],
+        duration_ms: int,
+        tool_call_count: int = 0,
+        token_usage: Optional[Dict[str, Any]] = None
+    ) -> int:
+        """
+        Save or update daily research context.
+
+        Args:
+            date: Date string (YYYY-MM-DD)
+            research_context: Full research context JSON
+            duration_ms: How long research took
+            tool_call_count: Number of tool calls made
+            token_usage: Optional token usage stats
+
+        Returns:
+            The research ID
+        """
+        cursor = self.conn.cursor()
+
+        research_json = json.dumps(research_context)
+        token_json = json.dumps(token_usage) if token_usage else None
+
+        # Upsert - update if exists, insert if not
+        cursor.execute("""
+            INSERT INTO daily_research (date, research_context, duration_ms, tool_call_count, token_usage)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(date) DO UPDATE SET
+                research_context = excluded.research_context,
+                duration_ms = excluded.duration_ms,
+                tool_call_count = excluded.tool_call_count,
+                token_usage = excluded.token_usage,
+                created_at = datetime('now')
+        """, (date, research_json, duration_ms, tool_call_count, token_json))
+
+        self.conn.commit()
+
+        # Get the ID (whether inserted or updated)
+        cursor.execute("SELECT id FROM daily_research WHERE date = ?", (date,))
+        research_id = cursor.fetchone()[0]
+
+        logger.info(f"Saved daily research for {date} (id: {research_id})")
+        return research_id
+
+    def get_daily_research(self, date: str) -> Optional[Dict[str, Any]]:
+        """
+        Get daily research context by date.
+
+        Args:
+            date: Date string (YYYY-MM-DD)
+
+        Returns:
+            Research dict with id, date, research_context, metadata
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT id, date, research_context, created_at, duration_ms, tool_call_count, token_usage
+            FROM daily_research
+            WHERE date = ?
+        """, (date,))
+        row = cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return {
+            'id': row[0],
+            'date': row[1],
+            'research_context': json.loads(row[2]),
+            'created_at': row[3],
+            'duration_ms': row[4],
+            'tool_call_count': row[5],
+            'token_usage': json.loads(row[6]) if row[6] else None
+        }
+
+    @retry_on_locked(max_retries=3, base_delay=0.2, max_delay=2.0)
+    def save_daily_summary(
+        self,
+        date: str,
+        summary: Dict[str, Any],
+        research_id: int
+    ) -> int:
+        """
+        Save or update daily summary.
+
+        Args:
+            date: Date string (YYYY-MM-DD)
+            summary: Full summary JSON
+            research_id: Reference to the research that produced this summary
+
+        Returns:
+            The summary ID
+        """
+        cursor = self.conn.cursor()
+
+        summary_json = json.dumps(summary)
+
+        # Check if exists for regeneration count
+        cursor.execute("SELECT regenerated_count FROM daily_summaries WHERE date = ?", (date,))
+        existing = cursor.fetchone()
+        regen_count = (existing[0] + 1) if existing else 0
+
+        # Upsert
+        cursor.execute("""
+            INSERT INTO daily_summaries (date, summary, research_id, regenerated_count)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(date) DO UPDATE SET
+                summary = excluded.summary,
+                research_id = excluded.research_id,
+                regenerated_count = excluded.regenerated_count,
+                created_at = datetime('now')
+        """, (date, summary_json, research_id, regen_count))
+
+        self.conn.commit()
+
+        cursor.execute("SELECT id FROM daily_summaries WHERE date = ?", (date,))
+        summary_id = cursor.fetchone()[0]
+
+        logger.info(f"Saved daily summary for {date} (id: {summary_id}, regen: {regen_count})")
+        return summary_id
+
+    def get_daily_summary(self, date: str) -> Optional[Dict[str, Any]]:
+        """
+        Get daily summary by date.
+
+        Args:
+            date: Date string (YYYY-MM-DD)
+
+        Returns:
+            Summary dict with id, date, summary, research_id, metadata
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT id, date, summary, research_id, created_at, regenerated_count
+            FROM daily_summaries
+            WHERE date = ?
+        """, (date,))
+        row = cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return {
+            'id': row[0],
+            'date': row[1],
+            'summary': json.loads(row[2]),
+            'research_id': row[3],
+            'created_at': row[4],
+            'regenerated_count': row[5]
+        }
+
+    def get_latest_summary(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recent daily summary.
+
+        Returns:
+            Latest summary dict or None
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT id, date, summary, research_id, created_at, regenerated_count
+            FROM daily_summaries
+            ORDER BY date DESC
+            LIMIT 1
+        """)
+        row = cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return {
+            'id': row[0],
+            'date': row[1],
+            'summary': json.loads(row[2]),
+            'research_id': row[3],
+            'created_at': row[4],
+            'regenerated_count': row[5]
+        }
+
+    def list_daily_summaries(
+        self,
+        limit: int = 30,
+        offset: int = 0
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """
+        List daily summaries with pagination.
+
+        Args:
+            limit: Max results
+            offset: Pagination offset
+
+        Returns:
+            Tuple of (summaries list, total count)
+        """
+        cursor = self.conn.cursor()
+
+        # Get total count
+        cursor.execute("SELECT COUNT(*) FROM daily_summaries")
+        total = cursor.fetchone()[0]
+
+        # Get paginated results (summary metadata only, not full JSON)
+        cursor.execute("""
+            SELECT
+                ds.id, ds.date, ds.research_id, ds.created_at, ds.regenerated_count,
+                json_extract(ds.summary, '$.headline') as headline,
+                json_extract(ds.summary, '$.stats.totalPlays') as total_plays
+            FROM daily_summaries ds
+            ORDER BY ds.date DESC
+            LIMIT ? OFFSET ?
+        """, (limit, offset))
+
+        summaries = []
+        for row in cursor.fetchall():
+            summaries.append({
+                'id': row[0],
+                'date': row[1],
+                'research_id': row[2],
+                'created_at': row[3],
+                'regenerated_count': row[4],
+                'headline': row[5],
+                'total_plays': row[6]
+            })
+
+        return summaries, total
+
     def close(self):
-        """Close database connection."""
-        if self._conn:
-            self._conn.close()
-            self._conn = None
-            logger.info("Database connection closed")
+        """Close ALL tracked database connections.
+
+        Iterates through weakrefs to close connections from all threads,
+        plus clears the current thread's connections dictionary.
+        """
+        closed_count = 0
+
+        # Close all tracked connections (from all threads)
+        with self._connections_lock:
+            for conn_ref in self._all_connections:
+                conn = conn_ref()
+                if conn is not None:
+                    try:
+                        conn.close()
+                        closed_count += 1
+                    except Exception as e:
+                        logger.warning(f"Error closing tracked connection: {e}")
+            self._all_connections.clear()
+
+        # Also clear current thread's connections dictionary
+        if hasattr(self._thread_local, 'connections'):
+            for conn in self._thread_local.connections.values():
+                try:
+                    conn.close()
+                except Exception:
+                    pass  # Already closed via weakref
+            self._thread_local.connections.clear()
+
+        logger.info(f"Database connections closed ({closed_count} connections)")

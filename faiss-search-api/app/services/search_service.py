@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 import json
 import logging
+import threading
 
 try:
     import joblib
@@ -92,6 +93,17 @@ class FAISSSearchService:
         self.pca_applied: bool = False  # True only for legacy indexes
         self.dirty: bool = False  # Track if index has unsaved changes
 
+        # Thread safety: RLock protects all index/play_ids access
+        # RLock allows nested calls (e.g., search_and_map calling _search_internal)
+        self._mutex = threading.RLock()
+
+        # Mmap safety: Track if index was loaded with mmap
+        # FAISS mmap indexes must be cloned to RAM before mutation
+        self._index_is_mmap: bool = False
+
+        # Index version: Incremented on hot_reload for debugging/observability
+        self._index_version: int = 0
+
     def load_metadata(self) -> dict:
         """Load metadata.json to get model information."""
         if not self.metadata_path.exists():
@@ -169,17 +181,19 @@ class FAISSSearchService:
         logger.info(f"✓ Model loaded: {self.model.get_sentence_embedding_dimension()}d")
 
     def load_index(self):
-        """Load FAISS index."""
+        """Load FAISS index (thread-safe initial load with mmap)."""
         if not self.index_path.exists():
             raise FileNotFoundError(f"FAISS index not found: {self.index_path}")
 
-        logger.info(f"Loading FAISS index from {self.index_path} (mmap)")
-        # Use IO_FLAG_MMAP to map index into memory
-        self.index = faiss.read_index(str(self.index_path), faiss.IO_FLAG_MMAP)
-        # Only set nprobe for IVF indexes (not IndexFlatIP)
-        if hasattr(self.index, 'nprobe'):
-            self.index.nprobe = self.nprobe
-        logger.info(f"✓ Index loaded: {self.index.ntotal:,} vectors")
+        with self._mutex:
+            logger.info(f"Loading FAISS index from {self.index_path} (mmap)")
+            # Use IO_FLAG_MMAP to map index into memory
+            self.index = faiss.read_index(str(self.index_path), faiss.IO_FLAG_MMAP)
+            self._index_is_mmap = True  # Track mmap state for mutation safety
+            # Only set nprobe for IVF indexes (not IndexFlatIP)
+            if hasattr(self.index, 'nprobe'):
+                self.index.nprobe = self.nprobe
+            logger.info(f"✓ Index loaded: {self.index.ntotal:,} vectors (mmap, v{self._index_version})")
 
     def encode_query(self, query_text: str) -> np.ndarray:
         """
@@ -205,13 +219,13 @@ class FAISSSearchService:
 
         return query_embedding.astype('float32')
 
-    def search(
+    def _search_internal(
         self,
         query: str,
         k: int = 10
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Search for similar embeddings.
+        Internal search - caller must hold mutex.
 
         Args:
             query: Search query text
@@ -221,7 +235,7 @@ class FAISSSearchService:
             Tuple of (indices, distances) where indices are FAISS indices.
             Filters out -1 indices (FAISS returns -1 when probe can't supply k hits).
         """
-        # Encode query
+        # Encode query (model is thread-safe for inference)
         query_vector = self.encode_query(query)
 
         # Reshape for FAISS
@@ -237,9 +251,53 @@ class FAISSSearchService:
 
         return indices_1d[valid_mask], distances_1d[valid_mask]
 
+    def search(
+        self,
+        query: str,
+        k: int = 10
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Thread-safe search for similar embeddings.
+
+        For atomic search + ID mapping, prefer search_and_map() instead.
+
+        Args:
+            query: Search query text
+            k: Number of results to return
+
+        Returns:
+            Tuple of (indices, distances) where indices are FAISS indices.
+            Filters out -1 indices (FAISS returns -1 when probe can't supply k hits).
+        """
+        with self._mutex:
+            return self._search_internal(query, k)
+
+    def search_and_map(
+        self,
+        query: str,
+        k: int = 10
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        ATOMIC search + ID mapping - holds mutex for entire operation.
+
+        Prevents hot_reload() from interleaving between search and ID mapping.
+        This is the method HybridSearchService should call.
+
+        Args:
+            query: Search query text
+            k: Number of results to return
+
+        Returns:
+            Tuple of (play_ids, distances) - NOT raw FAISS indices
+        """
+        with self._mutex:
+            indices, distances = self._search_internal(query, k)
+            play_ids = self.play_ids[indices]
+            return play_ids, distances
+
     def get_play_ids(self, faiss_indices: np.ndarray) -> np.ndarray:
         """
-        Map FAISS indices to play IDs.
+        Thread-safe ID mapping (for backwards compat, prefer search_and_map).
 
         Args:
             faiss_indices: Array of FAISS indices
@@ -247,7 +305,8 @@ class FAISSSearchService:
         Returns:
             Array of play IDs
         """
-        return self.play_ids[faiss_indices]
+        with self._mutex:
+            return self.play_ids[faiss_indices]
 
     def initialize(self):
         """Initialize all components."""
@@ -272,10 +331,13 @@ class FAISSSearchService:
         embeddings: np.ndarray
     ) -> dict:
         """
-        Add new embeddings to the in-memory FAISS index.
+        Thread-safe add of new embeddings to the in-memory FAISS index.
 
         This is designed for incremental updates - adding small batches
         of new embeddings without rebuilding the entire index.
+
+        IMPORTANT: Clones mmap index to RAM before first mutation.
+        FAISS mmap indexes are designed for read-only access.
 
         Args:
             play_ids: List of play IDs for the new embeddings
@@ -284,52 +346,61 @@ class FAISSSearchService:
         Returns:
             Dict with stats: added count, total vectors, persisted status
         """
-        if self.index is None:
-            raise RuntimeError("FAISS index not initialized")
+        with self._mutex:
+            if self.index is None:
+                raise RuntimeError("FAISS index not initialized")
 
-        n_new = len(play_ids)
-        if n_new == 0:
-            return {"added": 0, "total_vectors": self.index.ntotal}
+            n_new = len(play_ids)
+            if n_new == 0:
+                return {"added": 0, "total_vectors": self.index.ntotal}
 
-        # Validate embeddings shape
-        if embeddings.shape[0] != n_new:
-            raise ValueError(
-                f"Mismatch: {n_new} play_ids but {embeddings.shape[0]} embeddings"
+            # Validate embeddings shape
+            if embeddings.shape[0] != n_new:
+                raise ValueError(
+                    f"Mismatch: {n_new} play_ids but {embeddings.shape[0]} embeddings"
+                )
+            if embeddings.shape[1] != self.embedding_dim:
+                raise ValueError(
+                    f"Wrong dimension: expected {self.embedding_dim}, got {embeddings.shape[1]}"
+                )
+
+            # Clone mmap index to RAM before first mutation
+            # FAISS mmap indexes are read-only; mutations have undefined behavior
+            if self._index_is_mmap:
+                logger.info("Cloning mmap index to RAM for safe mutation")
+                self.index = faiss.read_index(str(self.index_path))
+                self._index_is_mmap = False
+                logger.info(f"✓ Index cloned to RAM ({self.index.ntotal:,} vectors)")
+
+            # Ensure float32 and normalized
+            embeddings = embeddings.astype('float32')
+            faiss.normalize_L2(embeddings)
+
+            # Add to FAISS index (IVFFlat supports this without retraining)
+            total_before = self.index.ntotal
+            self.index.add(embeddings)
+
+            # Update play_ids mapping - must convert to non-mmap array to append
+            # This will trigger a copy, but play_ids is much smaller than the index
+            if isinstance(self.play_ids, np.memmap):
+                self.play_ids = np.array(self.play_ids)
+
+            new_ids_array = np.array(play_ids, dtype=np.int64)
+            self.play_ids = np.append(self.play_ids, new_ids_array)
+
+            logger.info(
+                f"Added {n_new} embeddings to index "
+                f"({total_before:,} → {self.index.ntotal:,} vectors, v{self._index_version})"
             )
-        if embeddings.shape[1] != self.embedding_dim:
-            raise ValueError(
-                f"Wrong dimension: expected {self.embedding_dim}, got {embeddings.shape[1]}"
-            )
 
-        # Ensure float32 and normalized
-        embeddings = embeddings.astype('float32')
-        faiss.normalize_L2(embeddings)
+            # Mark as dirty instead of persisting immediately
+            self.dirty = True
 
-        # Add to FAISS index (IVFFlat supports this without retraining)
-        total_before = self.index.ntotal
-        self.index.add(embeddings)
-
-        # Update play_ids mapping - must convert to non-mmap array to append
-        # This will trigger a copy, but play_ids is much smaller than the index
-        if isinstance(self.play_ids, np.memmap):
-            self.play_ids = np.array(self.play_ids)
-        
-        new_ids_array = np.array(play_ids, dtype=np.int64)
-        self.play_ids = np.append(self.play_ids, new_ids_array)
-
-        logger.info(
-            f"Added {n_new} embeddings to index "
-            f"({total_before:,} → {self.index.ntotal:,} vectors)"
-        )
-
-        # Mark as dirty instead of persisting immediately
-        self.dirty = True
-        
-        return {
-            "added": n_new,
-            "total_vectors": self.index.ntotal,
-            "persisted": False  # Defer persistence
-        }
+            return {
+                "added": n_new,
+                "total_vectors": self.index.ntotal,
+                "persisted": False  # Defer persistence
+            }
 
     def _persist_index(self) -> bool:
         """
@@ -383,20 +454,23 @@ class FAISSSearchService:
 
     def persist_if_needed(self) -> bool:
         """
-        Persist index if it has unsaved changes.
-        
+        Thread-safe persist index if it has unsaved changes.
+
+        Uses exclusive mutex - FAISS serialize thread safety is undocumented.
+
         Returns:
             True if persisted, False if no changes or failed
         """
-        if not self.dirty:
+        with self._mutex:
+            if not self.dirty:
+                return False
+
+            logger.info("Persisting dirty index...")
+            if self._persist_index():
+                self.dirty = False
+                return True
+
             return False
-            
-        logger.info("Persisting dirty index...")
-        if self._persist_index():
-            self.dirty = False
-            return True
-            
-        return False
 
     def generate_embeddings(self, texts: list[str]) -> np.ndarray:
         """
@@ -419,3 +493,46 @@ class FAISSSearchService:
         )
 
         return embeddings.astype('float32')
+
+    def hot_reload(self):
+        """
+        Thread-safe hot reload - acquires _mutex for atomic swap.
+
+        Called after integration completes to reload the updated index
+        without restarting the service.
+
+        Uses mmap for memory efficiency - reload is fast and doesn't
+        require loading entire index into RAM.
+        """
+        with self._mutex:  # EXPLICIT: mutex protects index + play_ids swap
+            logger.info("Hot reloading FAISS index...")
+
+            # Load updated index with mmap
+            self.index = faiss.read_index(str(self.index_path), faiss.IO_FLAG_MMAP)
+            self._index_is_mmap = True
+
+            # Set nprobe for IVF indexes
+            if hasattr(self.index, 'nprobe'):
+                self.index.nprobe = self.nprobe
+
+            # Load updated play_ids with mmap
+            self.play_ids = np.load(self.play_ids_path, mmap_mode='r')
+
+            # Increment version and clear dirty flag
+            self._index_version += 1
+            self.dirty = False
+
+            logger.info(
+                f"✓ Hot reloaded: {self.index.ntotal:,} vectors, "
+                f"v{self._index_version} (mmap)"
+            )
+
+    @property
+    def index_version(self) -> int:
+        """Current index version (incremented on hot_reload)."""
+        return self._index_version
+
+    @property
+    def is_mmap(self) -> bool:
+        """Whether index is currently memory-mapped (read-only)."""
+        return self._index_is_mmap
