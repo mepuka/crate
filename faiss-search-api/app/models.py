@@ -76,9 +76,10 @@ class SearchResponse(BaseModel):
     """Search response with results and metadata."""
 
     results: List[PlayResult]
-    total: int
+    total: int  # Number of matched results (capped at ~1000 by FAISS)
     query_time_ms: float
     query: str
+    note: Optional[str] = None  # Optional note about result limitations
 
 
 class HybridSearchRequest(BaseModel):

@@ -113,6 +113,10 @@ class DatabaseService:
             # Enable WAL mode for better concurrent access
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
+            # Performance PRAGMAs (WAL + daily backups = safe tradeoff)
+            conn.execute("PRAGMA synchronous=NORMAL")   # 2x faster commits
+            conn.execute("PRAGMA cache_size=-64000")    # 64MB cache
+            conn.execute("PRAGMA temp_store=MEMORY")    # Temp tables in RAM
             self._thread_local.connections[db_key] = conn
 
             # Track with weakref for shutdown

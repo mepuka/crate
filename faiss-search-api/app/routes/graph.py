@@ -7,6 +7,7 @@ Provides fast graph traversal queries for the agent.
 from fastapi import APIRouter, Depends, HTTPException, status
 import time
 import logging
+import anyio
 
 from ..models.graph import (
     GraphConnectionsRequest,
@@ -120,7 +121,8 @@ async def query_connections(
         if request.collaboration_type:
             kwargs["collaboration_type"] = request.collaboration_type
 
-        results = handler(**kwargs)
+        # Run DB query in thread pool to avoid blocking event loop
+        results = await anyio.to_thread.run_sync(lambda: handler(**kwargs))
 
         # Convert to ConnectionNode models
         connections = [
