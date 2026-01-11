@@ -90,7 +90,7 @@ class DatabaseService:
 
         # Track all connections with weakrefs for proper shutdown
         # Each thread gets its own connection; we track them all for close()
-        self._all_connections: list[weakref.ref] = []
+        self._all_connections: list[sqlite3.Connection] = []
         self._connections_lock = threading.Lock()
 
         logger.info(f"Database service initialized: {self.db_path}")
@@ -119,9 +119,9 @@ class DatabaseService:
             conn.execute("PRAGMA temp_store=MEMORY")    # Temp tables in RAM
             self._thread_local.connections[db_key] = conn
 
-            # Track with weakref for shutdown
+            # Track for proper shutdown (strong ref - close() will clear)
             with self._connections_lock:
-                self._all_connections.append(weakref.ref(conn))
+                self._all_connections.append(conn)
 
             logger.debug(f"Created new connection for thread {threading.current_thread().name}")
 
@@ -3185,14 +3185,12 @@ class DatabaseService:
 
         # Close all tracked connections (from all threads)
         with self._connections_lock:
-            for conn_ref in self._all_connections:
-                conn = conn_ref()
-                if conn is not None:
-                    try:
-                        conn.close()
-                        closed_count += 1
-                    except Exception as e:
-                        logger.warning(f"Error closing tracked connection: {e}")
+            for conn in self._all_connections:
+                try:
+                    conn.close()
+                    closed_count += 1
+                except Exception as e:
+                    logger.warning(f"Error closing tracked connection: {e}")
             self._all_connections.clear()
 
         # Also clear current thread's connections dictionary
