@@ -208,8 +208,8 @@ async def get_pending_embeddings(
                     airdate=play_data.get('airdate')
                 ))
 
-        # Get total pending count (for pagination)
-        total_pending = integration_svc.count_pending_plays()
+        # Get total pending count (consistent with detection query)
+        total_pending = integration_svc.count_pending_plays_optimized()
 
         logger.info(f"Returning {len(plays)} pending plays (total pending: {total_pending})")
 
@@ -402,7 +402,8 @@ async def integrate_embeddings(
     }
 )
 async def add_embeddings(
-    request: AddEmbeddingsRequest
+    request: AddEmbeddingsRequest,
+    x_api_key: Optional[str] = Header(None)
 ) -> AddEmbeddingsResponse:
     """
     Add embeddings to the in-memory FAISS index.
@@ -412,12 +413,23 @@ async def add_embeddings(
 
     Args:
         request: AddEmbeddingsRequest with play_ids and embeddings
+        x_api_key: API key for authentication (same as /integrate)
 
     Returns:
         AddEmbeddingsResponse with status and counts
     """
     import anyio
+    import os
     from ..main import search_service, index_synchronizer
+
+    # Validate API key (same pattern as /integrate)
+    expected_key = os.getenv("FAISS_API_KEY")
+    if expected_key:
+        if not x_api_key or x_api_key != expected_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing API key"
+            )
 
     if search_service is None:
         raise HTTPException(

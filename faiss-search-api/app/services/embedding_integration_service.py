@@ -199,6 +199,42 @@ class EmbeddingIntegrationService:
         finally:
             conn.close()
 
+    def count_pending_plays_optimized(self) -> int:
+        """
+        Count pending plays using embedded_play_ids table.
+
+        Consistent with detect_pending_plays_optimized().
+        Falls back to count_pending_plays() if table doesn't exist.
+
+        Returns:
+            Total number of plays without embeddings
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        try:
+            # Check if embedded_play_ids table exists
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='embedded_play_ids'"
+            )
+            if cursor.fetchone() is None:
+                logger.warning("embedded_play_ids table not found, using fallback count")
+                conn.close()
+                return self.count_pending_plays()
+
+            # Count using same LEFT JOIN logic as detection (consistent source of truth)
+            cursor.execute("""
+                SELECT COUNT(*) FROM fact_plays fp
+                LEFT JOIN embedded_play_ids ep ON fp.id = ep.play_id
+                WHERE ep.play_id IS NULL
+            """)
+            count = cursor.fetchone()[0]
+            logger.info(f"Pending plays count (optimized): {count}")
+            return count
+
+        finally:
+            conn.close()
+
     def mark_plays_embedded(self, play_ids: List[int]) -> int:
         """
         Mark plays as embedded in the tracking table.
@@ -525,8 +561,12 @@ class EmbeddingIntegrationService:
 
                 logger.info("✓ Created backups")
 
-            # Write new index
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.index') as tmp_idx:
+            # Write new index (in same directory as target for atomic rename)
+            with tempfile.NamedTemporaryFile(
+                dir=self.index_path.parent,
+                delete=False,
+                suffix='.index'
+            ) as tmp_idx:
                 tmp_index_path = tmp_idx.name
                 faiss.write_index(index, tmp_index_path)
 

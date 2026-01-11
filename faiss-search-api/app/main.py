@@ -69,12 +69,21 @@ async def background_persistence_loop():
 
     Uses asyncio.to_thread() to run sync persistence in thread pool,
     preventing event loop stalls as persistence data grows.
+
+    IMPORTANT: Skips persistence if integration is in progress to avoid
+    overwriting a freshly rebuilt index.
     """
     logger.info("Starting background persistence loop")
     while True:
         try:
             await asyncio.sleep(60)  # Check every minute
             if search_service:
+                # Skip if integration is running - index is being rebuilt
+                # This prevents overwriting a freshly rebuilt index on disk
+                if index_synchronizer.is_locked:
+                    logger.debug("Skipping persistence: integration in progress")
+                    continue
+
                 # Run sync persistence in thread pool to avoid blocking event loop
                 await asyncio.to_thread(search_service.persist_if_needed)
         except asyncio.CancelledError:
@@ -529,13 +538,13 @@ async def search(
         # FAISS search - fetch only what's needed for pagination
         # Add buffer of 100 to handle potential filtering
         internal_k = min(1000, request.offset + request.limit + 100)
-        # Run embedding + FAISS search in thread pool to avoid blocking event loop
-        faiss_indices, distances = await asyncio.to_thread(
-            search_svc.search, request.query, internal_k
-        )
 
-        # Map to play IDs
-        play_ids = search_svc.get_play_ids(faiss_indices)
+        # ATOMIC: search + ID mapping under same lock in thread pool
+        # Uses search_and_map() to prevent hot_reload() from interleaving
+        # between search and ID mapping (race condition fix)
+        play_ids, distances = await asyncio.to_thread(
+            search_svc.search_and_map, request.query, internal_k
+        )
 
         # Apply pagination
         paginated_ids = play_ids[request.offset:request.offset + request.limit]
