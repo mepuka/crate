@@ -21,8 +21,7 @@ from .services.hybrid_search_service import HybridSearchService
 from .services.sync import IndexSynchronizer
 from .models import (
     SearchRequest, SearchResponse, HealthResponse, PlayResult, TimelineResponse,
-    EnrichmentRequest, EnrichmentResponse, BatchPlaysResponse,
-    EnrichmentData, GetEnrichmentsResponse, PlayCountResponse, UnprocessedPlaysResponse,
+    BatchPlaysResponse, PlayCountResponse, UnprocessedPlaysResponse,
     HybridSearchRequest, HybridSearchResponse, HybridPlayResult,
     StreamingLinksRequest, StreamingLinksResponse, StreamingLink,
     DataHealthResponse, TableHealth
@@ -31,17 +30,8 @@ from .models.insights import (
     CreateInsightsRequest, InsightsResponse, GetInsightsResponse,
     Insight, extract_referenced_mbids, generate_summary
 )
-from .models.agent_runs import (
-    SaveAgentRunRequest, SaveAgentRunResponse,
-    ListAgentRunsResponse, AgentRunSummary, AgentRunDetail,
-    DeleteAgentRunResponse
-)
-from .models.generated_assets import (
-    StoreGeneratedAssetRequest, StoreGeneratedAssetResponse,
-    GeneratedAsset, GetGeneratedAssetsResponse,
-)
 from .config import settings
-from .routes import embeddings, graph, summary
+from .routes import graph, summary
 import json
 import os
 from fastapi import Header
@@ -61,8 +51,6 @@ index_synchronizer: IndexSynchronizer = IndexSynchronizer()  # Shared lock for /
 startup_time: float = 0
 persistence_task: Optional[asyncio.Task] = None
 
-# Request size limits
-MAX_EMBEDDING_REQUEST_SIZE = 500 * 1024 * 1024  # 500MB - aligned with nginx
 
 async def background_persistence_loop():
     """Background task to persist index periodically.
@@ -174,31 +162,6 @@ async def lifespan(app: FastAPI):
         db_service.close()
 
 
-class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
-    """
-    Middleware to enforce request size limits on embedding endpoints.
-
-    Prevents memory exhaustion from oversized requests.
-    Returns 413 (Request Entity Too Large) if limit exceeded.
-    """
-
-    async def dispatch(self, request: Request, call_next):
-        """Check content-length for embedding endpoints."""
-        if request.url.path.startswith("/api/embeddings"):
-            content_length = request.headers.get("content-length")
-            if content_length:
-                try:
-                    if int(content_length) > MAX_EMBEDDING_REQUEST_SIZE:
-                        return Response(
-                            content=f"Request too large. Max: {MAX_EMBEDDING_REQUEST_SIZE // (1024*1024)}MB",
-                            status_code=413,
-                            headers={"Content-Type": "text/plain"}
-                        )
-                except ValueError:
-                    pass  # Invalid content-length header, let it through
-        return await call_next(request)
-
-
 class CacheHeadersMiddleware(BaseHTTPMiddleware):
     """
     Middleware to add cache headers and security headers to responses.
@@ -207,7 +170,6 @@ class CacheHeadersMiddleware(BaseHTTPMiddleware):
     - Health endpoint: 30 seconds (dynamic health status)
     - Search endpoint: 1 week (deterministic results, static data)
     - Timeline endpoint: 30 seconds (live updates need fresh data)
-    - Single play endpoint: 1 week (play data doesn't change)
     - OpenAPI/Docs: 1 hour (metadata endpoints)
     """
 
@@ -217,7 +179,6 @@ class CacheHeadersMiddleware(BaseHTTPMiddleware):
         "/api/search": 604800,                # 1 week (7 days)
         "/api/plays/timeline": 30,            # 30 seconds - live updates need fresh data
         "/api/plays/count": 300,              # 5 minutes - entity play counts are semi-stable
-        "/api/plays/": 604800,                # 1 week (for /api/plays/{id} pattern)
         "/api/graph/connections": 604800,     # 1 week - deterministic graph data
         "/api/image-proxy": 2592000,          # 30 days - images are static
         "/openapi.json": 3600,                # 1 hour
@@ -235,12 +196,9 @@ class CacheHeadersMiddleware(BaseHTTPMiddleware):
             cache_max_age = None
             path = request.url.path
 
-            # Check exact matches first
+            # Check exact matches
             if path in self.CACHE_DURATIONS:
                 cache_max_age = self.CACHE_DURATIONS[path]
-            # Check pattern matches (e.g., /api/plays/{id})
-            elif path.startswith("/api/plays/") and path != "/api/plays/timeline":
-                cache_max_age = self.CACHE_DURATIONS["/api/plays/"]
 
             # Add Cache-Control header if we have a duration
             if cache_max_age is not None:
@@ -287,10 +245,8 @@ app = FastAPI(
 # )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(CacheHeadersMiddleware)
-app.add_middleware(RequestSizeLimitMiddleware)  # Enforce 500MB limit on embedding endpoints
 
 # Include routers
-app.include_router(embeddings.router)
 app.include_router(graph.router)
 app.include_router(summary.router)
 
@@ -1215,198 +1171,6 @@ async def get_plays_batch(
         )
 
 
-@app.get(
-    "/api/plays/{play_id}",
-    response_model=PlayResult,
-    tags=["plays"],
-    summary="Get play by ID",
-    responses={
-        200: {"description": "Play found"},
-        404: {"description": "Play not found"}
-    }
-)
-async def get_play(
-    play_id: int,
-    db_svc: DatabaseService = Depends(get_db_service)
-) -> PlayResult:
-    """Get single play by ID."""
-    play = db_svc.get_play_by_id(play_id)
-    if not play:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Play {play_id} not found"
-        )
-    return PlayResult(**play, similarity=0.0)
-
-
-@app.post(
-    "/api/enrichments",
-    response_model=EnrichmentResponse,
-    tags=["enrichments"],
-    summary="Bulk store enrichments",
-    description="""
-    Store play enrichments in bulk.
-
-    **Optimized for large uploads:** Uses bulk insert for high throughput (~10k items/sec).
-
-    **Auto-creates enrichment types:** If the type doesn't exist, it will be created.
-
-    **Authentication:** Requires X-API-Key header if FAISS_API_KEY is set.
-
-    **Usage from Colab:**
-    ```python
-    import httpx
-    with open('chunk_0000.json', 'r') as f:
-        data = json.load(f)
-    response = httpx.post(
-        'https://api.example.com/api/enrichments',
-        json=data,
-        headers={'X-API-Key': 'your-key'},
-        timeout=300
-    )
-    ```
-    """,
-    responses={
-        200: {"description": "Enrichments stored successfully"},
-        401: {"description": "Invalid or missing API key"},
-        500: {"description": "Failed to store enrichments"}
-    }
-)
-async def create_enrichments(
-    request: EnrichmentRequest,
-    db_svc: DatabaseService = Depends(get_db_service),
-    x_api_key: Optional[str] = Header(None)
-) -> EnrichmentResponse:
-    """
-    Bulk store enrichments.
-
-    Optimized for large uploads with:
-    - Auto-creation of enrichment types
-    - Bulk insert using executemany
-    - Upsert behavior (update if exists)
-
-    Requires X-API-Key header for authentication if FAISS_API_KEY env var is set.
-    """
-    # Validate API key
-    expected_key = os.getenv("FAISS_API_KEY")
-    if expected_key:
-        if not x_api_key or x_api_key != expected_key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or missing API key"
-            )
-
-    try:
-        # Auto-create enrichment type if it doesn't exist
-        enrichment_type_id = db_svc.ensure_enrichment_type(request.enrichment_type)
-
-        # Prepare enrichments for bulk insert
-        enrichments = [
-            {'play_id': item.play_id, 'data': item.data}
-            for item in request.enrichments
-        ]
-
-        # Bulk insert using optimized method
-        count = db_svc.bulk_insert_enrichments(enrichment_type_id, enrichments)
-
-        logger.info(f"Bulk stored {count:,} enrichments of type '{request.enrichment_type}'")
-        return EnrichmentResponse(status="success", count=count)
-
-    except Exception as e:
-        db_svc.conn.rollback()
-        logger.error(f"Failed to store enrichments: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to store enrichments: {str(e)}"
-        )
-
-
-@app.get(
-    "/api/enrichments",
-    response_model=GetEnrichmentsResponse,
-    summary="Get enrichments",
-    description="Fetch enrichments with optional filtering by play_id and enrichment_type",
-    responses={
-        200: {"description": "Enrichments retrieved successfully"},
-        500: {"description": "Failed to fetch enrichments"}
-    }
-)
-async def get_enrichments(
-    play_id: Optional[int] = None,
-    enrichment_type: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0,
-    db_svc: DatabaseService = Depends(get_db_service)
-) -> GetEnrichmentsResponse:
-    """
-    Fetch enrichments from database.
-
-    Query parameters:
-    - play_id: Filter by specific play ID
-    - enrichment_type: Filter by enrichment type name
-    - limit: Maximum number of results (default 100)
-    - offset: Pagination offset (default 0)
-    """
-    try:
-        cursor = db_svc.conn.cursor()
-
-        # Build query with optional filters
-        query = """
-            SELECT
-                e.id,
-                e.play_id,
-                et.name as enrichment_type,
-                e.data,
-                e.created_at,
-                e.updated_at
-            FROM enrichments e
-            JOIN enrichment_types et ON e.enrichment_type_id = et.id
-            WHERE 1=1
-        """
-        params = []
-
-        if play_id is not None:
-            query += " AND e.play_id = ?"
-            params.append(play_id)
-
-        if enrichment_type is not None:
-            query += " AND et.name = ?"
-            params.append(enrichment_type)
-
-        # Count total matching records
-        count_query = f"SELECT COUNT(*) FROM ({query}) as filtered"
-        cursor.execute(count_query, params)
-        total = cursor.fetchone()[0]
-
-        # Add pagination
-        query += " ORDER BY e.updated_at DESC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-
-        enrichments = []
-        for row in rows:
-            enrichments.append(EnrichmentData(
-                id=row[0],
-                play_id=row[1],
-                enrichment_type=row[2],
-                data=json.loads(row[3]),
-                created_at=row[4],
-                updated_at=row[5]
-            ))
-
-        logger.info(f"Retrieved {len(enrichments)} enrichments (total: {total})")
-        return GetEnrichmentsResponse(enrichments=enrichments, total=total)
-
-    except Exception as e:
-        logger.error(f"Failed to fetch enrichments: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch enrichments: {str(e)}"
-        )
-
-
 # =============================================================================
 # Insights API - Typed insight storage
 # =============================================================================
@@ -1652,51 +1416,6 @@ async def get_insights_for_context(
         )
 
 
-@app.delete(
-    "/api/insights/{insight_id}",
-    tags=["insights"],
-    summary="Soft delete an insight",
-    description="Soft delete an insight (sets deleted_at timestamp).",
-    responses={
-        200: {"description": "Insight deleted successfully"},
-        404: {"description": "Insight not found"},
-        401: {"description": "Invalid API key"},
-        500: {"description": "Failed to delete insight"}
-    }
-)
-async def delete_insight(
-    insight_id: int,
-    x_api_key: str = Header(None)
-):
-    """
-    Soft delete an insight.
-    """
-    global db_service
-
-    # API key check (if configured)
-    api_key = os.getenv("FAISS_API_KEY")
-    if api_key and x_api_key != api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    try:
-        deleted = db_service.soft_delete_insight(insight_id)
-
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Insight not found")
-
-        logger.info(f"Soft deleted insight {insight_id}")
-        return {"status": "deleted", "insight_id": insight_id}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to delete insight {insight_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete insight: {str(e)}"
-        )
-
-
 # Image proxy endpoint - bypasses CORS for album art
 # Allowed domains for security (prevent open proxy abuse)
 ALLOWED_IMAGE_DOMAINS = {
@@ -1868,380 +1587,5 @@ async def image_proxy(url: str):
         )
 
 
-# =============================================================================
-# Agent Runs API - Session persistence for crash recovery and observability
-# =============================================================================
-
-@app.post(
-    "/api/agent-runs",
-    response_model=SaveAgentRunResponse,
-    tags=["agent-runs"],
-    summary="Save agent run checkpoint",
-    description="""
-    Save or update an agent session checkpoint.
-
-    Used for:
-    - Crash recovery: Resume interrupted sessions
-    - Multi-agent handoff: Pass session state between agents
-    - Observability: Audit trail of agent activity
-
-    **Status Values:**
-    - `running`: Session in progress
-    - `completed`: Finished successfully
-    - `failed`: Terminated with error
-    - `paused`: Manually paused for handoff
-    """,
-    responses={
-        200: {"description": "Checkpoint saved successfully"},
-        401: {"description": "Invalid API key"},
-        500: {"description": "Failed to save checkpoint"}
-    }
-)
-async def save_agent_run(
-    request: SaveAgentRunRequest,
-    x_api_key: str = Header(None)
-):
-    """Save or update an agent run checkpoint."""
-    global db_service
-
-    # Check if agent runs are paused
-    if os.getenv("PAUSE_AGENT_RUNS", "").lower() in ("1", "true", "yes"):
-        logger.info("Agent runs paused - skipping save")
-        return SaveAgentRunResponse(
-            status="paused",
-            session_id=request.sessionId,
-            insight_count=0,
-            tool_call_count=0
-        )
-
-    # API key check (if configured)
-    api_key = os.getenv("FAISS_API_KEY")
-    if api_key and x_api_key != api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    try:
-        # Convert Pydantic model to dict
-        run_data = request.model_dump(by_alias=False)
-
-        session_id, was_created = db_service.save_agent_run(run_data)
-
-        logger.info(
-            f"{'Created' if was_created else 'Updated'} agent run: {session_id} "
-            f"({len(run_data.get('insights', []))} insights, "
-            f"{len(run_data.get('toolCalls', []))} tool calls)"
-        )
-
-        return SaveAgentRunResponse(
-            status="created" if was_created else "updated",
-            session_id=session_id,
-            insight_count=len(run_data.get('insights', [])),
-            tool_call_count=len(run_data.get('toolCalls', []))
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to save agent run: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to save agent run: {str(e)}"
-        )
 
 
-@app.get(
-    "/api/agent-runs/incomplete",
-    response_model=ListAgentRunsResponse,
-    tags=["agent-runs"],
-    summary="Find incomplete runs for recovery",
-    description="Find agent runs with status='running' that may need recovery after a crash.",
-    responses={
-        200: {"description": "List of incomplete runs"},
-        500: {"description": "Failed to fetch incomplete runs"}
-    }
-)
-async def get_incomplete_agent_runs():
-    """Find incomplete agent runs for crash recovery."""
-    global db_service
-
-    try:
-        runs = db_service.get_incomplete_agent_runs()
-
-        return ListAgentRunsResponse(
-            runs=[AgentRunSummary(**r) for r in runs],
-            total=len(runs),
-            limit=100,
-            offset=0
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to fetch incomplete runs: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch incomplete runs: {str(e)}"
-        )
-
-
-@app.get(
-    "/api/agent-runs/{session_id}",
-    response_model=AgentRunDetail,
-    tags=["agent-runs"],
-    summary="Get agent run by session ID",
-    description="Retrieve full agent run data including insights, tool calls, and entities.",
-    responses={
-        200: {"description": "Agent run data"},
-        404: {"description": "Session not found"},
-        500: {"description": "Failed to fetch agent run"}
-    }
-)
-async def get_agent_run(session_id: str):
-    """Get a single agent run by session ID."""
-    global db_service
-
-    try:
-        run = db_service.get_agent_run(session_id)
-
-        if run is None:
-            raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
-
-        return AgentRunDetail(**run)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to fetch agent run: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch agent run: {str(e)}"
-        )
-
-
-@app.get(
-    "/api/agent-runs",
-    response_model=ListAgentRunsResponse,
-    tags=["agent-runs"],
-    summary="List agent runs",
-    description="""
-    List agent runs with optional filters.
-
-    **Filters:**
-    - `status`: running, completed, failed, paused
-    - `mode`: enrich, discover
-    - `play_id`: Find runs that processed a specific play
-    - `since`/`until`: Date range (ISO format)
-    """,
-    responses={
-        200: {"description": "List of agent runs"},
-        500: {"description": "Failed to list agent runs"}
-    }
-)
-async def list_agent_runs(
-    status: Optional[str] = None,
-    mode: Optional[str] = None,
-    play_id: Optional[int] = None,
-    since: Optional[str] = None,
-    until: Optional[str] = None,
-    limit: int = 20,
-    offset: int = 0
-):
-    """List agent runs with optional filters."""
-    global db_service
-
-    try:
-        runs, total = db_service.list_agent_runs(
-            status=status,
-            mode=mode,
-            play_id=play_id,
-            since=since,
-            until=until,
-            limit=min(limit, 100),
-            offset=offset
-        )
-
-        return ListAgentRunsResponse(
-            runs=[AgentRunSummary(**r) for r in runs],
-            total=total,
-            limit=limit,
-            offset=offset
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to list agent runs: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to list agent runs: {str(e)}"
-        )
-
-
-@app.delete(
-    "/api/agent-runs/{session_id}",
-    response_model=DeleteAgentRunResponse,
-    tags=["agent-runs"],
-    summary="Delete agent run",
-    description="Delete an agent run by session ID.",
-    responses={
-        200: {"description": "Agent run deleted"},
-        401: {"description": "Invalid API key"},
-        404: {"description": "Session not found"},
-        500: {"description": "Failed to delete agent run"}
-    }
-)
-async def delete_agent_run(
-    session_id: str,
-    x_api_key: str = Header(None)
-):
-    """Delete an agent run."""
-    global db_service
-
-    # API key check (if configured)
-    api_key = os.getenv("FAISS_API_KEY")
-    if api_key and x_api_key != api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    try:
-        deleted = db_service.delete_agent_run(session_id)
-
-        if not deleted:
-            raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
-
-        logger.info(f"Deleted agent run: {session_id}")
-        return DeleteAgentRunResponse(status="deleted", session_id=session_id)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to delete agent run: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete agent run: {str(e)}"
-        )
-
-
-# =============================================================================
-# Generated Assets Endpoints
-# =============================================================================
-
-@app.post(
-    "/api/generated-assets",
-    response_model=StoreGeneratedAssetResponse,
-    tags=["generated-assets"],
-    summary="Store a generated asset",
-    description="""
-    Store an AI-generated visual asset (liner note, enhanced art, etc.).
-
-    **Idempotent:** If an asset with the same (play_id, asset_type, params_hash)
-    already exists, returns the existing record instead of creating a duplicate.
-
-    **Authentication:** Requires X-API-Key header if FAISS_API_KEY is set.
-    """,
-    responses={
-        200: {"description": "Asset stored successfully"},
-        401: {"description": "Invalid or missing API key"},
-        500: {"description": "Failed to store asset"}
-    }
-)
-async def store_generated_asset(
-    request: StoreGeneratedAssetRequest,
-    x_api_key: Optional[str] = Header(None)
-) -> StoreGeneratedAssetResponse:
-    """Store a generated asset."""
-    global db_service
-
-    # API key check (if configured)
-    api_key = os.getenv("FAISS_API_KEY")
-    if api_key and x_api_key != api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    try:
-        result = db_service.store_generated_asset(
-            play_id=request.play_id,
-            asset_type=request.asset_type,
-            params_hash=request.params_hash,
-            image_base64=request.image_base64,
-            mime_type=request.mime_type,
-            generation_params=request.generation_params,
-            era=request.era,
-            style=request.style,
-            model_notes=request.model_notes,
-            prompt_used=request.prompt_used,
-            gcs_url=request.gcs_url,
-        )
-
-        return StoreGeneratedAssetResponse(
-            id=result['id'],
-            params_hash=result['params_hash'],
-            was_existing=result['was_existing']
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to store generated asset: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to store generated asset: {str(e)}"
-        )
-
-
-@app.get(
-    "/api/generated-assets/play/{play_id}",
-    response_model=GetGeneratedAssetsResponse,
-    tags=["generated-assets"],
-    summary="Get generated assets for a play",
-    description="""
-    Get all AI-generated visual assets for a specific play.
-
-    Returns assets with their image URLs (GCS or data URL fallback)
-    and metadata (era, style, placement, etc.).
-    """,
-    responses={
-        200: {"description": "Assets retrieved successfully"},
-        400: {"description": "Missing play_id parameter"},
-        500: {"description": "Failed to fetch assets"}
-    }
-)
-async def get_generated_assets(
-    play_id: int
-) -> GetGeneratedAssetsResponse:
-    """Get generated assets for a play."""
-    global db_service
-
-    try:
-        assets = db_service.get_generated_assets_by_play_id(play_id)
-
-        return GetGeneratedAssetsResponse(
-            play_id=play_id,
-            assets=[GeneratedAsset(**a) for a in assets],
-            count=len(assets)
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to fetch generated assets: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch generated assets: {str(e)}"
-        )
-
-
-@app.get(
-    "/api/generated-assets/recent",
-    response_model=list[GeneratedAsset],
-    tags=["generated-assets"],
-    summary="Get recently generated assets",
-    description="Get the most recently generated assets across all plays.",
-    responses={
-        200: {"description": "Assets retrieved successfully"},
-        500: {"description": "Failed to fetch assets"}
-    }
-)
-async def get_recent_generated_assets(
-    limit: int = 20
-) -> list[GeneratedAsset]:
-    """Get recently generated assets."""
-    global db_service
-
-    try:
-        assets = db_service.get_recent_generated_assets(limit=min(limit, 100))
-        return [GeneratedAsset(**a) for a in assets]
-
-    except Exception as e:
-        logger.error(f"Failed to fetch recent assets: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch recent assets: {str(e)}"
-        )

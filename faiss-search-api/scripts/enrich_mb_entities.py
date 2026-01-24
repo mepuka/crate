@@ -107,12 +107,13 @@ class MusicBrainzEnrichmentService:
         for attempt in range(self.MAX_RETRIES):
             try:
                 if USE_HTTPX:
-                    with httpx.Client(timeout=self.REQUEST_TIMEOUT) as client:
+                    with httpx.Client(timeout=self.REQUEST_TIMEOUT, follow_redirects=True) as client:
                         response = client.get(url, params=params, headers=headers)
                 else:
                     response = requests.get(
                         url, params=params, headers=headers,
-                        timeout=self.REQUEST_TIMEOUT
+                        timeout=self.REQUEST_TIMEOUT,
+                        allow_redirects=True
                     )
 
                 if response.status_code == 200:

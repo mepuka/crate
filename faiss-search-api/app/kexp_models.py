@@ -319,7 +319,7 @@ class ShowResponse(PaginatedResponse[Show]):
 # ============================================================================
 
 
-RotationStatus = Literal["Heavy", "Medium", "Light", "Library", "R/N"]
+RotationStatus = Literal["Heavy", "Medium", "Light", "Library", "R/N", "R"]
 PlayType = Literal["trackplay", "airbreak", "nontrackplay"]
 
 

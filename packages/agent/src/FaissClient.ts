@@ -19,8 +19,6 @@ import {
 import * as CircuitBreaker from "./services/CircuitBreaker.js";
 import {
   BatchPlaysResponse,
-  EnrichmentRequest,
-  EnrichmentResponse,
   GetInsightsResponse,
   InsightsResponse,
   PlayInsightsResponse,
@@ -37,30 +35,6 @@ import {
 import type { Insight } from "./prompts/insights.js";
 import { FaissConfig } from "./config.js";
 export { FaissConfig } from "./config.js";
-
-// Generated asset schemas (mirrors server schemas)
-const StoreGeneratedAssetRequest = Schema.Struct({
-  play_id: Schema.optional(Schema.Number),
-  asset_type: Schema.String,
-  params_hash: Schema.String,
-  generation_params: Schema.optional(Schema.String),
-  image_base64: Schema.String,
-  mime_type: Schema.optionalWith(Schema.String, { default: () => "image/png" }),
-  era: Schema.optional(Schema.String),
-  style: Schema.optional(Schema.String),
-  model_notes: Schema.optional(Schema.String),
-  prompt_used: Schema.optional(Schema.String),
-  gcs_url: Schema.optional(Schema.String),
-});
-
-const StoreGeneratedAssetResponse = Schema.Struct({
-  id: Schema.Number,
-  params_hash: Schema.String,
-  was_existing: Schema.Boolean,
-});
-
-export type StoreGeneratedAssetRequest = typeof StoreGeneratedAssetRequest.Type;
-export type StoreGeneratedAssetResponse = typeof StoreGeneratedAssetResponse.Type;
 
 // Daily summary persistence schemas
 const TokenUsageSchema = Schema.Struct({
@@ -98,6 +72,16 @@ const SaveSummaryResponse = Schema.Struct({
   regenerated_count: Schema.Number,
 });
 
+// Schema for GET /api/research/{date} response
+const GetDailyResearchResponse = Schema.Struct({
+  id: Schema.Number,
+  date: Schema.String,
+  research_context: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  created_at: Schema.String,
+  duration_ms: Schema.NullOr(Schema.Number),
+  tool_call_count: Schema.Number,
+});
+
 // Schema for GET /api/summary/{date} response
 const GetDailySummaryResponse = Schema.Struct({
   id: Schema.Number,
@@ -112,6 +96,7 @@ export type SaveResearchRequest = typeof SaveResearchRequest.Type;
 export type SaveResearchResponse = typeof SaveResearchResponse.Type;
 export type SaveSummaryRequest = typeof SaveSummaryRequest.Type;
 export type SaveSummaryResponse = typeof SaveSummaryResponse.Type;
+export type GetDailyResearchResponse = typeof GetDailyResearchResponse.Type;
 export type GetDailySummaryResponse = typeof GetDailySummaryResponse.Type;
 
 // Export type aliases for convenience
@@ -150,6 +135,7 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
 
     // Configure HTTP client with base URL and defaults
     const client = (yield* HttpClient.HttpClient).pipe(
+      HttpClient.retryTransient({ times: 3 }),
       HttpClient.mapRequest(HttpClientRequest.prependUrl(config.baseUrl)),
       HttpClient.mapRequest(HttpClientRequest.acceptJson),
       HttpClient.mapRequest((req) =>
@@ -265,24 +251,6 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
         ),
 
       /**
-       * Get a single play by ID
-       * Protected by circuit breaker
-       */
-      getPlay: (id: number) =>
-        withProtection(
-          client.get(`/api/plays/${id}`).pipe(
-            Effect.flatMap(HttpClientResponse.schemaBodyJson(PlayResultSchema)),
-            Effect.mapError(
-              (error) =>
-                new FaissApiError({
-                  message: "Get play failed",
-                  cause: error,
-                })
-            )
-          )
-        ),
-
-      /**
        * Health check (not protected by circuit breaker - used to test service)
        */
       health: () =>
@@ -330,30 +298,6 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
         ),
 
       /**
-       * POST enrichments back to FAISS API (legacy untyped endpoint)
-       * Protected by circuit breaker
-       */
-      postEnrichments: (request: EnrichmentRequest) =>
-        withProtection(
-          client
-            .post("/api/enrichments", {
-              body: HttpBody.unsafeJson(request),
-            })
-            .pipe(
-              Effect.flatMap(
-              HttpClientResponse.schemaBodyJson(EnrichmentResponse)
-            ),
-            Effect.mapError(
-              (error) =>
-                new FaissApiError({
-                  message: "Post enrichments failed",
-                  cause: error,
-                })
-            )
-          )
-        ),
-
-      /**
        * POST typed insights to FAISS API
        * Protected by circuit breaker
        *
@@ -376,25 +320,36 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
               }),
           })
           .pipe(
-            Effect.flatMap((response) => {
-              // For successful responses, parse as InsightsResponse
-              if (response.status >= 200 && response.status < 300) {
-                return HttpClientResponse.schemaBodyJson(InsightsResponse)(response);
-              }
-              // For error responses, read body and fail with descriptive error
-              return Effect.gen(function* () {
-                const errorBody = yield* response.text;
-                return yield* Effect.fail(
-                  new Error(`HTTP ${response.status}: ${errorBody}`)
-                );
-              });
-            }),
-            Effect.mapError(
-              (error) =>
-                new FaissApiError({
-                  message: error instanceof Error ? error.message : "Post insights failed",
-                  cause: error,
-                })
+            Effect.flatMap((response) =>
+              Effect.if(response.status >= 200 && response.status < 300, {
+                onTrue: () =>
+                  HttpClientResponse.schemaBodyJson(InsightsResponse)(response).pipe(
+                    Effect.mapError(
+                      (error) =>
+                        new FaissApiError({
+                          message: "Post insights failed",
+                          cause: error,
+                        })
+                    )
+                  ),
+                onFalse: () =>
+                  response.text.pipe(
+                    Effect.mapError(
+                      (error) =>
+                        new FaissApiError({
+                          message: "Post insights failed",
+                          cause: error,
+                        })
+                    ),
+                    Effect.flatMap((errorBody) =>
+                      Effect.fail(
+                        new FaissApiError({
+                          message: `HTTP ${response.status}: ${errorBody}`,
+                        })
+                      )
+                    )
+                  ),
+              })
             )
           )
         ),
@@ -526,34 +481,6 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
         ),
 
       /**
-       * Store a generated asset (liner note, enhanced art, etc.)
-       * Protected by circuit breaker
-       *
-       * Stores asset metadata in the database. If a GCS URL is provided,
-       * the frontend will use it for production serving; otherwise falls
-       * back to base64 data URL.
-       */
-      storeGeneratedAsset: (request: StoreGeneratedAssetRequest) =>
-        withProtection(
-          client
-            .post("/api/generated-assets", {
-              body: HttpBody.unsafeJson(request),
-            })
-            .pipe(
-              Effect.flatMap(
-                HttpClientResponse.schemaBodyJson(StoreGeneratedAssetResponse)
-              ),
-              Effect.mapError(
-                (error) =>
-                  new FaissApiError({
-                    message: `Store generated asset failed`,
-                    cause: error,
-                  })
-              )
-            )
-        ),
-
-      /**
        * Save daily research context (Phase 1 output)
        * Protected by circuit breaker
        *
@@ -631,6 +558,37 @@ export class FaissClient extends Effect.Service<FaissClient>()("FaissClient", {
                 (error) =>
                   new FaissApiError({
                     message: `Save daily summary failed`,
+                    cause: error,
+                  })
+              )
+            )
+        ),
+
+      /**
+       * Get daily research by date
+       * Protected by circuit breaker
+       *
+       * Returns Option.some with research if found, Option.none if not found.
+       * Throws FaissApiError for other failures.
+       *
+       * @param date - Date in YYYY-MM-DD format
+       */
+      getDailyResearch: (date: string) =>
+        withProtection(
+          client
+            .get(`/api/research/${date}`)
+            .pipe(
+              Effect.flatMap((response) =>
+                response.status === 404
+                  ? Effect.succeed(Option.none<GetDailyResearchResponse>())
+                  : HttpClientResponse.schemaBodyJson(GetDailyResearchResponse)(response).pipe(
+                      Effect.map(Option.some)
+                    )
+              ),
+              Effect.mapError(
+                (error) =>
+                  new FaissApiError({
+                    message: `Get daily research failed for ${date}`,
                     cause: error,
                   })
               )
