@@ -4,15 +4,16 @@ Graph Connections API Router.
 Provides fast graph traversal queries for the agent.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
-import time
 import logging
+import time
+
 import anyio
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..models.graph import (
+    ConnectionNode,
     GraphConnectionsRequest,
     GraphConnectionsResponse,
-    ConnectionNode,
 )
 from ..services.db_service import DatabaseService
 
@@ -43,8 +44,7 @@ QUERY_HANDLERS = {
 def get_db_service():
     """Dependency placeholder - will be overridden by main.py."""
     raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Database service not initialized"
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database service not initialized"
     )
 
 
@@ -64,12 +64,14 @@ def get_db_service():
     - `artists_from_area`: Get artists from area (input: area MBIDs or names like "Seattle")
     - `recorded_at`: Get recordings from place (input: place MBIDs or names like "Abbey Road")
     - `collaborators`: Get artists who shared bands via 2-hop traversal (input: artist MBIDs)
-    - `collaborators_direct`: Get direct artist collaborations - features, production, writing (input: artist MBIDs)
+    - `collaborators_direct`: Get direct artist collaborations - features,
+      production, writing (input: artist MBIDs)
     - `label_hierarchy`: Get label ownership tree (input: label MBIDs)
 
     **Filters:**
     - `version_type`: For `covers` query - filter by 'cover', 'live', 'medley', 'instrumental'
-    - `collaboration_type`: For `collaborators_direct` query - filter by 'featured', 'production', 'writing'
+    - `collaboration_type`: For `collaborators_direct` query - filter by
+      'featured', 'production', 'writing'
     - `instrument`: For `members_by_instrument` query - filter by instrument
     - `creator_type`: For `works_by_creator` query - filter by creator role
 
@@ -78,12 +80,11 @@ def get_db_service():
     responses={
         200: {"description": "Connections found"},
         400: {"description": "Invalid query type or MBIDs"},
-        500: {"description": "Query failed"}
-    }
+        500: {"description": "Query failed"},
+    },
 )
 async def query_connections(
-    request: GraphConnectionsRequest,
-    db: DatabaseService = Depends(get_db_service)
+    request: GraphConnectionsRequest, db: DatabaseService = Depends(get_db_service)
 ) -> GraphConnectionsResponse:
     """Execute graph connection query."""
     start_time = time.time()
@@ -93,7 +94,7 @@ async def query_connections(
     if not handler_name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown query type: {request.query_type}"
+            detail=f"Unknown query type: {request.query_type}",
         )
 
     try:
@@ -102,7 +103,7 @@ async def query_connections(
         if handler is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Handler not implemented: {handler_name}"
+                detail=f"Handler not implemented: {handler_name}",
             )
 
         # Execute query with optional filters
@@ -125,10 +126,7 @@ async def query_connections(
         results = await anyio.to_thread.run_sync(lambda: handler(**kwargs))
 
         # Convert to ConnectionNode models
-        connections = [
-            ConnectionNode(**result)
-            for result in results
-        ]
+        connections = [ConnectionNode(**result) for result in results]
 
         query_time = (time.time() - start_time) * 1000
 
@@ -141,7 +139,7 @@ async def query_connections(
             source_mbids=request.mbids,
             connections=connections,
             total=len(connections),
-            query_time_ms=query_time
+            query_time_ms=query_time,
         )
 
     except HTTPException:
@@ -150,5 +148,5 @@ async def query_connections(
         logger.error(f"Graph query failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Graph query failed: {str(e)}"
+            detail=f"Graph query failed: {str(e)}",
         )

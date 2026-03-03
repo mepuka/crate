@@ -37,13 +37,15 @@ jobs:
           version: "0.5.5"
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
 
       - name: Run linting
         run: |
           uv run ruff check app/ tests/
           uv run ruff format --check app/ tests/
-        continue-on-error: true  # Don't fail on lint for now
+
+      - name: Run type checks
+        run: uv run mypy app tests
 
       - name: Run unit tests
         run: |

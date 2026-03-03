@@ -9,18 +9,20 @@ Handles:
 
 All operations are designed to stay within 4GB RAM constraint.
 """
+
+import base64
 import gc
-import numpy as np
-import faiss
-import tempfile
+import hashlib
+import logging
 import os
 import shutil
-import hashlib
-import base64
 import sqlite3
-import logging
+import tempfile
 from pathlib import Path
-from typing import List, Dict, Any, Set, Optional
+from typing import Any
+
+import faiss
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,7 @@ class EmbeddingIntegrationService:
         play_ids_path: Path,
         index_path: Path,
         db_path: Path,
-        embedding_dim: int = 384
+        embedding_dim: int = 384,
     ):
         """
         Initialize embedding integration service.
@@ -61,9 +63,9 @@ class EmbeddingIntegrationService:
         self.embedding_dim = embedding_dim
 
         # Cached embedded IDs (loaded lazily)
-        self._embedded_ids: Optional[Set[int]] = None
+        self._embedded_ids: set[int] | None = None
 
-    def _load_embedded_ids(self) -> Set[int]:
+    def _load_embedded_ids(self) -> set[int]:
         """
         Load set of play IDs that have embeddings.
 
@@ -84,7 +86,7 @@ class EmbeddingIntegrationService:
 
         return self._embedded_ids
 
-    def detect_pending_plays(self, limit: int = 1000, offset: int = 0) -> List[int]:
+    def detect_pending_plays(self, limit: int = 1000, offset: int = 0) -> list[int]:
         """
         Find plays that don't have embeddings yet.
 
@@ -113,21 +115,24 @@ class EmbeddingIntegrationService:
         batch_size = 500
         embedded_list = list(embedded_ids)
         for i in range(0, len(embedded_list), batch_size):
-            batch = embedded_list[i:i + batch_size]
-            placeholders = ','.join(['(?)'] * len(batch))
+            batch = embedded_list[i : i + batch_size]
+            placeholders = ",".join(["(?)"] * len(batch))
             cursor.execute(f"INSERT INTO temp_embedded_ids (id) VALUES {placeholders}", batch)
 
         logger.info(f"Loaded {len(embedded_ids)} embedded IDs into temp table")
 
         # Query for pending plays using LEFT JOIN (much faster than NOT IN for large sets)
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT fp.id
             FROM fact_plays fp
             LEFT JOIN temp_embedded_ids te ON fp.id = te.id
             WHERE te.id IS NULL
             ORDER BY fp.id DESC
             LIMIT ? OFFSET ?
-        """, (limit, offset))
+        """,
+            (limit, offset),
+        )
 
         pending_ids = [row[0] for row in cursor.fetchall()]
         conn.close()
@@ -152,11 +157,13 @@ class EmbeddingIntegrationService:
         conn.close()
 
         pending_count = total_plays - len(embedded_ids)
-        logger.info(f"Total pending: {pending_count} ({total_plays} total - {len(embedded_ids)} embedded)")
+        logger.info(
+            f"Total pending: {pending_count} ({total_plays} total - {len(embedded_ids)} embedded)"
+        )
 
         return max(0, pending_count)
 
-    def detect_pending_plays_optimized(self, limit: int = 1000, offset: int = 0) -> List[int]:
+    def detect_pending_plays_optimized(self, limit: int = 1000, offset: int = 0) -> list[int]:
         """
         Find plays without embeddings using indexed LEFT JOIN.
 
@@ -179,21 +186,31 @@ class EmbeddingIntegrationService:
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='embedded_play_ids'"
             )
             if cursor.fetchone() is None:
-                logger.warning("embedded_play_ids table not found, falling back to temp table approach")
+                logger.warning(
+                    "embedded_play_ids table not found, falling back to temp table approach"
+                )
                 conn.close()
                 return self.detect_pending_plays(limit, offset)
 
             # Optimized query using indexed LEFT JOIN
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT fp.id FROM fact_plays fp
                 LEFT JOIN embedded_play_ids ep ON fp.id = ep.play_id
                 WHERE ep.play_id IS NULL
                 ORDER BY fp.id DESC
                 LIMIT ? OFFSET ?
-            """, (limit, offset))
+            """,
+                (limit, offset),
+            )
 
             pending_ids = [row[0] for row in cursor.fetchall()]
-            logger.info(f"Found {len(pending_ids)} pending plays (optimized, offset={offset}, limit={limit})")
+            logger.info(
+                "Found %s pending plays (optimized, offset=%s, limit=%s)",
+                len(pending_ids),
+                offset,
+                limit,
+            )
             return pending_ids
 
         finally:
@@ -235,7 +252,7 @@ class EmbeddingIntegrationService:
         finally:
             conn.close()
 
-    def mark_plays_embedded(self, play_ids: List[int]) -> int:
+    def mark_plays_embedded(self, play_ids: list[int]) -> int:
         """
         Mark plays as embedded in the tracking table.
 
@@ -268,7 +285,7 @@ class EmbeddingIntegrationService:
             # Insert with INSERT OR IGNORE to handle duplicates
             cursor.executemany(
                 "INSERT OR IGNORE INTO embedded_play_ids (play_id) VALUES (?)",
-                [(pid,) for pid in play_ids]
+                [(pid,) for pid in play_ids],
             )
             marked_count = cursor.rowcount
             conn.commit()
@@ -279,7 +296,7 @@ class EmbeddingIntegrationService:
         finally:
             conn.close()
 
-    def enrich_play_text(self, play: Dict[str, Any]) -> str:
+    def enrich_play_text(self, play: dict[str, Any]) -> str:
         """
         Generate enriched text from play metadata.
 
@@ -298,58 +315,52 @@ class EmbeddingIntegrationService:
         metadata_parts = []
 
         # Core: Artist - Song - Album (using dashes like original)
-        if play.get('artist'):
-            core_parts.append(play['artist'])
-        if play.get('song'):
+        if play.get("artist"):
+            core_parts.append(play["artist"])
+        if play.get("song"):
             core_parts.append(f"- {play['song']}")
-        if play.get('album'):
+        if play.get("album"):
             core_parts.append(f"- {play['album']}")
 
         # DJ Comment (FIRST in metadata - most important for semantic search!)
-        if play.get('comment'):
+        if play.get("comment"):
             metadata_parts.append(f"Comment: {play['comment']}")
 
         # Labels
-        labels = play.get('labels')
+        labels = play.get("labels")
         if labels:
             # Handle both list and string formats
-            if isinstance(labels, list):
-                labels_str = ', '.join(labels[:3])  # Limit to first 3
-            else:
-                labels_str = str(labels)
+            labels_str = ", ".join(labels[:3]) if isinstance(labels, list) else str(labels)
             metadata_parts.append(f"Label: {labels_str}")
 
         # Rotation status
-        if play.get('rotation_status'):
+        if play.get("rotation_status"):
             metadata_parts.append(f"Rotation: {play['rotation_status']}")
 
         # Local artist flag
-        if play.get('is_local') == 1:
+        if play.get("is_local") == 1:
             metadata_parts.append("Local artist")
 
         # Year (from airdate)
-        if play.get('airdate'):
+        if play.get("airdate"):
             try:
                 # Extract year from ISO datetime string
-                year = play['airdate'][:4] if isinstance(play['airdate'], str) else None
+                year = play["airdate"][:4] if isinstance(play["airdate"], str) else None
                 if year:
                     metadata_parts.append(f"Year: {year}")
-            except:
+            except (TypeError, ValueError):
                 pass
 
         # Combine core and metadata
-        text = ' '.join(core_parts)
+        text = " ".join(core_parts)
         if metadata_parts:
-            text += ' | ' + ' | '.join(metadata_parts)
+            text += " | " + " | ".join(metadata_parts)
 
         return text
 
     def integrate_embeddings(
-        self,
-        new_embeddings_b64: str,
-        new_ids: List[int],
-        expected_checksum: str
-    ) -> Dict[str, Any]:
+        self, new_embeddings_b64: str, new_ids: list[int], expected_checksum: str
+    ) -> dict[str, Any]:
         """
         Integrate new embeddings into existing index.
 
@@ -378,28 +389,28 @@ class EmbeddingIntegrationService:
         logger.info("Starting embedding integration")
 
         # Step 1: Decode base64 to temp file (streaming, avoid memory spike)
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.npy') as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".npy") as tmp:
             tmp_path = tmp.name
             logger.info(f"Streaming base64 decode to {tmp_path}")
 
             # Decode in chunks to avoid loading entire base64 string into memory
             chunk_size = 1024 * 1024  # 1MB chunks
             for i in range(0, len(new_embeddings_b64), chunk_size):
-                chunk = new_embeddings_b64[i:i + chunk_size]
+                chunk = new_embeddings_b64[i : i + chunk_size]
                 decoded = base64.b64decode(chunk)
                 tmp.write(decoded)
 
         try:
             # Step 2: Load decoded array and verify checksum
             logger.info("Loading decoded embeddings")
-            with open(tmp_path, 'rb') as f:
+            with open(tmp_path, "rb") as f:
                 embeddings_bytes = f.read()
 
             # Verify checksum
             actual_checksum = hashlib.sha256(embeddings_bytes).hexdigest()
             checksum_verified = False
 
-            if expected_checksum.startswith('sha256:'):
+            if expected_checksum.startswith("sha256:"):
                 expected_hash = expected_checksum[7:]  # Remove 'sha256:' prefix
                 if actual_checksum != expected_hash:
                     raise ValueError(
@@ -427,8 +438,8 @@ class EmbeddingIntegrationService:
             # Step 3: Load existing embeddings using mmap (no memory copy)
             if self.embeddings_path.exists():
                 logger.info(f"Loading existing embeddings with mmap from {self.embeddings_path}")
-                existing_embeddings = np.load(self.embeddings_path, mmap_mode='r')
-                existing_ids = np.load(self.play_ids_path, mmap_mode='r')
+                existing_embeddings = np.load(self.embeddings_path, mmap_mode="r")
+                existing_ids = np.load(self.play_ids_path, mmap_mode="r")
                 total_before = len(existing_embeddings)
                 logger.info(f"✓ Existing embeddings: {existing_embeddings.shape}")
             else:
@@ -454,11 +465,11 @@ class EmbeddingIntegrationService:
             if len(new_ids_array) == 0:
                 logger.warning("No new embeddings to integrate after deduplication")
                 return {
-                    'plays_integrated': 0,
-                    'total_before': total_before,
-                    'total_after': total_before,
-                    'index_rebuilt': False,
-                    'checksum_verified': checksum_verified
+                    "plays_integrated": 0,
+                    "total_before": total_before,
+                    "total_after": total_before,
+                    "index_rebuilt": False,
+                    "checksum_verified": checksum_verified,
                 }
 
             total_after = total_before + len(new_ids_array)
@@ -473,30 +484,23 @@ class EmbeddingIntegrationService:
             # Cross-filesystem moves require copy+delete which is slow
             target_dir = self.embeddings_path.parent
             with tempfile.NamedTemporaryFile(
-                dir=target_dir,
-                delete=False,
-                suffix='_embeddings.npy'
+                dir=target_dir, delete=False, suffix="_embeddings.npy"
             ) as tmp_emb:
                 tmp_embeddings_path = tmp_emb.name
             with tempfile.NamedTemporaryFile(
-                dir=target_dir,
-                delete=False,
-                suffix='_ids.npy'
+                dir=target_dir, delete=False, suffix="_ids.npy"
             ) as tmp_ids:
                 tmp_ids_path = tmp_ids.name
 
             # Create memory-mapped arrays for output (writes directly to disk)
             combined_embeddings = np.lib.format.open_memmap(
                 tmp_embeddings_path,
-                mode='w+',
+                mode="w+",
                 dtype=np.float32,
-                shape=(total_after, self.embedding_dim)
+                shape=(total_after, self.embedding_dim),
             )
             combined_ids = np.lib.format.open_memmap(
-                tmp_ids_path,
-                mode='w+',
-                dtype=np.int64,
-                shape=(total_after,)
+                tmp_ids_path, mode="w+", dtype=np.int64, shape=(total_after,)
             )
 
             logger.info("✓ Created mmap output files")
@@ -543,9 +547,9 @@ class EmbeddingIntegrationService:
 
             # Backup old files (optional, for safety)
             if self.embeddings_path.exists():
-                backup_emb = self.embeddings_path.with_suffix('.npy.backup')
-                backup_ids = self.play_ids_path.with_suffix('.npy.backup')
-                backup_idx = self.index_path.with_suffix('.index.backup')
+                backup_emb = self.embeddings_path.with_suffix(".npy.backup")
+                backup_ids = self.play_ids_path.with_suffix(".npy.backup")
+                backup_idx = self.index_path.with_suffix(".index.backup")
 
                 if backup_emb.exists():
                     backup_emb.unlink()
@@ -563,9 +567,7 @@ class EmbeddingIntegrationService:
 
             # Write new index (in same directory as target for atomic rename)
             with tempfile.NamedTemporaryFile(
-                dir=self.index_path.parent,
-                delete=False,
-                suffix='.index'
+                dir=self.index_path.parent, delete=False, suffix=".index"
             ) as tmp_idx:
                 tmp_index_path = tmp_idx.name
                 faiss.write_index(index, tmp_index_path)
@@ -589,14 +591,14 @@ class EmbeddingIntegrationService:
             logger.info("=" * 80)
 
             return {
-                'plays_integrated': plays_integrated,
-                'total_before': total_before,
-                'total_after': total_after,
-                'index_rebuilt': True,
-                'checksum_verified': checksum_verified
+                "plays_integrated": plays_integrated,
+                "total_before": total_before,
+                "total_after": total_after,
+                "index_rebuilt": True,
+                "checksum_verified": checksum_verified,
             }
 
-        except Exception as e:
+        except Exception:
             # Cleanup temp file on error
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
@@ -617,14 +619,14 @@ class EmbeddingIntegrationService:
         logger.info(f"Rebuilding FAISS index from {embeddings_path}")
 
         # Load with mmap to avoid full memory copy
-        embeddings = np.load(embeddings_path, mmap_mode='r')
+        embeddings = np.load(embeddings_path, mmap_mode="r")
         n_vectors, d = embeddings.shape
 
         logger.info(f"Index dimensions: {n_vectors:,} vectors × {d}d")
 
         # FAISS index configuration - adaptive nlist based on vector count
         # nlist must be <= n_vectors; use ~4*sqrt(n) as rule of thumb, capped at 1024
-        nlist = min(1024, max(1, int(4 * (n_vectors ** 0.5))))
+        nlist = min(1024, max(1, int(4 * (n_vectors**0.5))))
         logger.info(f"Using nlist={nlist} for {n_vectors:,} vectors")
 
         # Create index
@@ -647,7 +649,7 @@ class EmbeddingIntegrationService:
 
         for i in range(0, n_vectors, batch_size):
             batch_end = min(i + batch_size, n_vectors)
-            logger.info(f"  Batch {i//batch_size + 1}: adding vectors {i:,} to {batch_end:,}")
+            logger.info(f"  Batch {i // batch_size + 1}: adding vectors {i:,} to {batch_end:,}")
 
             # Copy batch to memory (only this batch, not full array)
             batch = np.array(embeddings[i:batch_end], dtype=np.float32)

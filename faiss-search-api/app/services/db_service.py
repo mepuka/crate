@@ -1,25 +1,28 @@
 """Database service for SQLite queries."""
-import sqlite3
-import json
+
 import base64
-import time
-import threading
-import weakref
-from pathlib import Path
-from typing import Optional, Dict, List, Any, Tuple, TypeVar, Callable
-from datetime import datetime
+import json
 import logging
+import sqlite3
+import threading
+import time
+from collections.abc import Callable
+from contextlib import suppress
+from datetime import datetime
 from functools import wraps
+from pathlib import Path
+from typing import Any, TypeVar
 
 try:
     import orjson
+
     HAS_ORJSON = True
 except ImportError:
     HAS_ORJSON = False
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 # SQLite has a limit of 999 variables per query (compile-time default)
 # Use 500 as a safe chunk size for queries with dynamic placeholders
@@ -27,9 +30,7 @@ SQLITE_MAX_VARIABLES = 500
 
 
 def retry_on_locked(
-    max_retries: int = 3,
-    base_delay: float = 0.1,
-    max_delay: float = 2.0
+    max_retries: int = 3, base_delay: float = 0.1, max_delay: float = 2.0
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """
     Decorator that retries a function on SQLite database locked errors.
@@ -41,6 +42,7 @@ def retry_on_locked(
         base_delay: Initial delay between retries (seconds)
         max_delay: Maximum delay between retries (seconds)
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> T:
@@ -52,7 +54,7 @@ def retry_on_locked(
                     if "database is locked" in str(e):
                         last_error = e
                         if attempt < max_retries:
-                            delay = min(base_delay * (2 ** attempt), max_delay)
+                            delay = min(base_delay * (2**attempt), max_delay)
                             logger.warning(
                                 f"Database locked on {func.__name__}, "
                                 f"retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})"
@@ -60,13 +62,14 @@ def retry_on_locked(
                             time.sleep(delay)
                         else:
                             logger.error(
-                                f"Database locked on {func.__name__} "
-                                f"after {max_retries} retries"
+                                f"Database locked on {func.__name__} after {max_retries} retries"
                             )
                     else:
                         raise
             raise last_error  # type: ignore
+
         return wrapper
+
     return decorator
 
 
@@ -99,24 +102,21 @@ class DatabaseService:
     def conn(self) -> sqlite3.Connection:
         """Thread-local database connection (each thread gets its own connection)."""
         # Check if this thread already has a connection
-        if not hasattr(self._thread_local, 'connections'):
+        if not hasattr(self._thread_local, "connections"):
             self._thread_local.connections = {}
 
         db_key = str(self.db_path)
         if db_key not in self._thread_local.connections:
             # Create new connection for this thread
-            conn = sqlite3.connect(
-                self.db_path,
-                timeout=30.0
-            )
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
             conn.row_factory = sqlite3.Row
             # Enable WAL mode for better concurrent access
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
             # Performance PRAGMAs (WAL + daily backups = safe tradeoff)
-            conn.execute("PRAGMA synchronous=NORMAL")   # 2x faster commits
-            conn.execute("PRAGMA cache_size=-64000")    # 64MB cache
-            conn.execute("PRAGMA temp_store=MEMORY")    # Temp tables in RAM
+            conn.execute("PRAGMA synchronous=NORMAL")  # 2x faster commits
+            conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
+            conn.execute("PRAGMA temp_store=MEMORY")  # Temp tables in RAM
             self._thread_local.connections[db_key] = conn
 
             # Track for proper shutdown (strong ref - close() will clear)
@@ -127,7 +127,7 @@ class DatabaseService:
 
         return self._thread_local.connections[db_key]
 
-    def get_play_by_id(self, play_id: int) -> Optional[Dict[str, Any]]:
+    def get_play_by_id(self, play_id: int) -> dict[str, Any] | None:
         """
         Fetch a single play by ID.
 
@@ -146,7 +146,7 @@ class DatabaseService:
 
         return self._row_to_dict(row)
 
-    def get_plays_by_ids(self, play_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    def get_plays_by_ids(self, play_ids: list[int]) -> dict[int, dict[str, Any]]:
         """
         Fetch multiple plays by IDs.
 
@@ -166,30 +166,36 @@ class DatabaseService:
 
         # Process in chunks to avoid SQLite variable limit
         for i in range(0, len(play_ids), SQLITE_MAX_VARIABLES):
-            chunk = play_ids[i:i + SQLITE_MAX_VARIABLES]
-            placeholders = ','.join('?' * len(chunk))
+            chunk = play_ids[i : i + SQLITE_MAX_VARIABLES]
+            placeholders = ",".join("?" * len(chunk))
             query = f"SELECT * FROM fact_plays WHERE id IN ({placeholders})"
             cursor.execute(query, chunk)
 
             for row in cursor.fetchall():
                 play_dict = self._row_to_dict(row)
-                results[play_dict['id']] = play_dict
+                results[play_dict["id"]] = play_dict
 
         return results
 
     def get_first_play_by_mbids(
         self,
-        recording_mbid: Optional[str] = None,
-        release_group_mbid: Optional[str] = None,
-        release_mbid: Optional[str] = None,
-        artist_mbid: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        recording_mbid: str | None = None,
+        release_group_mbid: str | None = None,
+        release_mbid: str | None = None,
+        artist_mbid: str | None = None,
+    ) -> dict[str, Any] | None:
         """
         Fetch a representative play for the given MBIDs, in priority order.
 
         Preference: recording -> release_group -> release -> artist.
         """
         cursor = self.conn.cursor()
+
+        # MBIDs are UUIDs and should be treated case-insensitively.
+        recording_mbid = recording_mbid.lower() if recording_mbid else None
+        release_group_mbid = release_group_mbid.lower() if release_group_mbid else None
+        release_mbid = release_mbid.lower() if release_mbid else None
+        artist_mbid = artist_mbid.lower() if artist_mbid else None
 
         if recording_mbid:
             cursor.execute(
@@ -246,7 +252,7 @@ class DatabaseService:
 
         return None
 
-    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+    def _row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
         """
         Convert SQLite row to dictionary with proper type conversion.
 
@@ -259,42 +265,42 @@ class DatabaseService:
         data = dict(row)
 
         # Parse labels as JSON array (stored as ["Label1", "Label2"] format)
-        if data.get('labels'):
+        if data.get("labels"):
             try:
                 if HAS_ORJSON:
-                    data['labels'] = orjson.loads(data['labels'])
+                    data["labels"] = orjson.loads(data["labels"])
                 else:
-                    data['labels'] = json.loads(data['labels'])
+                    data["labels"] = json.loads(data["labels"])
             except (json.JSONDecodeError, ValueError):
-                data['labels'] = []
+                data["labels"] = []
         else:
-            data['labels'] = []
+            data["labels"] = []
 
         # Parse artist_ids as JSON array and map to artist_mbid for PlayResult compatibility
-        if data.get('artist_ids'):
+        if data.get("artist_ids"):
             try:
                 if HAS_ORJSON:
-                    data['artist_mbid'] = orjson.loads(data['artist_ids'])
+                    data["artist_mbid"] = orjson.loads(data["artist_ids"])
                 else:
-                    data['artist_mbid'] = json.loads(data['artist_ids'])
+                    data["artist_mbid"] = json.loads(data["artist_ids"])
             except (json.JSONDecodeError, ValueError):
-                data['artist_mbid'] = []
+                data["artist_mbid"] = []
         else:
-            data['artist_mbid'] = []
+            data["artist_mbid"] = []
 
         # Map MusicBrainz ID fields to PlayResult expected names
         # Use direct assignment for speed
-        if 'recording_id' in data:
-            data['recording_mbid'] = data['recording_id']
-        if 'release_id' in data:
-            data['release_mbid'] = data['release_id']
-        if 'release_group_id' in data:
-            data['release_group_mbid'] = data['release_group_id']
+        if "recording_id" in data:
+            data["recording_mbid"] = data["recording_id"]
+        if "release_id" in data:
+            data["release_mbid"] = data["release_id"]
+        if "release_group_id" in data:
+            data["release_group_mbid"] = data["release_group_id"]
 
         # Convert integer booleans - optimized
-        data['is_local'] = bool(data.get('is_local', 0))
-        data['is_request'] = bool(data.get('is_request', 0))
-        data['is_live'] = bool(data.get('is_live', 0))
+        data["is_local"] = bool(data.get("is_local", 0))
+        data["is_request"] = bool(data.get("is_request", 0))
+        data["is_live"] = bool(data.get("is_live", 0))
 
         return data
 
@@ -312,7 +318,7 @@ class DatabaseService:
         cursor_str = f"{airdate}:{play_id}"
         return base64.b64encode(cursor_str.encode()).decode()
 
-    def decode_cursor(self, cursor: str) -> Tuple[str, int]:
+    def decode_cursor(self, cursor: str) -> tuple[str, int]:
         """
         Decode cursor for pagination.
 
@@ -338,11 +344,11 @@ class DatabaseService:
 
     def _build_mbid_filter_clause(
         self,
-        artist_mbid: Optional[str] = None,
-        recording_mbid: Optional[str] = None,
-        release_mbid: Optional[str] = None,
-        release_group_mbid: Optional[str] = None
-    ) -> tuple[str, List[Any], bool]:
+        artist_mbid: str | None = None,
+        recording_mbid: str | None = None,
+        release_mbid: str | None = None,
+        release_group_mbid: str | None = None,
+    ) -> tuple[str, list[Any], bool]:
         """
         Build WHERE clause and parameters for MBID filtering.
 
@@ -363,20 +369,20 @@ class DatabaseService:
             # Use play_artists join table for fast lookups (50x faster than JSON)
             # The caller should join: INNER JOIN play_artists pa ON pa.play_id = fp.id
             conditions.append("pa.artist_mbid = ?")
-            params.append(artist_mbid)
+            params.append(artist_mbid.lower())
             needs_artist_join = True
 
         if recording_mbid:
             conditions.append("fp.recording_id = ?")
-            params.append(recording_mbid)
+            params.append(recording_mbid.lower())
 
         if release_mbid:
             conditions.append("fp.release_id = ?")
-            params.append(release_mbid)
+            params.append(release_mbid.lower())
 
         if release_group_mbid:
             conditions.append("fp.release_group_id = ?")
-            params.append(release_group_mbid)
+            params.append(release_group_mbid.lower())
 
         where_clause = ""
         if conditions:
@@ -387,13 +393,13 @@ class DatabaseService:
     def get_plays_by_cursor(
         self,
         limit: int = 50,
-        cursor: Optional[str] = None,
+        cursor: str | None = None,
         direction: str = "next",
-        artist_mbid: Optional[str] = None,
-        recording_mbid: Optional[str] = None,
-        release_mbid: Optional[str] = None,
-        release_group_mbid: Optional[str] = None
-    ) -> Dict[str, Any]:
+        artist_mbid: str | None = None,
+        recording_mbid: str | None = None,
+        release_mbid: str | None = None,
+        release_group_mbid: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get plays using cursor-based pagination with optional MBID filtering.
 
@@ -445,7 +451,9 @@ class DatabaseService:
                 # Combine cursor condition with MBID filters
                 cursor_condition = "fp.airdate < ? OR (fp.airdate = ? AND fp.id < ?)"
                 if mbid_filter:
-                    combined_where = f"WHERE ({cursor_condition}) AND ({mbid_filter[6:]})"  # Remove "WHERE " prefix
+                    # Remove leading "WHERE " prefix before combining filters.
+                    mbid_clause = mbid_filter[6:]
+                    combined_where = f"WHERE ({cursor_condition}) AND ({mbid_clause})"
                 else:
                     combined_where = f"WHERE {cursor_condition}"
 
@@ -461,7 +469,9 @@ class DatabaseService:
                 # "prev" direction (for future implementation)
                 cursor_condition = "fp.airdate > ? OR (fp.airdate = ? AND fp.id > ?)"
                 if mbid_filter:
-                    combined_where = f"WHERE ({cursor_condition}) AND ({mbid_filter[6:]})"  # Remove "WHERE " prefix
+                    # Remove leading "WHERE " prefix before combining filters.
+                    mbid_clause = mbid_filter[6:]
+                    combined_where = f"WHERE ({cursor_condition}) AND ({mbid_clause})"
                 else:
                     combined_where = f"WHERE {cursor_condition}"
 
@@ -492,13 +502,9 @@ class DatabaseService:
         next_cursor = None
         if has_more and results:
             last = results[-1]
-            next_cursor = self.encode_cursor(last['airdate'], last['id'])
+            next_cursor = self.encode_cursor(last["airdate"], last["id"])
 
-        return {
-            'results': results,
-            'next_cursor': next_cursor,
-            'has_more': has_more
-        }
+        return {"results": results, "next_cursor": next_cursor, "has_more": has_more}
 
     @property
     def total_count(self) -> int:
@@ -510,7 +516,7 @@ class DatabaseService:
         Returns:
             Total number of plays
         """
-        if not hasattr(self, '_total_count'):
+        if not hasattr(self, "_total_count"):
             cursor = self.conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM fact_plays")
             self._total_count = cursor.fetchone()[0]
@@ -519,14 +525,14 @@ class DatabaseService:
 
     def get_plays_by_time_range(
         self,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 50,
-        artist_mbid: Optional[str] = None,
-        recording_mbid: Optional[str] = None,
-        release_mbid: Optional[str] = None,
-        release_group_mbid: Optional[str] = None
-    ) -> Dict[str, Any]:
+        artist_mbid: str | None = None,
+        recording_mbid: str | None = None,
+        release_mbid: str | None = None,
+        release_group_mbid: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get plays within a time range, chronologically ordered (newest first).
 
@@ -611,23 +617,19 @@ class DatabaseService:
         next_cursor = None
         if has_more and results:
             last = results[-1]
-            next_cursor = self.encode_cursor(last['airdate'], last['id'])
+            next_cursor = self.encode_cursor(last["airdate"], last["id"])
 
-        return {
-            'results': results,
-            'next_cursor': next_cursor,
-            'has_more': has_more
-        }
+        return {"results": results, "next_cursor": next_cursor, "has_more": has_more}
 
     def get_plays_by_percentage(
         self,
         percentage: float,
         limit: int = 50,
-        artist_mbid: Optional[str] = None,
-        recording_mbid: Optional[str] = None,
-        release_mbid: Optional[str] = None,
-        release_group_mbid: Optional[str] = None
-    ) -> Dict[str, Any]:
+        artist_mbid: str | None = None,
+        recording_mbid: str | None = None,
+        release_mbid: str | None = None,
+        release_group_mbid: str | None = None,
+    ) -> dict[str, Any]:
         """
         Jump to a percentage position in the timeline.
 
@@ -706,24 +708,24 @@ class DatabaseService:
         next_cursor = None
         if has_more and results:
             last = results[-1]
-            next_cursor = self.encode_cursor(last['airdate'], last['id'])
+            next_cursor = self.encode_cursor(last["airdate"], last["id"])
 
         return {
-            'results': results,
-            'next_cursor': next_cursor,
-            'has_more': has_more,
-            'total_count': total
+            "results": results,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "total_count": total,
         }
 
     def get_plays_around_id(
         self,
         anchor_id: int,
         limit: int = 50,
-        artist_mbid: Optional[str] = None,
-        recording_mbid: Optional[str] = None,
-        release_mbid: Optional[str] = None,
-        release_group_mbid: Optional[str] = None
-    ) -> Dict[str, Any]:
+        artist_mbid: str | None = None,
+        recording_mbid: str | None = None,
+        release_mbid: str | None = None,
+        release_group_mbid: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get plays centered around a specific play ID.
 
@@ -761,11 +763,13 @@ class DatabaseService:
 
         # First, get the anchor play to get its airdate
         cursor_obj = self.conn.cursor()
-        anchor_row = cursor_obj.execute("SELECT * FROM fact_plays WHERE id = ?", (anchor_id,)).fetchone()
+        anchor_row = cursor_obj.execute(
+            "SELECT * FROM fact_plays WHERE id = ?", (anchor_id,)
+        ).fetchone()
         if not anchor_row:
             raise ValueError(f"Play ID {anchor_id} not found")
 
-        anchor_airdate = anchor_row['airdate']
+        anchor_airdate = anchor_row["airdate"]
 
         # Always include anchor, distribute remaining (limit-1) slots around it
         remaining_slots = max(0, limit - 1)
@@ -775,8 +779,12 @@ class DatabaseService:
         # Build queries with MBID filters
         if mbid_filter:
             # Combine time/position conditions with MBID filters
-            before_conditions = f"(fp.airdate > ? OR (fp.airdate = ? AND fp.id > ?)) AND ({mbid_filter[6:]})"
-            after_conditions = f"(fp.airdate < ? OR (fp.airdate = ? AND fp.id < ?)) AND ({mbid_filter[6:]})"
+            before_conditions = (
+                f"(fp.airdate > ? OR (fp.airdate = ? AND fp.id > ?)) AND ({mbid_filter[6:]})"
+            )
+            after_conditions = (
+                f"(fp.airdate < ? OR (fp.airdate = ? AND fp.id < ?)) AND ({mbid_filter[6:]})"
+            )
         else:
             before_conditions = "fp.airdate > ? OR (fp.airdate = ? AND fp.id > ?)"
             after_conditions = "fp.airdate < ? OR (fp.airdate = ? AND fp.id < ?)"
@@ -818,7 +826,7 @@ class DatabaseService:
         # Find anchor position
         anchor_position = None
         for idx, play in enumerate(results):
-            if play['id'] == anchor_id:
+            if play["id"] == anchor_id:
                 anchor_position = idx
                 break
 
@@ -826,16 +834,16 @@ class DatabaseService:
         next_cursor = None
         if has_more and results:
             last = results[-1]
-            next_cursor = self.encode_cursor(last['airdate'], last['id'])
+            next_cursor = self.encode_cursor(last["airdate"], last["id"])
 
         return {
-            'results': results,
-            'next_cursor': next_cursor,
-            'has_more': has_more,
-            'anchor_position': anchor_position
+            "results": results,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+            "anchor_position": anchor_position,
         }
 
-    def get_all_plays_for_indexing(self) -> List[Dict[str, Any]]:
+    def get_all_plays_for_indexing(self) -> list[dict[str, Any]]:
         """
         Fetch all plays with fields needed for BM25 indexing.
 
@@ -857,14 +865,14 @@ class DatabaseService:
         for row in cursor.fetchall():
             data = dict(row)
             # Parse labels JSON
-            if data.get('labels'):
+            if data.get("labels"):
                 try:
-                    labels = json.loads(data['labels'])
-                    data['labels'] = ' '.join(labels) if isinstance(labels, list) else str(labels)
+                    labels = json.loads(data["labels"])
+                    data["labels"] = " ".join(labels) if isinstance(labels, list) else str(labels)
                 except json.JSONDecodeError:
-                    data['labels'] = ''
+                    data["labels"] = ""
             else:
-                data['labels'] = ''
+                data["labels"] = ""
             results.append(data)
 
         logger.info(f"Fetched {len(results):,} plays for indexing")
@@ -883,29 +891,21 @@ class DatabaseService:
         cursor = self.conn.cursor()
 
         # Try to get existing type
-        cursor.execute(
-            "SELECT id FROM enrichment_types WHERE name = ?",
-            (type_name,)
-        )
+        cursor.execute("SELECT id FROM enrichment_types WHERE name = ?", (type_name,))
         row = cursor.fetchone()
 
         if row:
             return row[0]
 
         # Create new type
-        cursor.execute(
-            "INSERT INTO enrichment_types (name) VALUES (?)",
-            (type_name,)
-        )
+        cursor.execute("INSERT INTO enrichment_types (name) VALUES (?)", (type_name,))
         self.conn.commit()
         type_id = cursor.lastrowid
         logger.info(f"Created new enrichment type: {type_name} (id={type_id})")
         return type_id
 
     def bulk_insert_enrichments(
-        self,
-        enrichment_type_id: int,
-        enrichments: List[Dict[str, Any]]
+        self, enrichment_type_id: int, enrichments: list[dict[str, Any]]
     ) -> int:
         """
         Bulk insert enrichments using executemany for performance.
@@ -922,29 +922,32 @@ class DatabaseService:
         # Prepare data for executemany
         insert_data = [
             (
-                item['play_id'],
+                item["play_id"],
                 enrichment_type_id,
-                json.dumps(item['data']) if isinstance(item['data'], dict) else item['data']
+                json.dumps(item["data"]) if isinstance(item["data"], dict) else item["data"],
             )
             for item in enrichments
         ]
 
         # Use INSERT OR REPLACE for upsert behavior
-        cursor.executemany("""
+        cursor.executemany(
+            """
             INSERT INTO enrichments (play_id, enrichment_type_id, data, updated_at)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(play_id, enrichment_type_id)
             DO UPDATE SET
                 data = excluded.data,
                 updated_at = CURRENT_TIMESTAMP
-        """, insert_data)
+        """,
+            insert_data,
+        )
 
         self.conn.commit()
         count = len(insert_data)
         logger.info(f"Bulk inserted {count:,} enrichments")
         return count
 
-    def get_enrichment_types(self) -> List[Dict[str, Any]]:
+    def get_enrichment_types(self) -> list[dict[str, Any]]:
         """
         Get all enrichment types.
 
@@ -953,14 +956,14 @@ class DatabaseService:
         """
         cursor = self.conn.cursor()
         cursor.execute("SELECT id, name FROM enrichment_types ORDER BY name")
-        return [{'id': row[0], 'name': row[1]} for row in cursor.fetchall()]
+        return [{"id": row[0], "name": row[1]} for row in cursor.fetchall()]
 
     def get_play_count(
         self,
-        artist_mbid: Optional[str] = None,
-        recording_mbid: Optional[str] = None,
-        release_mbid: Optional[str] = None,
-        release_group_mbid: Optional[str] = None
+        artist_mbid: str | None = None,
+        recording_mbid: str | None = None,
+        release_mbid: str | None = None,
+        release_group_mbid: str | None = None,
     ) -> int:
         """
         Get count of plays matching MBID filters.
@@ -999,11 +1002,8 @@ class DatabaseService:
     # =========================================================================
 
     def fts5_search(
-        self,
-        query: str,
-        limit: int = 100,
-        columns: Optional[List[str]] = None
-    ) -> List[Tuple[int, float]]:
+        self, query: str, limit: int = 100, columns: list[str] | None = None
+    ) -> list[tuple[int, float]]:
         """
         Search plays using FTS5 full-text search.
 
@@ -1033,13 +1033,16 @@ class DatabaseService:
             fts_query = f'"{safe_query}"'
 
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT rowid, bm25(plays_fts) as score
                 FROM plays_fts
                 WHERE plays_fts MATCH ?
                 ORDER BY score
                 LIMIT ?
-            """, (fts_query, limit))
+            """,
+                (fts_query, limit),
+            )
 
             return [(row[0], row[1]) for row in cursor.fetchall()]
         except sqlite3.OperationalError as e:
@@ -1061,10 +1064,7 @@ class DatabaseService:
     # =========================================================================
 
     @retry_on_locked(max_retries=3, base_delay=0.2, max_delay=2.0)
-    def bulk_insert_insights(
-        self,
-        insights: List[Dict[str, Any]]
-    ) -> List[int]:
+    def bulk_insert_insights(self, insights: list[dict[str, Any]]) -> list[int]:
         """
         Bulk insert typed insights into the insights table.
 
@@ -1091,11 +1091,16 @@ class DatabaseService:
         for insight in insights:
             # Serialize eval_context if present
             eval_context_json = None
-            if insight.get('eval_context'):
-                eval_context_json = json.dumps(insight['eval_context']) if isinstance(insight['eval_context'], dict) else insight['eval_context']
+            if insight.get("eval_context"):
+                eval_context_json = (
+                    json.dumps(insight["eval_context"])
+                    if isinstance(insight["eval_context"], dict)
+                    else insight["eval_context"]
+                )
 
             # Insert into insights table
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO insights (
                     insight_type,
                     play_id,
@@ -1112,41 +1117,46 @@ class DatabaseService:
                     eval_context,
                     schema_version
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v1')
-            """, (
-                insight['insight_type'],
-                insight['play_id'],
-                insight['confidence'],
-                insight['source_type'],
-                insight.get('source_recording_mbid'),
-                insight.get('source_release_mbid'),
-                insight.get('referenced_artist_mbid'),
-                insight.get('referenced_recording_mbid'),
-                insight.get('referenced_release_mbid'),
-                insight.get('referenced_label_mbid'),
-                json.dumps(insight['data']) if isinstance(insight['data'], dict) else insight['data'],
-                insight.get('summary'),
-                eval_context_json,
-            ))
+            """,
+                (
+                    insight["insight_type"],
+                    insight["play_id"],
+                    insight["confidence"],
+                    insight["source_type"],
+                    insight.get("source_recording_mbid"),
+                    insight.get("source_release_mbid"),
+                    insight.get("referenced_artist_mbid"),
+                    insight.get("referenced_recording_mbid"),
+                    insight.get("referenced_release_mbid"),
+                    insight.get("referenced_label_mbid"),
+                    json.dumps(insight["data"])
+                    if isinstance(insight["data"], dict)
+                    else insight["data"],
+                    insight.get("summary"),
+                    eval_context_json,
+                ),
+            )
             insight_id = cursor.lastrowid
             inserted_ids.append(insight_id)
 
             # Insert source artists into junction table
-            source_artist_mbids = insight.get('source_artist_mbids', [])
+            source_artist_mbids = insight.get("source_artist_mbids", [])
             for artist_mbid in source_artist_mbids:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT OR IGNORE INTO insight_source_artists (insight_id, artist_mbid)
                     VALUES (?, ?)
-                """, (insight_id, artist_mbid))
+                """,
+                    (insight_id, artist_mbid),
+                )
 
         self.conn.commit()
         logger.info(f"Bulk inserted {len(inserted_ids):,} insights")
         return inserted_ids
 
     def get_insights_for_play(
-        self,
-        play_id: int,
-        include_deleted: bool = False
-    ) -> List[Dict[str, Any]]:
+        self, play_id: int, include_deleted: bool = False
+    ) -> list[dict[str, Any]]:
         """
         Get all insights for a specific play.
 
@@ -1180,37 +1190,39 @@ class DatabaseService:
         for row in rows:
             data = json.loads(row[11]) if isinstance(row[11], str) else row[11]
             eval_context = json.loads(row[15]) if row[15] and isinstance(row[15], str) else row[15]
-            insights.append({
-                'id': row[0],
-                'insight_type': row[1],
-                'play_id': row[2],
-                'confidence': row[3],
-                'source_type': row[4],
-                'source_recording_mbid': row[5],
-                'source_release_mbid': row[6],
-                'referenced_artist_mbid': row[7],
-                'referenced_recording_mbid': row[8],
-                'referenced_release_mbid': row[9],
-                'referenced_label_mbid': row[10],
-                'data': data,
-                'summary': row[12],
-                'created_at': row[13],
-                'updated_at': row[14],
-                'eval_context': eval_context,
-            })
+            insights.append(
+                {
+                    "id": row[0],
+                    "insight_type": row[1],
+                    "play_id": row[2],
+                    "confidence": row[3],
+                    "source_type": row[4],
+                    "source_recording_mbid": row[5],
+                    "source_release_mbid": row[6],
+                    "referenced_artist_mbid": row[7],
+                    "referenced_recording_mbid": row[8],
+                    "referenced_release_mbid": row[9],
+                    "referenced_label_mbid": row[10],
+                    "data": data,
+                    "summary": row[12],
+                    "created_at": row[13],
+                    "updated_at": row[14],
+                    "eval_context": eval_context,
+                }
+            )
 
         return insights
 
     def get_insights(
         self,
-        insight_type: Optional[str] = None,
-        play_id: Optional[int] = None,
-        artist_mbid: Optional[str] = None,
-        confidence: Optional[str] = None,
+        insight_type: str | None = None,
+        play_id: int | None = None,
+        artist_mbid: str | None = None,
+        confidence: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        include_deleted: bool = False
-    ) -> Dict[str, Any]:
+        include_deleted: bool = False,
+    ) -> dict[str, Any]:
         """
         Query insights with filters.
 
@@ -1278,26 +1290,28 @@ class DatabaseService:
         for row in rows:
             data = json.loads(row[11]) if isinstance(row[11], str) else row[11]
             eval_context = json.loads(row[15]) if row[15] and isinstance(row[15], str) else row[15]
-            insights.append({
-                'id': row[0],
-                'insight_type': row[1],
-                'play_id': row[2],
-                'confidence': row[3],
-                'source_type': row[4],
-                'source_recording_mbid': row[5],
-                'source_release_mbid': row[6],
-                'referenced_artist_mbid': row[7],
-                'referenced_recording_mbid': row[8],
-                'referenced_release_mbid': row[9],
-                'referenced_label_mbid': row[10],
-                'data': data,
-                'summary': row[12],
-                'created_at': row[13],
-                'updated_at': row[14],
-                'eval_context': eval_context,
-            })
+            insights.append(
+                {
+                    "id": row[0],
+                    "insight_type": row[1],
+                    "play_id": row[2],
+                    "confidence": row[3],
+                    "source_type": row[4],
+                    "source_recording_mbid": row[5],
+                    "source_release_mbid": row[6],
+                    "referenced_artist_mbid": row[7],
+                    "referenced_recording_mbid": row[8],
+                    "referenced_release_mbid": row[9],
+                    "referenced_label_mbid": row[10],
+                    "data": data,
+                    "summary": row[12],
+                    "created_at": row[13],
+                    "updated_at": row[14],
+                    "eval_context": eval_context,
+                }
+            )
 
-        return {'insights': insights, 'total': total}
+        return {"insights": insights, "total": total}
 
     def soft_delete_insight(self, insight_id: int) -> bool:
         """
@@ -1310,21 +1324,20 @@ class DatabaseService:
             True if deleted, False if not found
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             UPDATE insights
             SET deleted_at = datetime('now'), updated_at = datetime('now')
             WHERE id = ? AND deleted_at IS NULL
-        """, (insight_id,))
+        """,
+            (insight_id,),
+        )
         self.conn.commit()
         return cursor.rowcount > 0
 
     def get_insights_for_context(
-        self,
-        play_id: int,
-        window_hours: int = 3,
-        limit: int = 20,
-        include_deleted: bool = False
-    ) -> Dict[str, Any]:
+        self, play_id: int, window_hours: int = 3, limit: int = 20, include_deleted: bool = False
+    ) -> dict[str, Any]:
         """
         Get insights for plays within a time window around a given play.
 
@@ -1347,7 +1360,7 @@ class DatabaseService:
         cursor.execute("SELECT airdate FROM fact_plays WHERE id = ?", (play_id,))
         row = cursor.fetchone()
         if not row:
-            return {'insights': [], 'total': 0, 'window_info': {'error': 'Play not found'}}
+            return {"insights": [], "total": 0, "window_info": {"error": "Play not found"}}
 
         center_airdate = row[0]
 
@@ -1382,34 +1395,36 @@ class DatabaseService:
         for row in rows:
             data = json.loads(row[11]) if isinstance(row[11], str) else row[11]
             eval_context = json.loads(row[15]) if row[15] and isinstance(row[15], str) else row[15]
-            insights.append({
-                'id': row[0],
-                'insight_type': row[1],
-                'play_id': row[2],
-                'confidence': row[3],
-                'source_type': row[4],
-                'source_recording_mbid': row[5],
-                'source_release_mbid': row[6],
-                'referenced_artist_mbid': row[7],
-                'referenced_recording_mbid': row[8],
-                'referenced_release_mbid': row[9],
-                'referenced_label_mbid': row[10],
-                'data': data,
-                'summary': row[12],
-                'created_at': row[13],
-                'updated_at': row[14],
-                'eval_context': eval_context,
-                'play_airdate': row[16],
-            })
+            insights.append(
+                {
+                    "id": row[0],
+                    "insight_type": row[1],
+                    "play_id": row[2],
+                    "confidence": row[3],
+                    "source_type": row[4],
+                    "source_recording_mbid": row[5],
+                    "source_release_mbid": row[6],
+                    "referenced_artist_mbid": row[7],
+                    "referenced_recording_mbid": row[8],
+                    "referenced_release_mbid": row[9],
+                    "referenced_label_mbid": row[10],
+                    "data": data,
+                    "summary": row[12],
+                    "created_at": row[13],
+                    "updated_at": row[14],
+                    "eval_context": eval_context,
+                    "play_airdate": row[16],
+                }
+            )
 
         return {
-            'insights': insights,
-            'total': len(insights),
-            'window_info': {
-                'center_play_id': play_id,
-                'center_airdate': center_airdate,
-                'window_hours': window_hours,
-            }
+            "insights": insights,
+            "total": len(insights),
+            "window_info": {
+                "center_play_id": play_id,
+                "center_airdate": center_airdate,
+                "window_hours": window_hours,
+            },
         }
 
     # =========================================================================
@@ -1417,11 +1432,8 @@ class DatabaseService:
     # =========================================================================
 
     def query_band_members(
-        self,
-        mbids: List[str],
-        limit: int = 20,
-        include_attributes: bool = True
-    ) -> List[dict]:
+        self, mbids: list[str], limit: int = 20, include_attributes: bool = True
+    ) -> list[dict]:
         """Get band members for given band MBIDs.
 
         Data model: artist_edges stores (source=artist, target=band, type='member of band')
@@ -1430,11 +1442,12 @@ class DatabaseService:
         if not mbids:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
         # Query where target = band (the band is what the artist is a member OF)
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT
                 source_mbid, source_name, relationship_type,
                 attributes, begin_date, end_date,
@@ -1444,29 +1457,28 @@ class DatabaseService:
               AND relationship_type = 'member of band'
             ORDER BY source_name
             LIMIT ?
-        """, [*mbids, limit])
+        """,
+            [*mbids, limit],
+        )
 
         return [
             {
-                'mbid': row[0],  # source = the member artist
-                'name': row[1],
-                'node_type': 'artist',
-                'relationship_type': row[2],
-                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
-                'begin_date': row[4],
-                'end_date': row[5],
-                'via_mbid': row[6],  # target = the band being queried
-                'via_name': row[7]
+                "mbid": row[0],  # source = the member artist
+                "name": row[1],
+                "node_type": "artist",
+                "relationship_type": row[2],
+                "attributes": json.loads(row[3]) if row[3] and include_attributes else None,
+                "begin_date": row[4],
+                "end_date": row[5],
+                "via_mbid": row[6],  # target = the band being queried
+                "via_name": row[7],
             }
             for row in cursor.fetchall()
         ]
 
     def query_member_of(
-        self,
-        mbids: List[str],
-        limit: int = 20,
-        include_attributes: bool = True
-    ) -> List[dict]:
+        self, mbids: list[str], limit: int = 20, include_attributes: bool = True
+    ) -> list[dict]:
         """Get bands an artist is member of.
 
         Data model: artist_edges stores (source=artist, target=band, type='member of band')
@@ -1475,10 +1487,11 @@ class DatabaseService:
         if not mbids:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT
                 target_mbid, target_name, relationship_type,
                 attributes, begin_date, end_date
@@ -1487,38 +1500,38 @@ class DatabaseService:
               AND relationship_type = 'member of band'
             ORDER BY target_name
             LIMIT ?
-        """, [*mbids, limit])
+        """,
+            [*mbids, limit],
+        )
 
         return [
             {
-                'mbid': row[0],
-                'name': row[1],
-                'node_type': 'band',
-                'relationship_type': row[2],
-                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
-                'begin_date': row[4],
-                'end_date': row[5],
-                'via_mbid': None,
-                'via_name': None
+                "mbid": row[0],
+                "name": row[1],
+                "node_type": "band",
+                "relationship_type": row[2],
+                "attributes": json.loads(row[3]) if row[3] and include_attributes else None,
+                "begin_date": row[4],
+                "end_date": row[5],
+                "via_mbid": None,
+                "via_name": None,
             }
             for row in cursor.fetchall()
         ]
 
     def query_labelmates(
-        self,
-        mbids: List[str],
-        limit: int = 20,
-        include_attributes: bool = True
-    ) -> List[dict]:
+        self, mbids: list[str], limit: int = 20, include_attributes: bool = True
+    ) -> list[dict]:
         """Get artists who share labels with input artists."""
         if not mbids:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
         # Find labelmates via shared labels
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             WITH source_labels AS (
                 SELECT DISTINCT label_mbid, label_name
                 FROM artist_label_edges
@@ -1537,31 +1550,33 @@ class DatabaseService:
             WHERE ale.artist_mbid NOT IN ({placeholders})
             ORDER BY ale.artist_name
             LIMIT ?
-        """, [*mbids, *mbids, limit])
+        """,
+            [*mbids, *mbids, limit],
+        )
 
         return [
             {
-                'mbid': row[0],
-                'name': row[1],
-                'node_type': 'artist',
-                'relationship_type': row[2],
-                'attributes': None,
-                'begin_date': row[3],
-                'end_date': row[4],
-                'via_mbid': row[5],
-                'via_name': row[6]
+                "mbid": row[0],
+                "name": row[1],
+                "node_type": "artist",
+                "relationship_type": row[2],
+                "attributes": None,
+                "begin_date": row[3],
+                "end_date": row[4],
+                "via_mbid": row[5],
+                "via_name": row[6],
             }
             for row in cursor.fetchall()
         ]
 
     def query_covers(
         self,
-        mbids: List[str],
+        mbids: list[str],
         limit: int = 20,
         include_attributes: bool = True,
         version_type: str = None,  # Filter: 'cover', 'live', 'medley', 'instrumental'
-        **kwargs  # Accept additional kwargs for API compatibility
-    ) -> List[dict]:
+        **kwargs,  # Accept additional kwargs for API compatibility
+    ) -> list[dict]:
         """Get other recordings of the same work(s) - cover/live/other versions.
 
         Args:
@@ -1577,20 +1592,21 @@ class DatabaseService:
         if not mbids:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
         # Build version type filter using JSON array pattern matching
         # attributes column contains JSON arrays like '["cover"]', '["live"]', '["cover", "live"]'
         version_filter = ""
         params = [*mbids, *mbids]
-        if version_type and version_type in ['cover', 'live', 'medley', 'instrumental']:
+        if version_type and version_type in ["cover", "live", "medley", "instrumental"]:
             # Match the type anywhere in the JSON array
-            version_filter = f'AND rwl.attributes LIKE ?'
+            version_filter = "AND rwl.attributes LIKE ?"
             params.append(f'%"{version_type}"%')
         params.append(limit)
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             WITH source_works AS (
                 SELECT DISTINCT work_mbid, work_title
                 FROM recording_work_links
@@ -1608,7 +1624,9 @@ class DatabaseService:
             WHERE rwl.recording_mbid NOT IN ({placeholders})
             {version_filter}
             LIMIT ?
-        """, params)
+        """,
+            params,
+        )
 
         results = []
         for row in cursor.fetchall():
@@ -1621,43 +1639,43 @@ class DatabaseService:
                     attrs = []
 
             # Determine relationship type based on attributes
-            rel_type = 'version'  # default
-            if 'cover' in attrs:
-                rel_type = 'cover'
-            elif 'live' in attrs:
-                rel_type = 'live'
-            elif 'medley' in attrs:
-                rel_type = 'medley'
-            elif 'instrumental' in attrs:
-                rel_type = 'instrumental'
+            rel_type = "version"  # default
+            if "cover" in attrs:
+                rel_type = "cover"
+            elif "live" in attrs:
+                rel_type = "live"
+            elif "medley" in attrs:
+                rel_type = "medley"
+            elif "instrumental" in attrs:
+                rel_type = "instrumental"
 
-            results.append({
-                'mbid': row[0],
-                'name': row[1] or 'Unknown',
-                'node_type': 'recording',
-                'relationship_type': rel_type,
-                'attributes': attrs if include_attributes else None,
-                'begin_date': None,
-                'end_date': None,
-                'via_mbid': row[3],
-                'via_name': row[4]
-            })
+            results.append(
+                {
+                    "mbid": row[0],
+                    "name": row[1] or "Unknown",
+                    "node_type": "recording",
+                    "relationship_type": rel_type,
+                    "attributes": attrs if include_attributes else None,
+                    "begin_date": None,
+                    "end_date": None,
+                    "via_mbid": row[3],
+                    "via_name": row[4],
+                }
+            )
         return results
 
     def query_artist_origin(
-        self,
-        mbids: List[str],
-        limit: int = 20,
-        include_attributes: bool = True
-    ) -> List[dict]:
+        self, mbids: list[str], limit: int = 20, include_attributes: bool = True
+    ) -> list[dict]:
         """Get artist's origin area."""
         if not mbids:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT
                 area_mbid,
                 area_name,
@@ -1668,38 +1686,38 @@ class DatabaseService:
             FROM artist_area_edges
             WHERE artist_mbid IN ({placeholders})
             LIMIT ?
-        """, [*mbids, limit])
+        """,
+            [*mbids, limit],
+        )
 
         return [
             {
-                'mbid': row[0],
-                'name': row[1],
-                'node_type': 'area',
-                'relationship_type': row[2],
-                'attributes': [row[3]] if row[3] else None,
-                'begin_date': None,
-                'end_date': None,
-                'via_mbid': row[4],
-                'via_name': row[5]
+                "mbid": row[0],
+                "name": row[1],
+                "node_type": "area",
+                "relationship_type": row[2],
+                "attributes": [row[3]] if row[3] else None,
+                "begin_date": None,
+                "end_date": None,
+                "via_mbid": row[4],
+                "via_name": row[5],
             }
             for row in cursor.fetchall()
         ]
 
     def query_artists_from_area(
-        self,
-        mbids: List[str],
-        limit: int = 20,
-        include_attributes: bool = True
-    ) -> List[dict]:
+        self, mbids: list[str], limit: int = 20, include_attributes: bool = True
+    ) -> list[dict]:
         """Get artists from an area (by MBID or name)."""
         if not mbids:
             return []
 
         # Support both MBIDs and area names
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT
                 artist_mbid,
                 artist_name,
@@ -1712,37 +1730,37 @@ class DatabaseService:
                OR area_name IN ({placeholders})
             ORDER BY artist_name
             LIMIT ?
-        """, [*mbids, *mbids, limit])
+        """,
+            [*mbids, *mbids, limit],
+        )
 
         return [
             {
-                'mbid': row[0],
-                'name': row[1],
-                'node_type': 'artist',
-                'relationship_type': row[2],
-                'attributes': [row[3]] if row[3] else None,
-                'begin_date': None,
-                'end_date': None,
-                'via_mbid': row[4],
-                'via_name': row[5]
+                "mbid": row[0],
+                "name": row[1],
+                "node_type": "artist",
+                "relationship_type": row[2],
+                "attributes": [row[3]] if row[3] else None,
+                "begin_date": None,
+                "end_date": None,
+                "via_mbid": row[4],
+                "via_name": row[5],
             }
             for row in cursor.fetchall()
         ]
 
     def query_recorded_at(
-        self,
-        mbids: List[str],
-        limit: int = 20,
-        include_attributes: bool = True
-    ) -> List[dict]:
+        self, mbids: list[str], limit: int = 20, include_attributes: bool = True
+    ) -> list[dict]:
         """Get recordings made at a place (by MBID or name)."""
         if not mbids:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT
                 recording_mbid,
                 recording_title,
@@ -1757,37 +1775,37 @@ class DatabaseService:
                OR place_name IN ({placeholders})
             ORDER BY recording_title
             LIMIT ?
-        """, [*mbids, *mbids, limit])
+        """,
+            [*mbids, *mbids, limit],
+        )
 
         return [
             {
-                'mbid': row[0],
-                'name': row[1] or 'Unknown',
-                'node_type': 'recording',
-                'relationship_type': row[2],
-                'attributes': [row[3]] if row[3] else None,
-                'begin_date': row[4],
-                'end_date': row[5],
-                'via_mbid': row[6],
-                'via_name': row[7]
+                "mbid": row[0],
+                "name": row[1] or "Unknown",
+                "node_type": "recording",
+                "relationship_type": row[2],
+                "attributes": [row[3]] if row[3] else None,
+                "begin_date": row[4],
+                "end_date": row[5],
+                "via_mbid": row[6],
+                "via_name": row[7],
             }
             for row in cursor.fetchall()
         ]
 
     def query_collaborators(
-        self,
-        mbids: List[str],
-        limit: int = 20,
-        include_attributes: bool = True
-    ) -> List[dict]:
+        self, mbids: list[str], limit: int = 20, include_attributes: bool = True
+    ) -> list[dict]:
         """Get artists who shared bands with input artist."""
         if not mbids:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             WITH source_bands AS (
                 SELECT DISTINCT target_mbid as band_mbid, target_name as band_name
                 FROM artist_edges
@@ -1808,31 +1826,33 @@ class DatabaseService:
               AND ae.relationship_type = 'member_of'
             ORDER BY ae.source_name
             LIMIT ?
-        """, [*mbids, *mbids, limit])
+        """,
+            [*mbids, *mbids, limit],
+        )
 
         return [
             {
-                'mbid': row[0],
-                'name': row[1],
-                'node_type': 'artist',
-                'relationship_type': 'collaborator',
-                'attributes': json.loads(row[2]) if row[2] and include_attributes else None,
-                'begin_date': row[3],
-                'end_date': row[4],
-                'via_mbid': row[5],
-                'via_name': row[6]
+                "mbid": row[0],
+                "name": row[1],
+                "node_type": "artist",
+                "relationship_type": "collaborator",
+                "attributes": json.loads(row[2]) if row[2] and include_attributes else None,
+                "begin_date": row[3],
+                "end_date": row[4],
+                "via_mbid": row[5],
+                "via_name": row[6],
             }
             for row in cursor.fetchall()
         ]
 
     def query_collaborators_direct(
         self,
-        mbids: List[str],
+        mbids: list[str],
         limit: int = 20,
         include_attributes: bool = True,
         collaboration_type: str = None,  # Filter: 'featured', 'production', 'writing'
-        **kwargs  # Accept additional kwargs for API compatibility
-    ) -> List[dict]:
+        **kwargs,  # Accept additional kwargs for API compatibility
+    ) -> list[dict]:
         """Get direct artist collaborations (not via shared band membership).
 
         Finds artists who have direct relationships like:
@@ -1850,23 +1870,23 @@ class DatabaseService:
         if not mbids:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
         # Define collaboration relationship types by category
         # These exclude band membership relationships
         collaboration_types = {
-            'featured': ['vocal', 'vocals', 'instrumental', 'performer', 'guest'],
-            'production': ['producer', 'engineer', 'mix', 'mastering', 'recording'],
-            'writing': ['composer', 'lyricist', 'arranger', 'orchestrator', 'writer'],
-            'other': ['collaboration', 'tribute', 'personal relationship'],
+            "featured": ["vocal", "vocals", "instrumental", "performer", "guest"],
+            "production": ["producer", "engineer", "mix", "mastering", "recording"],
+            "writing": ["composer", "lyricist", "arranger", "orchestrator", "writer"],
+            "other": ["collaboration", "tribute", "personal relationship"],
         }
 
         # Build type filter
         type_filter = ""
         if collaboration_type and collaboration_type in collaboration_types:
             types = collaboration_types[collaboration_type]
-            type_placeholders = ','.join('?' * len(types))
+            type_placeholders = ",".join("?" * len(types))
             type_filter = f"AND relationship_type IN ({type_placeholders})"
             type_params = types
         else:
@@ -1874,9 +1894,9 @@ class DatabaseService:
             type_params = []
 
         # Exclude band membership relationships
-        exclude_types = ['member of band', 'member_of', 'band_member', 'subgroup']
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT DISTINCT
                 target_mbid,
                 target_name,
@@ -1889,12 +1909,16 @@ class DatabaseService:
                 target_type
             FROM artist_edges
             WHERE source_mbid IN ({placeholders})
-              AND relationship_type NOT IN ('member of band', 'member_of', 'band_member', 'subgroup')
+              AND relationship_type NOT IN (
+                  'member of band', 'member_of', 'band_member', 'subgroup'
+              )
               AND target_type = 'Person'  -- Only person-to-person collaborations
               {type_filter}
             ORDER BY target_name
             LIMIT ?
-        """, [*mbids, *type_params, limit] if type_params else [*mbids, limit])
+        """,
+            [*mbids, *type_params, limit] if type_params else [*mbids, limit],
+        )
 
         # Map relationship types to categories for display
         def categorize_relationship(rel_type: str) -> str:
@@ -1902,38 +1926,36 @@ class DatabaseService:
             for category, types in collaboration_types.items():
                 if any(t in rel_lower for t in types):
                     return category
-            return 'collaboration'
+            return "collaboration"
 
         return [
             {
-                'mbid': row[0],
-                'name': row[1] or 'Unknown',
-                'node_type': 'artist',
-                'relationship_type': row[2],  # Keep original type
-                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
-                'begin_date': row[4],
-                'end_date': row[5],
-                'via_mbid': row[6],  # Source artist
-                'via_name': row[7],  # Source artist name
+                "mbid": row[0],
+                "name": row[1] or "Unknown",
+                "node_type": "artist",
+                "relationship_type": row[2],  # Keep original type
+                "attributes": json.loads(row[3]) if row[3] and include_attributes else None,
+                "begin_date": row[4],
+                "end_date": row[5],
+                "via_mbid": row[6],  # Source artist
+                "via_name": row[7],  # Source artist name
             }
             for row in cursor.fetchall()
         ]
 
     def query_label_hierarchy(
-        self,
-        mbids: List[str],
-        limit: int = 20,
-        include_attributes: bool = True
-    ) -> List[dict]:
+        self, mbids: list[str], limit: int = 20, include_attributes: bool = True
+    ) -> list[dict]:
         """Get label ownership/distribution hierarchy."""
         if not mbids:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
         # Get both directions: labels owned by and labels that own
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT
                 target_mbid,
                 target_name,
@@ -1947,31 +1969,33 @@ class DatabaseService:
                OR target_mbid IN ({placeholders})
             ORDER BY target_name
             LIMIT ?
-        """, [*mbids, *mbids, limit])
+        """,
+            [*mbids, *mbids, limit],
+        )
 
         return [
             {
-                'mbid': row[0],
-                'name': row[1],
-                'node_type': 'label',
-                'relationship_type': row[2],
-                'attributes': None,
-                'begin_date': row[3],
-                'end_date': row[4],
-                'via_mbid': row[5],
-                'via_name': row[6]
+                "mbid": row[0],
+                "name": row[1],
+                "node_type": "label",
+                "relationship_type": row[2],
+                "attributes": None,
+                "begin_date": row[3],
+                "end_date": row[4],
+                "via_mbid": row[5],
+                "via_name": row[6],
             }
             for row in cursor.fetchall()
         ]
 
     def query_members_by_instrument(
         self,
-        mbids: List[str],
+        mbids: list[str],
         limit: int = 20,
         include_attributes: bool = True,
         instrument: str = None,
-        **kwargs
-    ) -> List[dict]:
+        **kwargs,
+    ) -> list[dict]:
         """Get band members filtered by instrument."""
         if not mbids:
             return []
@@ -1990,10 +2014,11 @@ class DatabaseService:
         if not instrument_column:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT
                 source_mbid,
                 source_name,
@@ -2010,41 +2035,44 @@ class DatabaseService:
               AND {instrument_column} = 1
             ORDER BY source_name
             LIMIT ?
-        """, [*mbids, limit])
+        """,
+            [*mbids, limit],
+        )
 
         return [
             {
-                'mbid': row[0],
-                'name': row[1],
-                'node_type': 'artist',
-                'relationship_type': row[2],
-                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
-                'begin_date': row[4],
-                'end_date': row[5],
-                'via_mbid': row[6],
-                'via_name': row[7]
+                "mbid": row[0],
+                "name": row[1],
+                "node_type": "artist",
+                "relationship_type": row[2],
+                "attributes": json.loads(row[3]) if row[3] and include_attributes else None,
+                "begin_date": row[4],
+                "end_date": row[5],
+                "via_mbid": row[6],
+                "via_name": row[7],
             }
             for row in cursor.fetchall()
         ]
 
     def query_works_by_creator(
         self,
-        mbids: List[str],
+        mbids: list[str],
         limit: int = 20,
         include_attributes: bool = True,
         creator_type: str = None,
-        **kwargs
-    ) -> List[dict]:
+        **kwargs,
+    ) -> list[dict]:
         """Get works composed/written by artist."""
         if not mbids:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
         # Build query with optional creator_type filter
         if creator_type:
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 SELECT
                     work_mbid,
                     work_title,
@@ -2057,9 +2085,12 @@ class DatabaseService:
                   AND relationship_type = ?
                 ORDER BY work_title
                 LIMIT ?
-            """, [*mbids, creator_type, limit])
+            """,
+                [*mbids, creator_type, limit],
+            )
         else:
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 SELECT
                     work_mbid,
                     work_title,
@@ -2071,38 +2102,37 @@ class DatabaseService:
                 WHERE artist_mbid IN ({placeholders})
                 ORDER BY work_title
                 LIMIT ?
-            """, [*mbids, limit])
+            """,
+                [*mbids, limit],
+            )
 
         return [
             {
-                'mbid': row[0],
-                'name': row[1] or 'Unknown Work',
-                'node_type': 'work',
-                'relationship_type': row[2],
-                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
-                'begin_date': None,
-                'end_date': None,
-                'via_mbid': row[4],
-                'via_name': row[5]
+                "mbid": row[0],
+                "name": row[1] or "Unknown Work",
+                "node_type": "work",
+                "relationship_type": row[2],
+                "attributes": json.loads(row[3]) if row[3] and include_attributes else None,
+                "begin_date": None,
+                "end_date": None,
+                "via_mbid": row[4],
+                "via_name": row[5],
             }
             for row in cursor.fetchall()
         ]
 
     def query_work_credits(
-        self,
-        mbids: List[str],
-        limit: int = 20,
-        include_attributes: bool = True,
-        **kwargs
-    ) -> List[dict]:
+        self, mbids: list[str], limit: int = 20, include_attributes: bool = True, **kwargs
+    ) -> list[dict]:
         """Get creators (composers/lyricists) of a work."""
         if not mbids:
             return []
 
-        placeholders = ','.join('?' * len(mbids))
+        placeholders = ",".join("?" * len(mbids))
         cursor = self.conn.cursor()
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT
                 artist_mbid,
                 artist_name,
@@ -2114,19 +2144,21 @@ class DatabaseService:
             WHERE work_mbid IN ({placeholders})
             ORDER BY relationship_type, artist_name
             LIMIT ?
-        """, [*mbids, limit])
+        """,
+            [*mbids, limit],
+        )
 
         return [
             {
-                'mbid': row[0],
-                'name': row[1] or 'Unknown Artist',
-                'node_type': 'artist',
-                'relationship_type': row[2],
-                'attributes': json.loads(row[3]) if row[3] and include_attributes else None,
-                'begin_date': None,
-                'end_date': None,
-                'via_mbid': row[4],
-                'via_name': row[5]
+                "mbid": row[0],
+                "name": row[1] or "Unknown Artist",
+                "node_type": "artist",
+                "relationship_type": row[2],
+                "attributes": json.loads(row[3]) if row[3] and include_attributes else None,
+                "begin_date": None,
+                "end_date": None,
+                "via_mbid": row[4],
+                "via_name": row[5],
             }
             for row in cursor.fetchall()
         ]
@@ -2135,11 +2167,7 @@ class DatabaseService:
     # Image Validation Methods
     # =========================================================================
 
-    def get_plays_needing_image_validation(
-        self,
-        limit: int = 1000,
-        max_age_days: int = 7
-    ) -> list:
+    def get_plays_needing_image_validation(self, limit: int = 1000, max_age_days: int = 7) -> list:
         """
         Get plays with image_uri that need validation.
 
@@ -2155,7 +2183,8 @@ class DatabaseService:
             List of dicts with id, image_uri, thumbnail_uri, image_validated_at
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, image_uri, thumbnail_uri, image_validated_at
             FROM fact_plays
             WHERE image_uri IS NOT NULL
@@ -2166,14 +2195,16 @@ class DatabaseService:
               )
             ORDER BY image_validated_at ASC NULLS FIRST
             LIMIT ?
-        """, (f'-{max_age_days} days', limit))
+        """,
+            (f"-{max_age_days} days", limit),
+        )
 
         return [
             {
-                'id': row[0],
-                'image_uri': row[1],
-                'thumbnail_uri': row[2],
-                'image_validated_at': row[3]
+                "id": row[0],
+                "image_uri": row[1],
+                "thumbnail_uri": row[2],
+                "image_validated_at": row[3],
             }
             for row in cursor.fetchall()
         ]
@@ -2191,12 +2222,15 @@ class DatabaseService:
             True if updated, False if play not found
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             UPDATE fact_plays
             SET image_validated_at = datetime('now'),
                 updated_at = datetime('now')
             WHERE id = ?
-        """, (play_id,))
+        """,
+            (play_id,),
+        )
         self.conn.commit()
         return cursor.rowcount > 0
 
@@ -2214,14 +2248,17 @@ class DatabaseService:
             True if updated, False if play not found
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             UPDATE fact_plays
             SET image_uri = NULL,
                 thumbnail_uri = NULL,
                 image_validated_at = datetime('now'),
                 updated_at = datetime('now')
             WHERE id = ?
-        """, (play_id,))
+        """,
+            (play_id,),
+        )
         self.conn.commit()
         return cursor.rowcount > 0
 
@@ -2238,16 +2275,21 @@ class DatabaseService:
                 COUNT(*) as total_with_images,
                 SUM(CASE WHEN image_validated_at IS NOT NULL THEN 1 ELSE 0 END) as validated,
                 SUM(CASE WHEN image_validated_at IS NULL THEN 1 ELSE 0 END) as unvalidated,
-                SUM(CASE WHEN datetime(image_validated_at) < datetime('now', '-7 days') THEN 1 ELSE 0 END) as stale
+                SUM(
+                    CASE
+                        WHEN datetime(image_validated_at) < datetime('now', '-7 days')
+                        THEN 1 ELSE 0
+                    END
+                ) as stale
             FROM fact_plays
             WHERE image_uri IS NOT NULL AND image_uri != ''
         """)
         row = cursor.fetchone()
         return {
-            'total_with_images': row[0] or 0,
-            'validated': row[1] or 0,
-            'unvalidated': row[2] or 0,
-            'stale': row[3] or 0
+            "total_with_images": row[0] or 0,
+            "validated": row[1] or 0,
+            "unvalidated": row[2] or 0,
+            "stale": row[3] or 0,
         }
 
     # =========================================================================
@@ -2255,7 +2297,7 @@ class DatabaseService:
     # =========================================================================
 
     @retry_on_locked(max_retries=3, base_delay=0.2, max_delay=2.0)
-    def save_agent_run(self, run_data: Dict[str, Any]) -> Tuple[str, bool]:
+    def save_agent_run(self, run_data: dict[str, Any]) -> tuple[str, bool]:
         """
         Save or update an agent run.
 
@@ -2266,25 +2308,25 @@ class DatabaseService:
             Tuple of (session_id, was_created)
         """
         cursor = self.conn.cursor()
-        session_id = run_data['sessionId']
+        session_id = run_data["sessionId"]
 
         # Serialize JSON columns
-        play_ids_json = json.dumps(run_data.get('playIds', []))
-        insights_json = json.dumps(run_data.get('insights', []))
-        tool_calls_json = json.dumps(run_data.get('toolCalls', []))
-        research_steps_json = json.dumps(run_data.get('researchSteps', []))
-        entities_json = json.dumps(run_data.get('entities', []))
+        play_ids_json = json.dumps(run_data.get("playIds", []))
+        insights_json = json.dumps(run_data.get("insights", []))
+        tool_calls_json = json.dumps(run_data.get("toolCalls", []))
+        research_steps_json = json.dumps(run_data.get("researchSteps", []))
+        entities_json = json.dumps(run_data.get("entities", []))
 
         # Compute counts
-        insight_count = len(run_data.get('insights', []))
-        tool_call_count = len(run_data.get('toolCalls', []))
-        research_step_count = len(run_data.get('researchSteps', []))
-        entity_count = len(run_data.get('entities', []))
+        insight_count = len(run_data.get("insights", []))
+        tool_call_count = len(run_data.get("toolCalls", []))
+        research_step_count = len(run_data.get("researchSteps", []))
+        entity_count = len(run_data.get("entities", []))
 
         # Compute duration if completed
         duration_ms = None
-        if run_data.get('completedAt') and run_data.get('startedAt'):
-            duration_ms = run_data['completedAt'] - run_data['startedAt']
+        if run_data.get("completedAt") and run_data.get("startedAt"):
+            duration_ms = run_data["completedAt"] - run_data["startedAt"]
 
         # Check if exists
         cursor.execute("SELECT 1 FROM agent_runs WHERE session_id = ?", (session_id,))
@@ -2292,7 +2334,8 @@ class DatabaseService:
 
         if exists:
             # Update existing
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE agent_runs SET
                     mode = ?,
                     started_at = ?,
@@ -2312,28 +2355,31 @@ class DatabaseService:
                     duration_ms = ?,
                     updated_at = datetime('now')
                 WHERE session_id = ?
-            """, (
-                run_data['mode'],
-                run_data['startedAt'],
-                run_data.get('completedAt'),
-                run_data['status'],
-                play_ids_json,
-                insights_json,
-                tool_calls_json,
-                research_steps_json,
-                entities_json,
-                run_data.get('errorMessage'),
-                run_data.get('errorStack'),
-                insight_count,
-                tool_call_count,
-                research_step_count,
-                entity_count,
-                duration_ms,
-                session_id
-            ))
+            """,
+                (
+                    run_data["mode"],
+                    run_data["startedAt"],
+                    run_data.get("completedAt"),
+                    run_data["status"],
+                    play_ids_json,
+                    insights_json,
+                    tool_calls_json,
+                    research_steps_json,
+                    entities_json,
+                    run_data.get("errorMessage"),
+                    run_data.get("errorStack"),
+                    insight_count,
+                    tool_call_count,
+                    research_step_count,
+                    entity_count,
+                    duration_ms,
+                    session_id,
+                ),
+            )
         else:
             # Insert new
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO agent_runs (
                     session_id, mode, started_at, completed_at, status,
                     play_ids, insights, tool_calls, research_steps, entities,
@@ -2341,39 +2387,41 @@ class DatabaseService:
                     insight_count, tool_call_count, research_step_count, entity_count,
                     duration_ms
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                session_id,
-                run_data['mode'],
-                run_data['startedAt'],
-                run_data.get('completedAt'),
-                run_data['status'],
-                play_ids_json,
-                insights_json,
-                tool_calls_json,
-                research_steps_json,
-                entities_json,
-                run_data.get('errorMessage'),
-                run_data.get('errorStack'),
-                insight_count,
-                tool_call_count,
-                research_step_count,
-                entity_count,
-                duration_ms
-            ))
+            """,
+                (
+                    session_id,
+                    run_data["mode"],
+                    run_data["startedAt"],
+                    run_data.get("completedAt"),
+                    run_data["status"],
+                    play_ids_json,
+                    insights_json,
+                    tool_calls_json,
+                    research_steps_json,
+                    entities_json,
+                    run_data.get("errorMessage"),
+                    run_data.get("errorStack"),
+                    insight_count,
+                    tool_call_count,
+                    research_step_count,
+                    entity_count,
+                    duration_ms,
+                ),
+            )
 
         # Update junction table for play lookups
         cursor.execute("DELETE FROM agent_run_plays WHERE session_id = ?", (session_id,))
-        play_ids = run_data.get('playIds', [])
+        play_ids = run_data.get("playIds", [])
         if play_ids:
             cursor.executemany(
                 "INSERT INTO agent_run_plays (session_id, play_id) VALUES (?, ?)",
-                [(session_id, pid) for pid in play_ids]
+                [(session_id, pid) for pid in play_ids],
             )
 
         self.conn.commit()
         return session_id, not exists
 
-    def get_agent_run(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def get_agent_run(self, session_id: str) -> dict[str, Any] | None:
         """
         Get a single agent run by session ID.
 
@@ -2384,7 +2432,8 @@ class DatabaseService:
             Agent run dict or None if not found
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 session_id, mode, started_at, completed_at, status,
                 play_ids, insights, tool_calls, research_steps, entities,
@@ -2393,7 +2442,9 @@ class DatabaseService:
                 duration_ms, created_at, updated_at
             FROM agent_runs
             WHERE session_id = ?
-        """, (session_id,))
+        """,
+            (session_id,),
+        )
         row = cursor.fetchone()
 
         if row is None:
@@ -2403,14 +2454,14 @@ class DatabaseService:
 
     def list_agent_runs(
         self,
-        status: Optional[str] = None,
-        mode: Optional[str] = None,
-        play_id: Optional[int] = None,
-        since: Optional[str] = None,
-        until: Optional[str] = None,
+        status: str | None = None,
+        mode: str | None = None,
+        play_id: int | None = None,
+        since: str | None = None,
+        until: str | None = None,
         limit: int = 20,
-        offset: int = 0
-    ) -> Tuple[List[Dict[str, Any]], int]:
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
         """
         List agent runs with optional filters.
 
@@ -2429,7 +2480,7 @@ class DatabaseService:
         cursor = self.conn.cursor()
 
         conditions = []
-        params: List[Any] = []
+        params: list[Any] = []
 
         if status:
             conditions.append("ar.status = ?")
@@ -2440,18 +2491,20 @@ class DatabaseService:
             params.append(mode)
 
         if play_id:
-            conditions.append("ar.session_id IN (SELECT session_id FROM agent_run_plays WHERE play_id = ?)")
+            conditions.append(
+                "ar.session_id IN (SELECT session_id FROM agent_run_plays WHERE play_id = ?)"
+            )
             params.append(play_id)
 
         if since:
             # Convert ISO date to Unix timestamp (ms)
-            since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
             since_ts = int(since_dt.timestamp() * 1000)
             conditions.append("ar.started_at >= ?")
             params.append(since_ts)
 
         if until:
-            until_dt = datetime.fromisoformat(until.replace('Z', '+00:00'))
+            until_dt = datetime.fromisoformat(until.replace("Z", "+00:00"))
             until_ts = int(until_dt.timestamp() * 1000)
             conditions.append("ar.started_at <= ?")
             params.append(until_ts)
@@ -2459,13 +2512,17 @@ class DatabaseService:
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 
         # Get total count
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT COUNT(*) FROM agent_runs ar WHERE {where_clause}
-        """, params)
+        """,
+            params,
+        )
         total = cursor.fetchone()[0]
 
         # Get paginated results
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT
                 ar.session_id, ar.mode, ar.started_at, ar.completed_at, ar.status,
                 ar.play_ids, ar.error_message,
@@ -2475,7 +2532,9 @@ class DatabaseService:
             WHERE {where_clause}
             ORDER BY ar.started_at DESC
             LIMIT ? OFFSET ?
-        """, params + [limit, offset])
+        """,
+            params + [limit, offset],
+        )
 
         runs = []
         for row in cursor.fetchall():
@@ -2499,7 +2558,7 @@ class DatabaseService:
         self.conn.commit()
         return cursor.rowcount > 0
 
-    def get_incomplete_agent_runs(self) -> List[Dict[str, Any]]:
+    def get_incomplete_agent_runs(self) -> list[dict[str, Any]]:
         """
         Get agent runs with status='running' for recovery.
 
@@ -2524,36 +2583,38 @@ class DatabaseService:
 
         return runs
 
-    def _agent_run_row_to_dict(self, row: sqlite3.Row, include_full_data: bool = False) -> Dict[str, Any]:
+    def _agent_run_row_to_dict(
+        self, row: sqlite3.Row, include_full_data: bool = False
+    ) -> dict[str, Any]:
         """Convert agent_runs row to dictionary."""
         # Parse play_ids JSON
-        play_ids_raw = row['play_ids'] if 'play_ids' in row.keys() else '[]'
+        play_ids_raw = row.get("play_ids", "[]")
         play_ids = json.loads(play_ids_raw) if play_ids_raw else []
 
         result = {
-            'sessionId': row['session_id'],
-            'mode': row['mode'],
-            'startedAt': row['started_at'],
-            'completedAt': row['completed_at'],
-            'status': row['status'],
-            'playIds': play_ids,
-            'insightCount': row['insight_count'],
-            'toolCallCount': row['tool_call_count'],
-            'researchStepCount': row['research_step_count'] if 'research_step_count' in row.keys() else 0,
-            'entityCount': row['entity_count'] if 'entity_count' in row.keys() else 0,
-            'durationMs': row['duration_ms'],
-            'errorMessage': row['error_message'] if 'error_message' in row.keys() else None,
-            'createdAt': row['created_at'],
+            "sessionId": row["session_id"],
+            "mode": row["mode"],
+            "startedAt": row["started_at"],
+            "completedAt": row["completed_at"],
+            "status": row["status"],
+            "playIds": play_ids,
+            "insightCount": row["insight_count"],
+            "toolCallCount": row["tool_call_count"],
+            "researchStepCount": row.get("research_step_count", 0),
+            "entityCount": row.get("entity_count", 0),
+            "durationMs": row["duration_ms"],
+            "errorMessage": row.get("error_message", None),
+            "createdAt": row["created_at"],
         }
 
         if include_full_data:
             # Parse full JSON columns
-            result['insights'] = json.loads(row['insights'] or '[]')
-            result['toolCalls'] = json.loads(row['tool_calls'] or '[]')
-            result['researchSteps'] = json.loads(row['research_steps'] or '[]')
-            result['entities'] = json.loads(row['entities'] or '[]')
-            result['errorStack'] = row['error_stack']
-            result['updatedAt'] = row['updated_at']
+            result["insights"] = json.loads(row["insights"] or "[]")
+            result["toolCalls"] = json.loads(row["tool_calls"] or "[]")
+            result["researchSteps"] = json.loads(row["research_steps"] or "[]")
+            result["entities"] = json.loads(row["entities"] or "[]")
+            result["errorStack"] = row["error_stack"]
+            result["updatedAt"] = row["updated_at"]
 
         return result
 
@@ -2562,11 +2623,8 @@ class DatabaseService:
     # =========================================================================
 
     def get_unprocessed_plays(
-        self,
-        limit: int = 50,
-        strategy: str = "oldest_first",
-        min_play_id: Optional[int] = None
-    ) -> Dict[str, Any]:
+        self, limit: int = 50, strategy: str = "oldest_first", min_play_id: int | None = None
+    ) -> dict[str, Any]:
         """
         Get plays that don't have any insights yet.
 
@@ -2616,18 +2674,22 @@ class DatabaseService:
             # This is O(limit) instead of O(n) for ORDER BY RANDOM()
             if total_unprocessed > 0:
                 # Get ID range for unprocessed plays
-                cursor.execute(f"""
+                cursor.execute(
+                    f"""
                     SELECT MIN(fp.id), MAX(fp.id)
                     FROM fact_plays fp
                     LEFT JOIN insights i ON fp.id = i.play_id AND i.deleted_at IS NULL
                     {base_where}
-                """, params)
+                """,
+                    params,
+                )
                 min_id, max_id = cursor.fetchone()
 
                 if min_id and max_id:
                     # Sample using random offsets within the ID range
                     # Oversample to account for gaps and already-processed plays
                     import random
+
                     oversample_factor = 5
                     random_ids = set()
                     attempts = 0
@@ -2640,33 +2702,40 @@ class DatabaseService:
 
                     # Query for actual unprocessed plays from random IDs
                     random_ids_list = list(random_ids)
-                    placeholders = ','.join('?' * len(random_ids_list))
-                    cursor.execute(f"""
+                    placeholders = ",".join("?" * len(random_ids_list))
+                    cursor.execute(
+                        f"""
                         SELECT fp.id
                         FROM fact_plays fp
                         LEFT JOIN insights i ON fp.id = i.play_id AND i.deleted_at IS NULL
                         WHERE fp.id IN ({placeholders})
                           AND i.id IS NULL
                         LIMIT ?
-                    """, random_ids_list + [limit])
+                    """,
+                        random_ids_list + [limit],
+                    )
                     play_ids = [row[0] for row in cursor.fetchall()]
 
-                    logger.info(f"Found {len(play_ids)} unprocessed plays via random sampling (total: {total_unprocessed})")
+                    logger.info(
+                        "Found %s unprocessed plays via random sampling (total: %s)",
+                        len(play_ids),
+                        total_unprocessed,
+                    )
                     return {
-                        'play_ids': play_ids,
-                        'count': len(play_ids),
-                        'total_unprocessed': total_unprocessed,
-                        'strategy': strategy
+                        "play_ids": play_ids,
+                        "count": len(play_ids),
+                        "total_unprocessed": total_unprocessed,
+                        "strategy": strategy,
                     }
 
             # Fallback if no unprocessed plays
             play_ids = []
-            logger.info(f"No unprocessed plays found for random sampling")
+            logger.info("No unprocessed plays found for random sampling")
             return {
-                'play_ids': play_ids,
-                'count': 0,
-                'total_unprocessed': total_unprocessed,
-                'strategy': strategy
+                "play_ids": play_ids,
+                "count": 0,
+                "total_unprocessed": total_unprocessed,
+                "strategy": strategy,
             }
         else:  # oldest_first (default)
             order_clause = "ORDER BY fp.id ASC"
@@ -2683,13 +2752,18 @@ class DatabaseService:
         cursor.execute(query, params + [limit])
         play_ids = [row[0] for row in cursor.fetchall()]
 
-        logger.info(f"Found {len(play_ids)} unprocessed plays (total: {total_unprocessed}, strategy: {strategy})")
+        logger.info(
+            "Found %s unprocessed plays (total: %s, strategy: %s)",
+            len(play_ids),
+            total_unprocessed,
+            strategy,
+        )
 
         return {
-            'play_ids': play_ids,
-            'count': len(play_ids),
-            'total_unprocessed': total_unprocessed,
-            'strategy': strategy
+            "play_ids": play_ids,
+            "count": len(play_ids),
+            "total_unprocessed": total_unprocessed,
+            "strategy": strategy,
         }
 
     # =========================================================================
@@ -2699,18 +2773,18 @@ class DatabaseService:
     @retry_on_locked(max_retries=3, base_delay=0.2, max_delay=2.0)
     def store_generated_asset(
         self,
-        play_id: Optional[int],
+        play_id: int | None,
         asset_type: str,
         params_hash: str,
         image_base64: str,
         mime_type: str = "image/png",
-        generation_params: Optional[str] = None,
-        era: Optional[str] = None,
-        style: Optional[str] = None,
-        model_notes: Optional[str] = None,
-        prompt_used: Optional[str] = None,
-        gcs_url: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        generation_params: str | None = None,
+        era: str | None = None,
+        style: str | None = None,
+        model_notes: str | None = None,
+        prompt_used: str | None = None,
+        gcs_url: str | None = None,
+    ) -> dict[str, Any]:
         """
         Store a generated asset with idempotent behavior.
 
@@ -2745,17 +2819,13 @@ class DatabaseService:
             WHERE play_id = ? AND asset_type = ? AND params_hash = ?
             LIMIT 1
             """,
-            (normalized_play_id, asset_type, params_hash)
+            (normalized_play_id, asset_type, params_hash),
         )
         existing = cursor.fetchone()
 
         if existing:
             logger.info(f"Generated asset already exists: {existing[0]}")
-            return {
-                'id': existing[0],
-                'params_hash': params_hash,
-                'was_existing': True
-            }
+            return {"id": existing[0], "params_hash": params_hash, "was_existing": True}
 
         # Insert new asset
         cursor.execute(
@@ -2776,21 +2846,17 @@ class DatabaseService:
                 style,
                 model_notes,
                 prompt_used,
-                gcs_url
-            )
+                gcs_url,
+            ),
         )
         self.conn.commit()
 
         asset_id = cursor.lastrowid
         logger.info(f"Stored generated asset: {asset_id} for play {play_id}")
 
-        return {
-            'id': asset_id,
-            'params_hash': params_hash,
-            'was_existing': False
-        }
+        return {"id": asset_id, "params_hash": params_hash, "was_existing": False}
 
-    def get_generated_assets_by_play_id(self, play_id: int) -> List[Dict[str, Any]]:
+    def get_generated_assets_by_play_id(self, play_id: int) -> list[dict[str, Any]]:
         """
         Get all generated assets for a play.
 
@@ -2807,7 +2873,7 @@ class DatabaseService:
             WHERE play_id = ?
             ORDER BY created_at DESC
             """,
-            (play_id,)
+            (play_id,),
         )
         rows = cursor.fetchall()
 
@@ -2816,42 +2882,44 @@ class DatabaseService:
             row_dict = dict(row)
 
             # Determine image URL: prefer GCS, fallback to data URL
-            gcs_url = row_dict.get('gcs_url')
+            gcs_url = row_dict.get("gcs_url")
             if gcs_url:
                 image_url = gcs_url
             else:
-                mime_type = row_dict.get('mime_type', 'image/png')
-                image_base64 = row_dict.get('image_base64', '')
+                mime_type = row_dict.get("mime_type", "image/png")
+                image_base64 = row_dict.get("image_base64", "")
                 image_url = f"data:{mime_type};base64,{image_base64}"
 
             # Parse generation_params for metadata
             metadata = {
-                'era': row_dict.get('era'),
-                'style': row_dict.get('style'),
+                "era": row_dict.get("era"),
+                "style": row_dict.get("style"),
             }
-            if row_dict.get('generation_params'):
+            if row_dict.get("generation_params"):
                 try:
-                    params = json.loads(row_dict['generation_params'])
-                    metadata['placement'] = params.get('placement')
-                    metadata['page_number'] = params.get('page_number')
-                    metadata['mood'] = params.get('mood')
-                    metadata['description'] = params.get('description')
+                    params = json.loads(row_dict["generation_params"])
+                    metadata["placement"] = params.get("placement")
+                    metadata["page_number"] = params.get("page_number")
+                    metadata["mood"] = params.get("mood")
+                    metadata["description"] = params.get("description")
                 except json.JSONDecodeError:
                     pass
 
-            assets.append({
-                'id': str(row_dict['id']),
-                'play_id': row_dict['play_id'],
-                'asset_type': row_dict['asset_type'],
-                'image_url': image_url,
-                'metadata': metadata,
-                'created_at': row_dict['created_at']
-            })
+            assets.append(
+                {
+                    "id": str(row_dict["id"]),
+                    "play_id": row_dict["play_id"],
+                    "asset_type": row_dict["asset_type"],
+                    "image_url": image_url,
+                    "metadata": metadata,
+                    "created_at": row_dict["created_at"],
+                }
+            )
 
         logger.debug(f"Found {len(assets)} assets for play {play_id}")
         return assets
 
-    def get_recent_generated_assets(self, limit: int = 20) -> List[Dict[str, Any]]:
+    def get_recent_generated_assets(self, limit: int = 20) -> list[dict[str, Any]]:
         """
         Get recently generated assets across all plays.
 
@@ -2869,32 +2937,34 @@ class DatabaseService:
             ORDER BY created_at DESC
             LIMIT ?
             """,
-            (limit,)
+            (limit,),
         )
         rows = cursor.fetchall()
 
         assets = []
         for row in rows:
             row_dict = dict(row)
-            gcs_url = row_dict.get('gcs_url')
+            gcs_url = row_dict.get("gcs_url")
             if gcs_url:
                 image_url = gcs_url
             else:
-                mime_type = row_dict.get('mime_type', 'image/png')
-                image_base64 = row_dict.get('image_base64', '')
+                mime_type = row_dict.get("mime_type", "image/png")
+                image_base64 = row_dict.get("image_base64", "")
                 image_url = f"data:{mime_type};base64,{image_base64}"
 
-            assets.append({
-                'id': str(row_dict['id']),
-                'play_id': row_dict['play_id'],
-                'asset_type': row_dict['asset_type'],
-                'image_url': image_url,
-                'metadata': {
-                    'era': row_dict.get('era'),
-                    'style': row_dict.get('style'),
-                },
-                'created_at': row_dict['created_at']
-            })
+            assets.append(
+                {
+                    "id": str(row_dict["id"]),
+                    "play_id": row_dict["play_id"],
+                    "asset_type": row_dict["asset_type"],
+                    "image_url": image_url,
+                    "metadata": {
+                        "era": row_dict.get("era"),
+                        "style": row_dict.get("style"),
+                    },
+                    "created_at": row_dict["created_at"],
+                }
+            )
 
         return assets
 
@@ -2950,10 +3020,10 @@ class DatabaseService:
     def save_daily_research(
         self,
         date: str,
-        research_context: Dict[str, Any],
+        research_context: dict[str, Any],
         duration_ms: int,
         tool_call_count: int = 0,
-        token_usage: Optional[Dict[str, Any]] = None
+        token_usage: dict[str, Any] | None = None,
     ) -> int:
         """
         Save or update daily research context.
@@ -2974,8 +3044,11 @@ class DatabaseService:
         token_json = json.dumps(token_usage) if token_usage else None
 
         # Upsert - update if exists, insert if not
-        cursor.execute("""
-            INSERT INTO daily_research (date, research_context, duration_ms, tool_call_count, token_usage)
+        cursor.execute(
+            """
+            INSERT INTO daily_research (
+                date, research_context, duration_ms, tool_call_count, token_usage
+            )
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(date) DO UPDATE SET
                 research_context = excluded.research_context,
@@ -2983,7 +3056,9 @@ class DatabaseService:
                 tool_call_count = excluded.tool_call_count,
                 token_usage = excluded.token_usage,
                 created_at = datetime('now')
-        """, (date, research_json, duration_ms, tool_call_count, token_json))
+        """,
+            (date, research_json, duration_ms, tool_call_count, token_json),
+        )
 
         self.conn.commit()
 
@@ -2994,7 +3069,7 @@ class DatabaseService:
         logger.info(f"Saved daily research for {date} (id: {research_id})")
         return research_id
 
-    def get_daily_research(self, date: str) -> Optional[Dict[str, Any]]:
+    def get_daily_research(self, date: str) -> dict[str, Any] | None:
         """
         Get daily research context by date.
 
@@ -3005,33 +3080,31 @@ class DatabaseService:
             Research dict with id, date, research_context, metadata
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, date, research_context, created_at, duration_ms, tool_call_count, token_usage
             FROM daily_research
             WHERE date = ?
-        """, (date,))
+        """,
+            (date,),
+        )
         row = cursor.fetchone()
 
         if row is None:
             return None
 
         return {
-            'id': row[0],
-            'date': row[1],
-            'research_context': json.loads(row[2]),
-            'created_at': row[3],
-            'duration_ms': row[4],
-            'tool_call_count': row[5],
-            'token_usage': json.loads(row[6]) if row[6] else None
+            "id": row[0],
+            "date": row[1],
+            "research_context": json.loads(row[2]),
+            "created_at": row[3],
+            "duration_ms": row[4],
+            "tool_call_count": row[5],
+            "token_usage": json.loads(row[6]) if row[6] else None,
         }
 
     @retry_on_locked(max_retries=3, base_delay=0.2, max_delay=2.0)
-    def save_daily_summary(
-        self,
-        date: str,
-        summary: Dict[str, Any],
-        research_id: int
-    ) -> int:
+    def save_daily_summary(self, date: str, summary: dict[str, Any], research_id: int) -> int:
         """
         Save or update daily summary.
 
@@ -3053,7 +3126,8 @@ class DatabaseService:
         regen_count = (existing[0] + 1) if existing else 0
 
         # Upsert
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO daily_summaries (date, summary, research_id, regenerated_count)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(date) DO UPDATE SET
@@ -3061,7 +3135,9 @@ class DatabaseService:
                 research_id = excluded.research_id,
                 regenerated_count = excluded.regenerated_count,
                 created_at = datetime('now')
-        """, (date, summary_json, research_id, regen_count))
+        """,
+            (date, summary_json, research_id, regen_count),
+        )
 
         self.conn.commit()
 
@@ -3071,7 +3147,7 @@ class DatabaseService:
         logger.info(f"Saved daily summary for {date} (id: {summary_id}, regen: {regen_count})")
         return summary_id
 
-    def get_daily_summary(self, date: str) -> Optional[Dict[str, Any]]:
+    def get_daily_summary(self, date: str) -> dict[str, Any] | None:
         """
         Get daily summary by date.
 
@@ -3082,26 +3158,29 @@ class DatabaseService:
             Summary dict with id, date, summary, research_id, metadata
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, date, summary, research_id, created_at, regenerated_count
             FROM daily_summaries
             WHERE date = ?
-        """, (date,))
+        """,
+            (date,),
+        )
         row = cursor.fetchone()
 
         if row is None:
             return None
 
         return {
-            'id': row[0],
-            'date': row[1],
-            'summary': json.loads(row[2]),
-            'research_id': row[3],
-            'created_at': row[4],
-            'regenerated_count': row[5]
+            "id": row[0],
+            "date": row[1],
+            "summary": json.loads(row[2]),
+            "research_id": row[3],
+            "created_at": row[4],
+            "regenerated_count": row[5],
         }
 
-    def get_latest_summary(self) -> Optional[Dict[str, Any]]:
+    def get_latest_summary(self) -> dict[str, Any] | None:
         """
         Get the most recent daily summary.
 
@@ -3121,19 +3200,17 @@ class DatabaseService:
             return None
 
         return {
-            'id': row[0],
-            'date': row[1],
-            'summary': json.loads(row[2]),
-            'research_id': row[3],
-            'created_at': row[4],
-            'regenerated_count': row[5]
+            "id": row[0],
+            "date": row[1],
+            "summary": json.loads(row[2]),
+            "research_id": row[3],
+            "created_at": row[4],
+            "regenerated_count": row[5],
         }
 
     def list_daily_summaries(
-        self,
-        limit: int = 30,
-        offset: int = 0
-    ) -> Tuple[List[Dict[str, Any]], int]:
+        self, limit: int = 30, offset: int = 0
+    ) -> tuple[list[dict[str, Any]], int]:
         """
         List daily summaries with pagination.
 
@@ -3151,7 +3228,8 @@ class DatabaseService:
         total = cursor.fetchone()[0]
 
         # Get paginated results (summary metadata only, not full JSON)
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 ds.id, ds.date, ds.research_id, ds.created_at, ds.regenerated_count,
                 json_extract(ds.summary, '$.headline') as headline,
@@ -3159,19 +3237,23 @@ class DatabaseService:
             FROM daily_summaries ds
             ORDER BY ds.date DESC
             LIMIT ? OFFSET ?
-        """, (limit, offset))
+        """,
+            (limit, offset),
+        )
 
         summaries = []
         for row in cursor.fetchall():
-            summaries.append({
-                'id': row[0],
-                'date': row[1],
-                'research_id': row[2],
-                'created_at': row[3],
-                'regenerated_count': row[4],
-                'headline': row[5],
-                'total_plays': row[6]
-            })
+            summaries.append(
+                {
+                    "id": row[0],
+                    "date": row[1],
+                    "research_id": row[2],
+                    "created_at": row[3],
+                    "regenerated_count": row[4],
+                    "headline": row[5],
+                    "total_plays": row[6],
+                }
+            )
 
         return summaries, total
 
@@ -3194,12 +3276,10 @@ class DatabaseService:
             self._all_connections.clear()
 
         # Also clear current thread's connections dictionary
-        if hasattr(self._thread_local, 'connections'):
+        if hasattr(self._thread_local, "connections"):
             for conn in self._thread_local.connections.values():
-                try:
+                with suppress(Exception):
                     conn.close()
-                except Exception:
-                    pass  # Already closed via weakref
             self._thread_local.connections.clear()
 
         logger.info(f"Database connections closed ({closed_count} connections)")
