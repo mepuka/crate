@@ -8,6 +8,7 @@
  */
 
 import { Context, Data, Effect, Layer, Config } from "effect";
+import type { ConfigError } from "effect/ConfigError";
 
 // =============================================================================
 // Errors
@@ -156,7 +157,7 @@ const makeGcsStorageService = Effect.gen(function* () {
  */
 export const GcsStorageServiceLive: Layer.Layer<
   GcsStorageService,
-  GcsStorageError,
+  GcsStorageError | ConfigError,
   GcsConfig
 > = Layer.effect(GcsStorageService, makeGcsStorageService);
 
@@ -165,7 +166,7 @@ export const GcsStorageServiceLive: Layer.Layer<
  */
 export const GcsStorageServiceFull: Layer.Layer<
   GcsStorageService,
-  GcsStorageError,
+  GcsStorageError | ConfigError,
   never
 > = Layer.provide(GcsStorageServiceLive, GcsConfig.Default);
 

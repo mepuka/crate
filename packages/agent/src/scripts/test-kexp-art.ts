@@ -6,11 +6,16 @@
  *   bun run src/scripts/test-kexp-art.ts [--open]
  */
 
-import { Effect, Console, Layer } from "effect";
+import { Effect, Console, Layer, Data } from "effect";
 import { NodeRuntime } from "@effect/platform-node";
 import * as path from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+
+class KexpArtTestError extends Data.TaggedError("KexpArtTestError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
 
 import {
   curate,
@@ -64,6 +69,13 @@ const KEXP_ALBUMS = [
 
 const shouldOpen = process.argv.includes("--open");
 
+const KexpArtLive = Layer.merge(
+  ArtCurationServiceGeminiWithConfig,
+  DerivedAssetGeneratorLive
+).pipe(
+  Layer.provide(GoogleAIConfig.Default)
+);
+
 const program = Effect.gen(function* () {
   yield* Console.log("🎨 KEXP Album Art Curation Test");
   yield* Console.log("═".repeat(50));
@@ -107,7 +119,11 @@ const program = Effect.gen(function* () {
       yield* Console.log("   🌐 Opening preview...");
       yield* Effect.tryPromise({
         try: () => execAsync(`open "${bundle.htmlPreview}"`),
-        catch: () => new Error("Failed to open browser"),
+        catch: (error) =>
+          new KexpArtTestError({
+            message: "Failed to open browser",
+            cause: error,
+          }),
       });
     }
   }
@@ -118,10 +134,7 @@ const program = Effect.gen(function* () {
     yield* Console.log("💡 Run with --open to view in browser");
   }
 }).pipe(
-  Effect.provide(
-    Layer.merge(ArtCurationServiceGeminiWithConfig, DerivedAssetGeneratorLive)
-  ),
-  Effect.provide(GoogleAIConfig.Default),
+  Effect.provide(KexpArtLive),
   Effect.tapError((error) => Console.error(`❌ Error: ${error}`))
 );
 

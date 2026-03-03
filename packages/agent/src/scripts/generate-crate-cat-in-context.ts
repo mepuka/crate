@@ -253,9 +253,10 @@ A square illustration of Crate Cat rendered in King Stingray's visual style, sui
   return { outputPath, curation };
 }).pipe(
   Effect.provide(
-    Layer.merge(CurationServiceLive, EnhancementServiceLive)
+    Layer.merge(CurationServiceLive, EnhancementServiceLive).pipe(
+      Layer.provide(GoogleAIConfig.Default)
+    )
   ),
-  Effect.provide(GoogleAIConfig.Default),
   Effect.tapError((error) => Console.error(`❌ Error: ${error}`))
 );
 

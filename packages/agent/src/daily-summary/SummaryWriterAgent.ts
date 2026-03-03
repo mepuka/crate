@@ -11,8 +11,8 @@
  * @module
  */
 
-import { Effect, Schema, Clock, Data } from "effect"
-import { LanguageModel, Chat, Prompt } from "@effect/ai"
+import { Effect, Schema, Clock, Data, Config, Option } from "effect"
+import { LanguageModel, Chat, Prompt, Tokenizer } from "@effect/ai"
 import {
   buildWriterSystemPrompt,
   buildResearchContextMessage,
@@ -216,6 +216,34 @@ export class SummaryWriterAgent extends Effect.Service<SummaryWriterAgent>()(
         researchId: 0 // Will be set by orchestrator
       })
 
+      const truncatePrompt = (
+        prompt: Prompt.Prompt,
+        maxTokens: number,
+        label: string
+      ): Effect.Effect<Prompt.Prompt, never> =>
+        Effect.serviceOption(Tokenizer.Tokenizer).pipe(
+          Effect.flatMap((tokenizerOption) =>
+            maxTokens > 0
+              ? Option.match(tokenizerOption, {
+                  onNone: () =>
+                    Effect.logWarning(`${label} prompt truncation skipped (Tokenizer unavailable)`).pipe(
+                      Effect.as(prompt)
+                    ),
+                  onSome: (tokenizer) =>
+                    tokenizer.truncate(prompt, maxTokens).pipe(
+                      Effect.catchAll((error) =>
+                        Effect.logWarning(
+                          `${label} prompt truncation failed: ${
+                            error instanceof Error ? error.message : String(error)
+                          }`
+                        ).pipe(Effect.as(prompt))
+                      )
+                    )
+                })
+              : Effect.succeed(prompt)
+          )
+        )
+
       const write = (
         research: ResearchContextType,
         options?: WriterOptions
@@ -234,6 +262,10 @@ export class SummaryWriterAgent extends Effect.Service<SummaryWriterAgent>()(
           }
 
           const startTime = yield* Clock.currentTimeMillis
+          const maxTokens = yield* Config.number("DAILY_SUMMARY_WRITER_MAX_TOKENS").pipe(
+            Config.withDefault(60000),
+            Effect.catchAll(() => Effect.succeed(60000))
+          )
 
           // Build prompt using array-based pattern (correct @effect/ai API)
           const systemPrompt = buildWriterSystemPrompt()
@@ -295,7 +327,8 @@ Stats will be computed automatically - do not include them.`
             { role: "user", content: writerInstructions }
           ])
 
-          const chat = yield* Chat.fromPrompt(prompt)
+          const truncatedPrompt = yield* truncatePrompt(prompt, maxTokens, "Writer")
+          const chat = yield* Chat.fromPrompt(truncatedPrompt)
 
           // Token usage
           const tokenUsage = mutableTokenUsage()

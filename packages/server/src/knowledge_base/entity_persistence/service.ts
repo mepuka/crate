@@ -103,7 +103,7 @@ export type MBRequest =
 
 export class MBDataService extends Effect.Service<MBDataService>()("MBDataService", {
   accessors: true,
-  effect: Effect.gen(function*() {
+  scoped: Effect.gen(function*() {
     const sql = yield* SqlClient.SqlClient
 
     const ArtistCacheViewResolver = RequestResolver.fromEffect(

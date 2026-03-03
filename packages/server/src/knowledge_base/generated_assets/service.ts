@@ -30,7 +30,7 @@ export class GeneratedAssetsService extends Effect.Service<GeneratedAssetsServic
   "GeneratedAssetsService",
   {
     accessors: true,
-    effect: Effect.gen(function*() {
+    scoped: Effect.gen(function*() {
       const sql = yield* SqlClient.SqlClient
 
       /**

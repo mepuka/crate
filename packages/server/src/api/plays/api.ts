@@ -81,21 +81,17 @@ const PlaysLive = HttpApiBuilder.group(
         { urlParams }: { urlParams: { readonly play_id: number } }
       ) =>
         GeneratedAssetsService.getByPlayId(urlParams.play_id).pipe(
-          Effect.catchTags({
-            GeneratedAssetsError: () => Effect.fail(new HttpApiError.InternalServerError()),
-            ParseError: () => Effect.fail(new HttpApiError.BadRequest()),
-            SqlError: () => Effect.fail(new HttpApiError.InternalServerError())
-          })
+          Effect.catchTag("GeneratedAssetsError", () =>
+            Effect.fail(new HttpApiError.InternalServerError())
+          )
         ))
       .handle("storeGeneratedAsset", (
         { payload }: { payload: typeof StoreAssetInput.Type }
       ) =>
         GeneratedAssetsService.storeAsset(payload).pipe(
-          Effect.catchTags({
-            GeneratedAssetsError: () => Effect.fail(new HttpApiError.InternalServerError()),
-            ParseError: () => Effect.fail(new HttpApiError.BadRequest()),
-            SqlError: () => Effect.fail(new HttpApiError.InternalServerError())
-          })
+          Effect.catchTag("GeneratedAssetsError", () =>
+            Effect.fail(new HttpApiError.InternalServerError())
+          )
         ))
 ).pipe(
   Layer.provide(FactPlaysService.Default),

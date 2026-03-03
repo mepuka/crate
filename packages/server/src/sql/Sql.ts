@@ -10,7 +10,7 @@ import { DomainConfig, DomainConfigLive } from "../config/DomainConfig.js"
  * Creates a SQLite client layer using configuration from DomainConfig.
  * This layer depends on DomainConfig to get the database path.
  */
-const MusicKBClientLive = Layer.effect(
+const MusicKBClientLive = Layer.scoped(
   SqlClient.SqlClient,
   Effect.gen(function*() {
     const config = yield* DomainConfig

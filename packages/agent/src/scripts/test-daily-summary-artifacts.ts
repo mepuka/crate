@@ -22,12 +22,19 @@
  *   WRITER_MODEL=gemini-3-pro-preview       → Model for writer/polish phases
  *   AI_MODEL=claude-haiku-4-5               → Single model for all phases (fallback)
  *
+ * Mixed Provider Configuration (use different providers per phase):
+ *   RESEARCH_PROVIDER=anthropic             → Provider for research (default: AI_PROVIDER)
+ *   RESEARCH_MODEL=claude-haiku-4-5         → Fast model for research
+ *   WRITER_PROVIDER=google                  → Provider for writer/polish (default: AI_PROVIDER)
+ *   WRITER_MODEL=gemini-3-pro-preview       → Quality model for writing
+ *
  * Required environment:
  *   - ANTHROPIC_API_KEY or GOOGLE_AI_API_KEY
  *   - FAISS_API_URL (defaults to http://localhost:8000)
  */
 
 import { Effect, Console, Layer, Clock } from "effect"
+import { writeFile } from "node:fs/promises"
 import { NodeRuntime } from "@effect/platform-node"
 
 import {
@@ -71,6 +78,10 @@ const skipPolish = process.env.SKIP_POLISH === "true"
 const aiProvider = process.env.AI_PROVIDER ?? "anthropic"
 const researchModel = process.env.RESEARCH_MODEL
 const writerModel = process.env.WRITER_MODEL
+
+// Per-phase provider configuration (allows mixing Anthropic + Google)
+const researchProvider = process.env.RESEARCH_PROVIDER ?? aiProvider
+const writerProvider = process.env.WRITER_PROVIDER ?? aiProvider
 
 // Determine if we're using multi-model mode
 const useMultiModel = researchModel && writerModel
@@ -400,7 +411,7 @@ const program = Effect.gen(function* () {
 
   // Save full summary JSON to file for inspection
   const summaryPath = `/tmp/daily-summary-${summary.date}.json`
-  yield* Effect.promise(() => Bun.write(summaryPath, JSON.stringify(summary, null, 2)))
+  yield* Effect.promise(() => writeFile(summaryPath, JSON.stringify(summary, null, 2)))
   yield* Console.log(`📄 Full summary saved to: ${summaryPath}`)
 
   return {
@@ -460,22 +471,22 @@ const multiModelProgram = Effect.gen(function* () {
   yield* Console.log(`📅 Target date: ${targetDate}`)
   yield* Console.log(`💾 Persistence: ${skipPersistence ? "SKIPPED" : "enabled"}`)
   yield* Console.log(`✨ Polish: ${skipPolish ? "SKIPPED" : "enabled"}`)
-  yield* Console.log(`🤖 Research model: ${researchModel}`)
-  yield* Console.log(`🤖 Writer model: ${writerModel}`)
+  yield* Console.log(`🤖 Research: ${researchProvider}/${researchModel}`)
+  yield* Console.log(`🤖 Writer:   ${writerProvider}/${writerModel}`)
   yield* Console.log("")
 
   const pipelineStart = yield* Clock.currentTimeMillis
 
-  // Run research phase with research model
-  const researchModelLayer = createModelLayer(aiProvider, researchModel!)
+  // Run research phase with research model (may use different provider)
+  const researchModelLayer = createModelLayer(researchProvider, researchModel!)
   const researchLayer = BaseLayer.pipe(Layer.provideMerge(researchModelLayer))
 
   const researchPhaseResult = yield* runResearchPhase(targetDate).pipe(
     Effect.provide(researchLayer)
   )
 
-  // Run writer phase with writer model
-  const writerModelLayer = createModelLayer(aiProvider, writerModel!)
+  // Run writer phase with writer model (may use different provider)
+  const writerModelLayer = createModelLayer(writerProvider, writerModel!)
   const writerLayer = BaseLayer.pipe(Layer.provideMerge(writerModelLayer))
 
   const writerPhaseResult = yield* runWriterPhase(researchPhaseResult, skipPolish).pipe(
@@ -568,7 +579,7 @@ const multiModelProgram = Effect.gen(function* () {
   }
 
   const summaryPath = `/tmp/daily-summary-${summary.date}.json`
-  yield* Effect.promise(() => Bun.write(summaryPath, JSON.stringify(summary, null, 2)))
+  yield* Effect.promise(() => writeFile(summaryPath, JSON.stringify(summary, null, 2)))
   yield* Console.log(`📄 Full summary saved to: ${summaryPath}`)
 
   return {
@@ -589,17 +600,23 @@ const multiModelProgram = Effect.gen(function* () {
 // Run
 // =============================================================================
 
-// Choose program based on multi-model mode
-const mainProgram = useMultiModel ? multiModelProgram : program
-
-// Choose layer based on multi-model mode (multi-model provides its own layers)
-const mainLayer = useMultiModel ? Layer.empty : SingleModelLayer
-
-NodeRuntime.runMain(
-  mainProgram.pipe(
-    Effect.provide(mainLayer),
-    Effect.tapErrorCause(cause =>
-      Console.error(`\n💥 Fatal error:\n${cause}`)
+if (useMultiModel) {
+  // Multi-model provides its own layers per-phase, but still needs FaissClient for persistence
+  NodeRuntime.runMain(
+    multiModelProgram.pipe(
+      Effect.provide(FaissClientLayer),
+      Effect.tapErrorCause((cause) =>
+        Console.error(`\n💥 Fatal error:\n${cause}`)
+      )
     )
   )
-)
+} else {
+  NodeRuntime.runMain(
+    program.pipe(
+      Effect.provide(SingleModelLayer),
+      Effect.tapErrorCause((cause) =>
+        Console.error(`\n💥 Fatal error:\n${cause}`)
+      )
+    )
+  )
+}

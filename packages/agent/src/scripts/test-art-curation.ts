@@ -8,7 +8,7 @@
  *   GOOGLE_AI_API_KEY=... npx tsx src/scripts/test-art-curation.ts
  */
 
-import { Effect, Console } from "effect";
+import { Effect, Console, Layer } from "effect";
 import { NodeRuntime } from "@effect/platform-node";
 import {
   curate,
@@ -27,6 +27,10 @@ const TEST_CONTEXT = {
   genres: ["Indie", "Alternative", "Lo-Fi"],
   isLocal: true,
 };
+
+const ArtCurationLive = ArtCurationServiceGeminiWithConfig.pipe(
+  Layer.provide(GoogleAIConfig.Default)
+);
 
 const program = Effect.gen(function* () {
   yield* Console.log("🎨 Testing Art Curation with Gemini Vision");
@@ -65,8 +69,7 @@ const program = Effect.gen(function* () {
 
   return result;
 }).pipe(
-  Effect.provide(ArtCurationServiceGeminiWithConfig),
-  Effect.provide(GoogleAIConfig.Default),
+  Effect.provide(ArtCurationLive),
   Effect.tapError((error) =>
     Console.error(`❌ Error: ${error}`)
   )

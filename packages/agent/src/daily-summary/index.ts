@@ -14,11 +14,11 @@
  * ```ts
  * import { DailySummaryAgent, DailySummaryAgentLive } from "./daily-summary"
  * import { Effect, Layer } from "effect"
- * import { ConfigurableModelLive, CrateToolsLive } from "./layers"
+ * import { ConfigurableModelLive, CrateToolsWithContextLive } from "./layers"
  *
  * // Build layer with parameterized model
  * const DailySummaryWithDeps = DailySummaryAgentLive(ConfigurableModelLive).pipe(
- *   Layer.provide(CrateToolsLive)
+ *   Layer.provide(CrateToolsWithContextLive)
  * )
  * // Merge to make LanguageModel available at runtime
  * const FullLayer = Layer.mergeAll(DailySummaryWithDeps, ConfigurableModelLive)

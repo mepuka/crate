@@ -15,7 +15,7 @@ import * as MBSchemas from "./schemas.js"
 
 export class MusicBrainzService extends Effect.Service<MusicBrainzService>()("MusicBrainzService", {
   accessors: true,
-  effect: Effect.gen(function*() {
+  scoped: Effect.gen(function*() {
     const sql = yield* SqlClient.SqlClient
     const mbData = yield* MBDataService.MBDataService
     const relationshipService = yield* RelationshipService.RelationshipService

@@ -19,7 +19,7 @@ const defaultPaginationOptions: PaginationOptions = {
 }
 
 export class KEXPApi extends Effect.Service<KEXPApi>()("KEXPAPI", {
-  effect: Effect.gen(function*() {
+  scoped: Effect.gen(function*() {
     const audit = yield* AuditService.AuditService
 
     const withAudit = <I, R>(

@@ -27,7 +27,7 @@ import {
   DailySummaryAgentLive,
   type PipelineResult
 } from "../daily-summary/DailySummaryAgent.js"
-import { CrateToolsLive, ConfigurableModelLive } from "../layers.js"
+import { CrateToolsWithContextLive, ConfigurableModelLive } from "../layers.js"
 
 // =============================================================================
 // Configuration
@@ -217,12 +217,12 @@ const program = Effect.gen(function* () {
 //   - SummaryResearchAgent.Default (model provided)
 //   - SummaryWriterAgent.Default (model provided)
 //   - SummaryPolishAgent.Default (model provided)
-// - CrateToolsLive provides CrateToolkit handlers + services (required by SummaryResearchAgent)
+// - CrateToolsWithContextLive provides CrateToolkit handlers + context discovery tools
 // - ConfigurableModelLive must also be merged to make LanguageModel available at runtime
 
 // DailySummaryAgentLive is now a function that accepts the model layer
 const DailySummaryWithDeps = DailySummaryAgentLive(ConfigurableModelLive).pipe(
-  Layer.provide(CrateToolsLive)
+  Layer.provide(CrateToolsWithContextLive)
 )
 
 // Merge with model layer to make LanguageModel available in execution context

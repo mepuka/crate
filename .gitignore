@@ -53,3 +53,12 @@ packages/*/src/**/*.d.ts.map
 analysis/data/
 packages/web/crate.db
 .firebase/
+
+# Database files in server package
+packages/server/src/knowledge_base/*.db
+
+# Backup/orig files
+*.orig
+
+# Python bytecode (global)
+__pycache__/

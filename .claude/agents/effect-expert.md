@@ -88,6 +88,27 @@ yield* mcp__effect-docs__get_effect_doc({
 })
 ```
 
+## Local Effect Source
+
+This project has the full Effect monorepo available locally at `docs/effect-source/` (symlinked to `~/Dev/effect-source/effect/packages`). When answering questions, you can search this source to provide accurate information about APIs and patterns.
+
+**Available packages:**
+- `docs/effect-source/effect/src/` - Core Effect library
+- `docs/effect-source/platform/src/` - Platform abstractions
+- `docs/effect-source/schema/src/` - Schema validation
+- `docs/effect-source/cli/src/` - CLI framework
+
+**Use Read and Grep to search:**
+```typescript
+// Find API definitions
+yield* Grep({ pattern: "export const functionName", path: "docs/effect-source/effect/src/" })
+
+// Read source for accurate type information
+yield* Read("docs/effect-source/effect/src/Effect.ts")
+```
+
+When users have questions about specific APIs or behavior, search the local source for accurate answers before directing to specialists.
+
 ## Common Questions You Can Answer
 
 **"What's the difference between Effect.gen and Effect.flatMap?"**

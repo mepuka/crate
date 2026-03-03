@@ -32,7 +32,7 @@ interface TestCase {
   name: string;
   imagePath: string;
   request: Omit<LinerNoteRequest, "albumArtBase64" | "mimeType">;
-  graphContext?: GraphContext;
+  graphContext?: GraphContext | undefined;
 }
 
 // Custom test case from env vars (if ALBUM_ART is set)

@@ -185,34 +185,63 @@ Use the **Pattern Hub decision tree** at `.claude/skills/effect-patterns-hub/SKI
 
 ---
 
-## Research Protocol: Effect Source Inspection
+## Research Protocol: Local Effect Source
 
-**CRITICAL TRIGGER: Type errors you can't resolve**
+**CRITICAL: Always search local Effect source before implementing complex patterns**
 
-When you encounter TypeScript errors in Effect code that don't make sense:
+This project has the full Effect monorepo available locally at `docs/effect-source/` (symlinked to `~/Dev/effect-source/effect/packages`). Search this source to understand actual implementations, patterns, and APIs.
+
+**Available packages:**
+- `docs/effect-source/effect/src/` - Core Effect library
+- `docs/effect-source/platform/src/` - Platform abstractions
+- `docs/effect-source/platform-node/src/` - Node.js implementations
+- `docs/effect-source/schema/src/` - Schema validation
+- `docs/effect-source/sql/src/` - SQL abstractions
+- `docs/effect-source/cli/src/` - CLI framework
+
+**Search commands:**
+```bash
+# Find function/class definitions
+grep -r "export.*function.*functionName" docs/effect-source/
+
+# Find type definitions
+grep -r "export.*interface.*TypeName" docs/effect-source/
+
+# Search within specific package
+grep -r "pattern" docs/effect-source/effect/src/
+grep -r "pattern" docs/effect-source/platform/src/
+
+# Find usage examples in tests
+grep -r "test.*pattern" docs/effect-source/effect/test/
+```
 
 **Key source files:**
-- `node_modules/effect/src/Effect.ts` - Core Effect type and operators
-- `node_modules/effect/src/Stream.ts` - Stream API
-- `node_modules/effect/src/Layer.ts` - Layer composition
-- `node_modules/effect/src/Fiber.ts` - Fiber operations
-- `node_modules/effect/src/Schedule.ts` - Retry/repeat schedules
+- `docs/effect-source/effect/src/Effect.ts` - Core Effect type and operators
+- `docs/effect-source/effect/src/Stream.ts` - Stream API
+- `docs/effect-source/effect/src/Layer.ts` - Layer composition
+- `docs/effect-source/effect/src/Fiber.ts` - Fiber operations
+- `docs/effect-source/effect/src/Schedule.ts` - Retry/repeat schedules
+- `docs/effect-source/schema/src/Schema.ts` - Schema definitions
+- `docs/effect-source/platform/src/HttpServer.ts` - HTTP server
+- `docs/effect-source/platform/src/HttpClient.ts` - HTTP client
 
 **What to look for:**
 - Actual type signatures with variance annotations
 - Type parameter constraints
 - Internal implementation details
 - JSDoc comments explaining behavior
+- Test files for usage examples
 
-**Use Read tool:**
+**Use Read and Grep tools:**
 ```typescript
 // Example: Understanding Stream type error
-yield* Read("node_modules/effect/src/Stream.ts")
+yield* Read("docs/effect-source/effect/src/Stream.ts")
 
-// Example: Understanding Effect.all signature
-yield* Read("node_modules/effect/src/Effect.ts", {
-  // Can use grep to find specific function
-})
+// Example: Finding Effect.all implementation
+yield* Grep({ pattern: "export const all", path: "docs/effect-source/effect/src/" })
+
+// Example: Finding usage patterns in tests
+yield* Grep({ pattern: "Effect.all", path: "docs/effect-source/effect/test/" })
 ```
 
 **Common type error scenarios:**

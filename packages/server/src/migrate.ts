@@ -1,8 +1,12 @@
-import { BunContext, BunRuntime } from "@effect/platform-bun"
+import { BunRuntime } from "@effect/platform-bun"
 import { SqlClient } from "@effect/sql"
-import { Effect } from "effect"
-import { DomainConfigLive } from "./config/DomainConfig.js"
+import { Effect, Layer } from "effect"
 import { MusicKBMigratorLive, MusicKBSqlLive } from "./sql/Sql.js"
+
+const MigrationLayer = Layer.mergeAll(
+  MusicKBMigratorLive,
+  MusicKBSqlLive
+)
 
 const runMigrations = Effect.scoped(
   Effect.gen(function*() {
@@ -10,10 +14,7 @@ const runMigrations = Effect.scoped(
 
     yield* sql.unsafe(`SELECT 1`)
   }).pipe(
-    Effect.provide(MusicKBMigratorLive),
-    Effect.provide(DomainConfigLive),
-    Effect.provide(BunContext.layer),
-    Effect.provide(MusicKBSqlLive)
+    Effect.provide(MigrationLayer)
   )
 )
 

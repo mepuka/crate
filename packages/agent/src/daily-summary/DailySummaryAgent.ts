@@ -12,15 +12,16 @@
  * @module
  */
 
-import { Effect, Layer, Clock, Data, Config, Duration } from "effect"
-import { LanguageModel } from "@effect/ai"
+import { Effect, Layer, Clock, Data, Config, Duration, Option, Context } from "effect"
+import { LanguageModel, Model } from "@effect/ai"
 import { FaissClient } from "../FaissClient.js"
 import { type TokenUsage, emptyTokenUsage, addTokenUsage } from "../multi-agent/types.js"
-import { DayDataCollector } from "./DayDataCollector.js"
+import { DayDataCollector, type DayData, type DayDataArtifacts } from "./DayDataCollector.js"
 import { SummaryResearchAgent } from "./SummaryResearchAgent.js"
 import { SummaryWriterAgent } from "./SummaryWriterAgent.js"
 import { SummaryPolishAgent, type PolishFixes } from "./SummaryPolishAgent.js"
 import type { ResearchContextType, DailySummaryType } from "./schemas.js"
+import { ArtifactStoreService } from "../services/context-store/index.js"
 import {
   extractReferencedPlayIds,
   extractCategorizedPlayIds,
@@ -57,6 +58,9 @@ export interface PipelineResult {
   readonly tokenUsage: TokenUsage
 
   readonly toolCallCount: number
+
+  // Warnings (non-fatal issues)
+  readonly warnings?: ReadonlyArray<string> | undefined
 }
 
 /**
@@ -297,6 +301,63 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
             )
           }
 
+          const warnings: string[] = []
+          const recordWarning = (message: string) =>
+            Effect.sync(() => {
+              warnings.push(message)
+            })
+
+          const regenerate = options.regenerate ?? false
+
+          if (!regenerate) {
+            const existingSummary = yield* faissClient.getDailySummary(date).pipe(
+              Effect.catchAll((error) => {
+                const message = error instanceof Error ? error.message : String(error)
+                return Effect.logWarning(`Summary lookup failed for ${date}: ${message}`).pipe(
+                  Effect.andThen(recordWarning(`Summary lookup failed for ${date}: ${message}`)),
+                  Effect.as(Option.none())
+                )
+              })
+            )
+
+            if (Option.isSome(existingSummary)) {
+              yield* Effect.log(`Summary exists for ${date}; skipping regeneration`)
+
+              const existingResearch = yield* faissClient.getDailyResearch(date).pipe(
+                Effect.catchAll((error) => {
+                  const message = error instanceof Error ? error.message : String(error)
+                  return Effect.logWarning(`Research lookup failed for ${date}: ${message}`).pipe(
+                    Effect.andThen(recordWarning(`Research lookup failed for ${date}: ${message}`)),
+                    Effect.as(Option.none())
+                  )
+                })
+              )
+
+              const researchMs = Option.isSome(existingResearch)
+                ? existingResearch.value.duration_ms ?? 0
+                : 0
+
+              return {
+                date,
+                summary: existingSummary.value.summary as unknown as DailySummaryType,
+                researchId: Option.isSome(existingResearch) ? existingResearch.value.id : 0,
+                summaryId: existingSummary.value.id,
+                timing: {
+                  dataCollectionMs: 0,
+                  researchMs,
+                  writingMs: 0,
+                  polishMs: 0,
+                  totalMs: researchMs
+                },
+                tokenUsage: emptyTokenUsage(),
+                toolCallCount: Option.isSome(existingResearch)
+                  ? existingResearch.value.tool_call_count
+                  : 0,
+                warnings: warnings.length > 0 ? warnings : undefined
+              }
+            }
+          }
+
           const pipelineStart = yield* Clock.currentTimeMillis
 
           // Aggregate token usage
@@ -305,13 +366,57 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
           // =============================================================================
           // Phase 1: Data Collection
           // =============================================================================
-          yield* Effect.log("Phase 1: Collecting day data")
-
-          const [dataCollectionDuration, dayData] = yield* dataCollector.collectDay(date).pipe(
-            Effect.mapError(wrapPhaseError("data_collection", "Data collection")),
-            Effect.timed
+          const artifactsMode = yield* Config.boolean("DAILY_SUMMARY_ARTIFACTS_MODE").pipe(
+            Config.withDefault(true),
+            Effect.catchAll(() => Effect.succeed(true))
           )
-          const dataCollectionMs = Duration.toMillis(dataCollectionDuration)
+          const artifactStore = yield* Effect.contextWith(
+            (context: Context.Context<LanguageModel.LanguageModel>) =>
+              Context.getOption(context, ArtifactStoreService)
+          )
+          const useArtifacts = artifactsMode && Option.isSome(artifactStore)
+
+          if (artifactsMode && Option.isNone(artifactStore)) {
+            yield* Effect.logWarning("Artifacts mode requested but ArtifactStoreService is missing; falling back to inline mode")
+            yield* recordWarning("Artifacts mode requested but ArtifactStoreService is missing; using inline mode")
+          }
+
+          let dataCollectionMs = 0
+          let dayData: DayData
+          let artifacts: DayDataArtifacts | null = null
+
+          if (useArtifacts) {
+            yield* Effect.log("Phase 1: Collecting day data (artifacts mode)")
+
+            const [dataCollectionDuration, artifactsResult] = yield* dataCollector.collectDayWithArtifacts(date).pipe(
+              Effect.provideService(ArtifactStoreService, Option.getOrThrow(artifactStore)),
+              Effect.mapError(wrapPhaseError("data_collection", "Data collection")),
+              Effect.timed
+            )
+            dataCollectionMs = Duration.toMillis(dataCollectionDuration)
+            artifacts = artifactsResult
+            if (artifactsResult._fullData) {
+              dayData = artifactsResult._fullData
+            } else {
+              yield* Effect.logWarning("Artifacts mode missing full data; re-collecting inline")
+              yield* recordWarning("Artifacts mode missing full data; re-collecting inline")
+              const [fallbackDuration, fallbackData] = yield* dataCollector.collectDay(date).pipe(
+                Effect.mapError(wrapPhaseError("data_collection", "Data collection")),
+                Effect.timed
+              )
+              dataCollectionMs += Duration.toMillis(fallbackDuration)
+              dayData = fallbackData
+            }
+          } else {
+            yield* Effect.log("Phase 1: Collecting day data")
+
+            const [dataCollectionDuration, dayDataResult] = yield* dataCollector.collectDay(date).pipe(
+              Effect.mapError(wrapPhaseError("data_collection", "Data collection")),
+              Effect.timed
+            )
+            dataCollectionMs = Duration.toMillis(dataCollectionDuration)
+            dayData = dayDataResult
+          }
 
           yield* Effect.log(`Data collection complete: ${dayData.stats.totalPlays} plays in ${dataCollectionMs}ms`)
 
@@ -320,7 +425,20 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
           // =============================================================================
           yield* Effect.log("Phase 2: Research with tools")
 
-          const [researchDuration, researchResult] = yield* researchAgent.research(dayData).pipe(
+          const artifactsData = useArtifacts ? artifacts : null
+          const [researchDuration, researchResult] = yield* (
+            artifactsData
+              ? researchAgent.researchWithArtifacts(artifactsData).pipe(
+                  Effect.catchAll((error) => {
+                    const message = error instanceof Error ? error.message : String(error)
+                    return Effect.logWarning(`Artifact research failed; falling back to inline: ${message}`).pipe(
+                      Effect.andThen(recordWarning(`Artifact research failed; falling back to inline: ${message}`)),
+                      Effect.andThen(researchAgent.research(dayData))
+                    )
+                  })
+                )
+              : researchAgent.research(dayData)
+          ).pipe(
             Effect.mapError(wrapPhaseError("research", "Research")),
             Effect.timed
           )
@@ -338,10 +456,16 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
               date,
               researchResult.context,
               researchResult.durationMs,
-              researchResult.toolCallCount,
-              researchResult.tokenUsage
-            ).pipe(
-              Effect.mapError(wrapPhaseError("persistence", "Research persistence"))
+            researchResult.toolCallCount,
+            researchResult.tokenUsage
+          ).pipe(
+              Effect.catchAll((error) => {
+                const message = error instanceof Error ? error.message : String(error)
+                return Effect.logWarning(`Research persistence failed for ${date}: ${message}`).pipe(
+                  Effect.andThen(recordWarning(`Research persistence failed for ${date}: ${message}`)),
+                  Effect.as(0)
+                )
+              })
             )
           }
 
@@ -455,7 +579,13 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
           let summaryId = 0
           if (!options.skipPersistence) {
             summaryId = yield* persistSummary(date, summary, researchId).pipe(
-              Effect.mapError(wrapPhaseError("persistence", "Summary persistence"))
+              Effect.catchAll((error) => {
+                const message = error instanceof Error ? error.message : String(error)
+                return Effect.logWarning(`Summary persistence failed for ${date}: ${message}`).pipe(
+                  Effect.andThen(recordWarning(`Summary persistence failed for ${date}: ${message}`)),
+                  Effect.as(0)
+                )
+              })
             )
           }
 
@@ -478,7 +608,8 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
             },
             polishFixes,
             tokenUsage,
-            toolCallCount: researchResult.toolCallCount
+            toolCallCount: researchResult.toolCallCount,
+            warnings: warnings.length > 0 ? warnings : undefined
           }
         })
 
@@ -519,7 +650,7 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
  * - SummaryPolishAgent.Default
  *
  * The caller must still provide:
- * - CrateToolsLive (provides CrateToolkit handlers for SummaryResearchAgent)
+ * - CrateToolsWithContextLive (provides CrateToolkitWithContext handlers for artifact research)
  *
  * @param modelLayer - Layer providing LanguageModel.LanguageModel service
  *
@@ -527,13 +658,13 @@ export class DailySummaryAgent extends Effect.Service<DailySummaryAgent>()(
  * ```typescript
  * // Build layer with model and merge to make available at runtime
  * const DailySummaryWithDeps = DailySummaryAgentLive(ConfigurableModelLive).pipe(
- *   Layer.provide(CrateToolsLive)
+ *   Layer.provide(CrateToolsWithContextLive)
  * )
  * const FullLayer = Layer.mergeAll(DailySummaryWithDeps, ConfigurableModelLive)
  * ```
  */
-export const DailySummaryAgentLive = (
-  modelLayer: Layer.Layer<LanguageModel.LanguageModel>
+export const DailySummaryAgentLive = <E, R>(
+  modelLayer: Layer.Layer<LanguageModel.LanguageModel | Model.ProviderName, E, R>
 ) =>
   DailySummaryAgent.Default.pipe(
     Layer.provide(FaissClient.Default),

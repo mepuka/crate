@@ -12,12 +12,17 @@
  *   bun run src/scripts/test-art-with-canonical.ts [--open]
  */
 
-import { Effect, Console, Layer, Option } from "effect";
+import { Effect, Console, Layer, Option, Data } from "effect";
 import { NodeRuntime } from "@effect/platform-node";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+
+class ArtCanonicalTestError extends Data.TaggedError("ArtCanonicalTestError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
 
 import {
   curate,
@@ -263,6 +268,15 @@ const generateIntegratedPreview = async (
   return previewPath;
 };
 
+const ArtCanonicalLive = Layer.mergeAll(
+  ArtCurationServiceGeminiWithConfig,
+  DerivedAssetGeneratorLive,
+  CanonicalReferenceServiceLive,
+  DesignDirectiveServiceLive
+).pipe(
+  Layer.provide(GoogleAIConfig.Default)
+);
+
 const program = Effect.gen(function* () {
   yield* Console.log("Art + Canonical Integration Test");
   yield* Console.log("=".repeat(50));
@@ -360,7 +374,11 @@ const program = Effect.gen(function* () {
           crateCat,
           selectedVariant
         ),
-      catch: () => new Error("Failed to generate preview"),
+      catch: (error) =>
+        new ArtCanonicalTestError({
+          message: "Failed to generate preview",
+          cause: error,
+        }),
     });
 
     yield* Console.log(`   Preview: ${integratedPreview}`);
@@ -370,7 +388,11 @@ const program = Effect.gen(function* () {
       yield* Console.log("   Opening preview...");
       yield* Effect.tryPromise({
         try: () => execAsync(`open "${integratedPreview}"`),
-        catch: () => new Error("Failed to open browser"),
+        catch: (error) =>
+          new ArtCanonicalTestError({
+            message: "Failed to open browser",
+            cause: error,
+          }),
       });
     }
 
@@ -383,15 +405,7 @@ const program = Effect.gen(function* () {
     yield* Console.log("Run with --open to view in browser");
   }
 }).pipe(
-  Effect.provide(
-    Layer.mergeAll(
-      ArtCurationServiceGeminiWithConfig,
-      DerivedAssetGeneratorLive,
-      CanonicalReferenceServiceLive,
-      DesignDirectiveServiceLive
-    )
-  ),
-  Effect.provide(GoogleAIConfig.Default),
+  Effect.provide(ArtCanonicalLive),
   Effect.tapError((error) => Console.error(`Error: ${error}`))
 );
 

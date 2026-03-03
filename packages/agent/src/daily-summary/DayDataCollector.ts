@@ -167,7 +167,7 @@ export interface DayDataCollectorInterface {
    * Collect data with artifact storage for dynamic context discovery
    *
    * Stores full play data as artifacts and returns compact index.
-   * Uses DYNAMIC_CONTEXT env var to toggle between modes.
+   * Selection is handled by the orchestrator (artifact-first by default).
    */
   readonly collectDayWithArtifacts: (
     date: string
@@ -348,19 +348,6 @@ export class DayDataCollector extends Effect.Service<DayDataCollector>()(
             labels: cp.play.labels
           })).join("\n")
 
-          const allPlaysRef = yield* store.store({
-            content: allPlaysNdjson,
-            format: "ndjson",
-            summary: `${dayData.plays.length} plays from ${date}`,
-            tags: ["plays", date, "daily-summary"],
-            sessionId: `daily-${date}`
-          }).pipe(
-            Effect.mapError(e => new DayDataCollectorError({
-              message: `Failed to store plays artifact: ${e.message}`,
-              cause: e
-            }))
-          )
-
           // Store comments as NDJSON artifact
           const commentsNdjson = dayData.playsWithComments.map(cp => JSON.stringify({
             id: cp.play.id,
@@ -369,19 +356,6 @@ export class DayDataCollector extends Effect.Service<DayDataCollector>()(
             comment: cp.comment,
             showId: cp.play.show
           })).join("\n")
-
-          const commentsRef = yield* store.store({
-            content: commentsNdjson,
-            format: "ndjson",
-            summary: `${dayData.playsWithComments.length} DJ comments from ${date}`,
-            tags: ["comments", date, "daily-summary"],
-            sessionId: `daily-${date}`
-          }).pipe(
-            Effect.mapError(e => new DayDataCollectorError({
-              message: `Failed to store comments artifact: ${e.message}`,
-              cause: e
-            }))
-          )
 
           // Store rotation plays as NDJSON artifact
           const rotationNdjson = dayData.rotationPlays.map(cp => JSON.stringify({
@@ -392,19 +366,6 @@ export class DayDataCollector extends Effect.Service<DayDataCollector>()(
             rotation_status: cp.play.rotation_status,
             artist_mbid: cp.play.artist_mbid[0] ?? null
           })).join("\n")
-
-          const rotationRef = yield* store.store({
-            content: rotationNdjson,
-            format: "ndjson",
-            summary: `${dayData.rotationPlays.length} rotation plays from ${date}`,
-            tags: ["rotation", date, "daily-summary"],
-            sessionId: `daily-${date}`
-          }).pipe(
-            Effect.mapError(e => new DayDataCollectorError({
-              message: `Failed to store rotation artifact: ${e.message}`,
-              cause: e
-            }))
-          )
 
           // Store recent releases as NDJSON artifact
           const recentReleases = dayData.plays.filter(cp => cp.isRecentRelease)
@@ -419,18 +380,61 @@ export class DayDataCollector extends Effect.Service<DayDataCollector>()(
             labels: cp.play.labels
           })).join("\n")
 
-          const releasesRef = yield* store.store({
-            content: releasesNdjson,
-            format: "ndjson",
-            summary: `${recentReleases.length} recent releases from ${date}`,
-            tags: ["releases", date, "daily-summary"],
-            sessionId: `daily-${date}`
-          }).pipe(
-            Effect.mapError(e => new DayDataCollectorError({
-              message: `Failed to store releases artifact: ${e.message}`,
-              cause: e
-            }))
-          )
+          const {
+            allPlays: allPlaysRef,
+            comments: commentsRef,
+            rotation: rotationRef,
+            releases: releasesRef
+          } = yield* Effect.all({
+            allPlays: store.store({
+              content: allPlaysNdjson,
+              format: "ndjson",
+              summary: `${dayData.plays.length} plays from ${date}`,
+              tags: ["plays", date, "daily-summary"],
+              sessionId: `daily-${date}`
+            }).pipe(
+              Effect.mapError(e => new DayDataCollectorError({
+                message: `Failed to store plays artifact: ${e.message}`,
+                cause: e
+              }))
+            ),
+            comments: store.store({
+              content: commentsNdjson,
+              format: "ndjson",
+              summary: `${dayData.playsWithComments.length} DJ comments from ${date}`,
+              tags: ["comments", date, "daily-summary"],
+              sessionId: `daily-${date}`
+            }).pipe(
+              Effect.mapError(e => new DayDataCollectorError({
+                message: `Failed to store comments artifact: ${e.message}`,
+                cause: e
+              }))
+            ),
+            rotation: store.store({
+              content: rotationNdjson,
+              format: "ndjson",
+              summary: `${dayData.rotationPlays.length} rotation plays from ${date}`,
+              tags: ["rotation", date, "daily-summary"],
+              sessionId: `daily-${date}`
+            }).pipe(
+              Effect.mapError(e => new DayDataCollectorError({
+                message: `Failed to store rotation artifact: ${e.message}`,
+                cause: e
+              }))
+            ),
+            releases: store.store({
+              content: releasesNdjson,
+              format: "ndjson",
+              summary: `${recentReleases.length} recent releases from ${date}`,
+              tags: ["releases", date, "daily-summary"],
+              sessionId: `daily-${date}`
+            }).pipe(
+              Effect.mapError(e => new DayDataCollectorError({
+                message: `Failed to store releases artifact: ${e.message}`,
+                cause: e
+              }))
+            )
+          }, { concurrency: 4 })
 
           yield* Effect.log(`Created 4 artifacts for ${date}`)
 

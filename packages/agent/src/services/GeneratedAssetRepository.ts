@@ -198,14 +198,14 @@ const makeGeneratedAssetRepository = Effect.gen(function* () {
         LIMIT 1
       `.pipe(
         Effect.map((rows) => rows[0]),
+        Effect.catchTag("SqlError", () => Effect.succeed(undefined)),
         Effect.mapError(
           (e) =>
             new AssetRepositoryError({
               message: `Failed to check existing asset: ${e}`,
               cause: e,
             })
-        ),
-        Effect.catchTag("SqlError", () => Effect.succeed(undefined))
+        )
       );
 
       if (existing) {

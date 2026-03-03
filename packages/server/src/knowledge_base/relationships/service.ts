@@ -78,7 +78,7 @@ export type RelationshipRequest =
 
 export class RelationshipService extends Effect.Service<RelationshipService>()("RelationshipService", {
   accessors: true,
-  effect: Effect.gen(function*() {
+  scoped: Effect.gen(function*() {
     const sql = yield* SqlClient.SqlClient
 
     const RelationshipInsertResolver = RequestResolver.fromEffect(

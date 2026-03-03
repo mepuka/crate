@@ -96,19 +96,43 @@ yield* mcp__effect-docs__get_effect_doc({
 - "testing errors flip catchTag"
 - "testing concurrent operations Ref Deferred"
 
-## Research Protocol: Source Inspection
+## Research Protocol: Local Effect Source
 
-When you need to understand testing internals:
+**CRITICAL: Search local Effect source for testing patterns and internals**
 
-**Key source files:**
-- `node_modules/@effect/vitest/src/` - Testing utilities
-- `node_modules/effect/src/TestClock.ts` - Time control
-- `node_modules/effect/src/TestContext.ts` - Test environment
-- `node_modules/effect/src/TestRandom.ts` - Deterministic randomness
+This project has the full Effect monorepo available locally at `docs/effect-source/`. Search this source to understand testing utilities, TestClock behavior, and test patterns.
+
+**Key source files for testing:**
+- `docs/effect-source/effect/src/TestClock.ts` - Time control
+- `docs/effect-source/effect/src/TestContext.ts` - Test environment
+- `docs/effect-source/effect/src/TestRandom.ts` - Deterministic randomness
+- `docs/effect-source/effect/test/` - Official test examples
+
+**Search commands:**
+```bash
+# Find TestClock patterns
+grep -r "TestClock" docs/effect-source/effect/test/
+
+# Find testing examples
+grep -r "it.effect\|describe" docs/effect-source/
+
+# Search for specific test patterns
+grep -r "Effect.flip\|Deferred" docs/effect-source/effect/test/
+```
+
+**Use Read and Grep tools:**
+```typescript
+// Example: Understanding TestClock internals
+yield* Read("docs/effect-source/effect/src/TestClock.ts")
+
+// Example: Finding test patterns in Effect source
+yield* Grep({ pattern: "TestClock.adjust", path: "docs/effect-source/effect/test/" })
+```
 
 **Use when:**
 - TestClock behavior unclear
 - Need to understand TestContext
+- Looking for test pattern examples
 - Test utilities not working as expected
 
 ## When to Research vs When to Test

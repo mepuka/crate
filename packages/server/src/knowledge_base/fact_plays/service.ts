@@ -152,7 +152,7 @@ export type FactPlaysRequest =
 
 export class FactPlaysService extends Effect.Service<FactPlaysService>()("FactPlaysService", {
   accessors: true,
-  effect: Effect.gen(function*() {
+  scoped: Effect.gen(function*() {
     const sql = yield* SqlClient.SqlClient
     const kexp = yield* KEXPApi
 

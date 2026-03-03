@@ -13,7 +13,7 @@
  *   AI_PROVIDER=google AI_MODEL=gemini-2.5-pro npx tsx src/scripts/test-gemini.ts
  */
 
-import { Effect, Console } from "effect";
+import { Effect, Console, Layer } from "effect";
 import { LanguageModel, Prompt } from "@effect/ai";
 import { ConfigurableModelLive } from "../layers.js";
 import { AIModelConfig } from "../config.js";
@@ -51,11 +51,15 @@ const program = Effect.gen(function* () {
   return response;
 });
 
+const ModelLive = Layer.mergeAll(
+  ConfigurableModelLive,
+  AIModelConfig.Default
+);
+
 // Run the test
 Effect.runPromise(
   program.pipe(
-    Effect.provide(ConfigurableModelLive),
-    Effect.provide(AIModelConfig.Default),
+    Effect.provide(ModelLive),
     Effect.catchAll((error) =>
       Console.error(`❌ Error: ${error}`).pipe(
         Effect.zipRight(Effect.fail(error))

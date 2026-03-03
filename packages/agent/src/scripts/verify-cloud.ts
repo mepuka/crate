@@ -12,7 +12,7 @@
  * @module
  */
 
-import { Effect, Layer, Console } from "effect";
+import { Effect, Layer, Console, Data } from "effect";
 import { FetchHttpClient } from "@effect/platform";
 import { NodeRuntime } from "@effect/platform-node";
 import {
@@ -23,6 +23,11 @@ import {
   type ServiceHealth,
   type SmokeTestResult,
 } from "../services/CloudVerificationService.js";
+
+class CloudVerificationError extends Data.TaggedError("CloudVerificationError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
 
 // =============================================================================
 // Configuration
@@ -138,7 +143,12 @@ const program = Effect.gen(function* () {
 
   // Exit with non-zero status if unhealthy
   if (report.overallStatus === "unhealthy") {
-    return yield* Effect.fail(new Error("Infrastructure verification failed"));
+    return yield* Effect.fail(
+      new CloudVerificationError({
+        message: "Infrastructure verification failed",
+        cause: report,
+      })
+    );
   }
 
   return report;

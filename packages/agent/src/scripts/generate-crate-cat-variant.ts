@@ -181,8 +181,9 @@ maintaining character recognition while harmonizing with the playful, adventurou
 
   return outputPath;
 }).pipe(
-  Effect.provide(EnhancementServiceLive),
-  Effect.provide(GoogleAIConfig.Default),
+  Effect.provide(
+    EnhancementServiceLive.pipe(Layer.provide(GoogleAIConfig.Default))
+  ),
   Effect.tapError((error) => Console.error(`❌ Error: ${error}`))
 );
 

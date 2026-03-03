@@ -12,11 +12,16 @@
  *   ALBUM_ART="https://example.com/album.jpg" bun run ...
  */
 
-import { Effect, Console, Layer, Redacted } from "effect";
+import { Effect, Console, Layer, Redacted, Data } from "effect";
 import { FetchHttpClient, HttpClient } from "@effect/platform";
 import * as GoogleClientModule from "@effect/ai-google/GoogleClient";
 import * as fs from "node:fs";
 import * as path from "node:path";
+
+class LinerNotesWithArtError extends Data.TaggedError("LinerNotesWithArtError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
 
 const NANO_BANANA_PRO_MODEL = "gemini-3-pro-image-preview";
 const OUTPUT_DIR = "/tmp/liner-notes-test";
@@ -163,7 +168,12 @@ const program = Effect.gen(function* () {
     );
     if (!response.ok) {
       yield* Console.error(`   ✗ HTTP ${response.status}: ${response.statusText}`);
-      return yield* Effect.fail(new Error(`Failed to fetch image: ${response.status}`));
+      return yield* Effect.fail(
+        new LinerNotesWithArtError({
+          message: `Failed to fetch image: HTTP ${response.status}`,
+          cause: response.statusText,
+        })
+      );
     }
     const buffer = yield* Effect.tryPromise(() => response.arrayBuffer());
     imageBase64 = Buffer.from(buffer).toString("base64");
@@ -244,7 +254,18 @@ Effect.runPromise(
     Effect.scoped,
     Effect.provide(GoogleClientLive),
     Effect.catchAll((error) =>
-      Console.error(`❌ Error: ${error}`).pipe(Effect.zipRight(Effect.fail(error)))
+      Console.error(`❌ Error: ${error}`).pipe(
+        Effect.zipRight(
+          Effect.fail(
+            error instanceof LinerNotesWithArtError
+              ? error
+              : new LinerNotesWithArtError({
+                message: "Liner note generation failed",
+                cause: error,
+              })
+          )
+        )
+      )
     )
   )
 ).catch(console.error);

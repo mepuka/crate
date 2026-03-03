@@ -336,8 +336,9 @@ OUTPUT: The album art with the cat easter egg placed according to the plan.
   yield* Console.log(`✅ Done! Generated ${outputPaths.length}/${TEST_ALBUMS.length} easter eggs`);
   yield* Console.log("🔍 Can you find the cats?");
 }).pipe(
-  Effect.provide(GoogleClientLive),
-  Effect.provide(GoogleAIConfig.Default),
+  Effect.provide(
+    GoogleClientLive.pipe(Layer.provide(GoogleAIConfig.Default))
+  ),
   Effect.tapError((error) => Console.error(`❌ Error: ${error}`))
 );
 

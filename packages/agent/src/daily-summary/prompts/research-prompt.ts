@@ -135,7 +135,7 @@ Flag plays that stand out:
 // Research Quality Enhancement - Aggressive Exploration
 // =============================================================================
 
-export const RESEARCH_MANDATE = `## Research Mandate: Exhaustive Exploration
+export const RESEARCH_MANDATE_ARTIFACTS = `## Research Mandate: Exhaustive Exploration
 
 **YOU MUST BE AGGRESSIVE WITH TOOLS.** Passive research produces shallow summaries.
 
@@ -156,6 +156,28 @@ export const RESEARCH_MANDATE = `## Research Mandate: Exhaustive Exploration
    - At least 1 semantic_search for historical context
 
 If you have not met these minimums, YOU ARE NOT DONE.`
+
+export const RESEARCH_MANDATE_INLINE = `## Research Mandate: Exhaustive Exploration
+
+**YOU MUST BE AGGRESSIVE WITH TOOLS.** Passive research produces shallow summaries.
+
+### Non-Negotiable Rules:
+
+1. **NEVER stop at one search.** If semantic_search finds an artist, search for their label, producer, hometown.
+
+2. **EVERY interesting finding deserves a follow-up.** DJ comment mentions a birthday? Search for other birthdays this week.
+
+3. **GRAPH EXPLORATION IS MANDATORY.** For every notable artist, call explore_graph with labelmates, collaborators, band_members.
+
+4. **MINIMUM TOOL USAGE before concluding:**
+   - At least 2 semantic_search or hybrid_search calls with different angles
+   - At least 2 search_plays calls using MBIDs
+   - At least 2 graph exploration calls
+
+If you have not met these minimums, YOU ARE NOT DONE.`
+
+// Backwards-compatible export (artifact-focused mandate)
+export const RESEARCH_MANDATE = RESEARCH_MANDATE_ARTIFACTS
 
 export const MULTI_PASS_WORKFLOW = `## Research Workflow (Multi-Pass Required)
 
@@ -556,11 +578,14 @@ ${MULTI_PASS_WORKFLOW}
  * Includes both the standard research guidance and the aggressive
  * exploration mandate for deeper, more thorough analysis.
  */
-export const buildResearchSystemPrompt = (): string => {
+export const buildResearchSystemPrompt = (options?: {
+  readonly includeArtifacts?: boolean | undefined
+}): string => {
+  const includeArtifacts = options?.includeArtifacts ?? true
   return [
     RESEARCH_IDENTITY,
     "",
-    RESEARCH_MANDATE,
+    includeArtifacts ? RESEARCH_MANDATE_ARTIFACTS : RESEARCH_MANDATE_INLINE,
     "",
     RESEARCH_PHILOSOPHY,
     "",

@@ -1,7 +1,7 @@
 import { SqlClient, SqlSchema } from "@effect/sql"
 import { Console, Effect, Layer, Option, Schema } from "effect"
-import { MusicKBSqlLive } from "../../sql/Sql.js"
 import { FactPlaysService } from "../fact_plays/index.js"
+import { MusicKBSqlLive } from "../../sql/Sql.js"
 import { FactPlay } from "../fact_plays/schemas.js"
 
 // =============================================================================
@@ -111,7 +111,7 @@ const directSqlQueries = Effect.gen(function*() {
 
   const elapsed = Date.now() - start
   yield* Console.log(`   ✓ 5 repeated queries completed in ${elapsed}ms (cache working!)`)
-}).pipe(Effect.provide(FactPlaysService.Default), Effect.provide(MusicKBSqlLive))
+}).pipe(Effect.provide(FactPlaysService.Default))
 
 // =============================================================================
 // PERFORMANCE TEST WITH CACHING
@@ -165,9 +165,15 @@ const runAllTests = Effect.gen(function*() {
   yield* Console.log("\n\n✅ All tests completed successfully!")
 })
 
+const TestLayer = Layer.mergeAll(
+  FactPlaysService.Default,
+  MusicKBSqlLive,
+  Layer.scope
+)
+
 // Execute the tests
 runAllTests.pipe(
-  Effect.provide(Layer.scope),
+  Effect.provide(TestLayer),
   Effect.tapError((error) => Console.error("Test failed:", error)),
   Effect.runPromise
 ).catch(console.error)

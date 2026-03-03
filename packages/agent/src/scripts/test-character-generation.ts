@@ -98,6 +98,13 @@ const saveBase64Image = async (base64: string, outputPath: string): Promise<void
   await fs.writeFile(outputPath, buffer);
 };
 
+const CharacterLive = Layer.merge(
+  CurationServiceLive,
+  CharacterServiceLive
+).pipe(
+  Layer.provide(GoogleAIConfig.Default)
+);
+
 const program = Effect.gen(function* () {
   yield* Console.log("🐱 Character Generation Service Test");
   yield* Console.log("=" .repeat(50));
@@ -197,10 +204,7 @@ const program = Effect.gen(function* () {
     yield* Console.log("💡 Run with --open to view results");
   }
 }).pipe(
-  Effect.provide(
-    Layer.merge(CurationServiceLive, CharacterServiceLive)
-  ),
-  Effect.provide(GoogleAIConfig.Default),
+  Effect.provide(CharacterLive),
   Effect.tapError((error) => Console.error(`❌ Error: ${error}`))
 );
 

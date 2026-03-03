@@ -10,11 +10,16 @@
  *   GOOGLE_AI_API_KEY=... bun run src/scripts/test-asset-generator.ts --open
  */
 
-import { Effect, Console, Layer } from "effect";
+import { Effect, Console, Layer, Data } from "effect";
 import { NodeRuntime } from "@effect/platform-node";
 import * as path from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+
+class AssetGeneratorError extends Data.TaggedError("AssetGeneratorError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
 
 import {
   curate,
@@ -63,6 +68,13 @@ const TEST_IMAGES = [
 ];
 
 const shouldOpen = process.argv.includes("--open");
+
+const AssetGeneratorLive = Layer.merge(
+  ArtCurationServiceGeminiWithConfig,
+  DerivedAssetGeneratorLive
+).pipe(
+  Layer.provide(GoogleAIConfig.Default)
+);
 
 const program = Effect.gen(function* () {
   yield* Console.log("🎨 Art Curation & Asset Generation Test");
@@ -115,7 +127,11 @@ const program = Effect.gen(function* () {
       yield* Console.log("   🌐 Opening preview in browser...");
       yield* Effect.tryPromise({
         try: () => execAsync(`open "${bundle.htmlPreview}"`),
-        catch: () => new Error("Failed to open browser"),
+        catch: (error) =>
+          new AssetGeneratorError({
+            message: "Failed to open browser",
+            cause: error,
+          }),
       });
     }
   }
@@ -128,10 +144,7 @@ const program = Effect.gen(function* () {
     yield* Console.log("\n💡 Tip: Run with --open to open the preview in your browser");
   }
 }).pipe(
-  Effect.provide(
-    Layer.merge(ArtCurationServiceGeminiWithConfig, DerivedAssetGeneratorLive)
-  ),
-  Effect.provide(GoogleAIConfig.Default),
+  Effect.provide(AssetGeneratorLive),
   Effect.tapError((error) => Console.error(`❌ Error: ${error}`))
 );
 

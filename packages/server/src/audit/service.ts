@@ -6,7 +6,7 @@ import * as AuditSchemas from "./schemas.js"
 
 export class AuditService extends Effect.Service<AuditService>()("AuditService", {
   accessors: true,
-  effect: Effect.gen(function*() {
+  scoped: Effect.gen(function*() {
     const sql = yield* SqlClient.SqlClient
 
     const insertAuditLogQuery = SqlSchema.void(

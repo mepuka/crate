@@ -1,12 +1,17 @@
 {
+  "general": {
+    "checkpointing": {
+      "enabled": true
+    }
+  },
   "mcpServers": {
     "effect-docs": {
       "command": "npx",
-      "args": ["[-y,", "effect-mcp]"],
+      "args": [
+        "[-y,",
+        "effect-mcp]"
+      ],
       "env": {}
     }
-  },
-  "checkpointing": {
-    "enabled": true
   }
 }

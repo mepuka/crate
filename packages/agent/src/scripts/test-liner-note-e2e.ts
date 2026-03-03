@@ -95,7 +95,8 @@ const LinerNoteServiceLayer = Layer.provide(
 // Use test GCS for local testing (won't actually upload)
 const OrchestratorLayer = pipe(
   LinerNoteOrchestratorLive,
-  Layer.provide(GcsStorageServiceTest)
+  Layer.provide(GcsStorageServiceTest),
+  Layer.provide(LinerNoteServiceLayer)
 );
 
 const program = Effect.gen(function* () {
@@ -110,7 +111,7 @@ const program = Effect.gen(function* () {
   const faissClient = yield* FaissClient;
 
   // Get plays to process
-  let plays: Array<{
+  let plays: ReadonlyArray<{
     id: number;
     artist: string;
     song: string;
@@ -253,7 +254,6 @@ const program = Effect.gen(function* () {
 // Combined layer
 const AppLayer = Layer.mergeAll(
   FaissClientLive,
-  LinerNoteServiceLayer,
   OrchestratorLayer
 );
 

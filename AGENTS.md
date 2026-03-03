@@ -18,6 +18,59 @@ This document provides comprehensive guidelines for AI agents implementing Effec
 
 **Pattern Count**: 130+ curated Effect-TS patterns from [EffectPatterns](https://github.com/PaulJPhilp/EffectPatterns)
 
+## Local Effect Source
+
+**CRITICAL: Always search local Effect source before implementing complex patterns**
+
+The full Effect monorepo is available locally at `docs/effect-source/` (symlinked to `~/Dev/effect-source/effect/packages`). Search this source to understand actual implementations, patterns, and APIs.
+
+**Available packages:**
+- `docs/effect-source/effect/src/` - Core Effect library (Effect, Stream, Layer, Fiber, etc.)
+- `docs/effect-source/platform/src/` - Platform abstractions (HttpServer, HttpClient, FileSystem)
+- `docs/effect-source/platform-node/src/` - Node.js implementations
+- `docs/effect-source/schema/src/` - Schema validation
+- `docs/effect-source/sql/src/` - SQL abstractions
+- `docs/effect-source/cli/src/` - CLI framework
+
+**Search commands:**
+```bash
+# Find function/class definitions
+grep -r "export.*function.*functionName" docs/effect-source/
+
+# Find type definitions
+grep -r "export.*interface.*TypeName" docs/effect-source/
+
+# Search within specific package
+grep -r "pattern" docs/effect-source/effect/src/
+grep -r "pattern" docs/effect-source/platform/src/
+
+# Find usage examples in tests
+grep -r "test.*pattern" docs/effect-source/effect/test/
+```
+
+**Key source files:**
+- `docs/effect-source/effect/src/Effect.ts` - Core Effect type and operators
+- `docs/effect-source/effect/src/Stream.ts` - Stream API
+- `docs/effect-source/effect/src/Layer.ts` - Layer composition
+- `docs/effect-source/effect/src/Context.ts` - Service context and tags
+- `docs/effect-source/schema/src/Schema.ts` - Schema definitions
+- `docs/effect-source/platform/src/HttpServer.ts` - HTTP server
+- `docs/effect-source/platform/src/HttpClient.ts` - HTTP client
+
+**When to search local source:**
+- Type errors you can't resolve → Check actual type signatures
+- Unfamiliar with an API → Read implementation and JSDoc
+- Looking for patterns → Search test files for examples
+- Understanding behavior → Read internal implementation
+
+**Maintenance:**
+```bash
+# Update when upgrading @effect packages
+cd ~/Dev/effect-source/effect && git pull origin main
+```
+
+Real source code > documentation > assumptions. **Always search first.**
+
 ## Core Principles
 
 ### 1. Data-First Piped Style

@@ -1505,7 +1505,7 @@ export interface PlayContext {
   labelMbids?: string[];
 
   // Status
-  rotationStatus?: "Heavy" | "Medium" | "Light" | "R/N" | "Library" | null;
+  rotationStatus?: "Heavy" | "Medium" | "Light" | "R/N" | "Library" | "R" | null;
   isLocal: boolean;
   isRequest: boolean;
   isLive: boolean;

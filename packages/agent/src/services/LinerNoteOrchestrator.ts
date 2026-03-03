@@ -9,10 +9,9 @@
  * @module
  */
 
-import { Context, Data, Effect, Layer, Schema, pipe } from "effect";
+import { Context, Data, Effect, Layer, pipe } from "effect";
 import {
   LinerNoteGenerationService,
-  generateLinerNote,
   type LinerNoteRequest,
 } from "./LinerNoteGenerationService.js";
 import {
@@ -140,14 +139,11 @@ function hashParams(input: OrchestrateLinerNoteInput): string {
 
 const makeLinerNoteOrchestrator = Effect.gen(function* () {
   const gcsStorage = yield* GcsStorageService;
+  const generator = yield* LinerNoteGenerationService;
 
   const orchestrate = (
     input: OrchestrateLinerNoteInput
-  ): Effect.Effect<
-    OrchestrateLinerNoteResult,
-    LinerNoteOrchestrationError,
-    LinerNoteGenerationService
-  > =>
+  ): Effect.Effect<OrchestrateLinerNoteResult, LinerNoteOrchestrationError> =>
     Effect.gen(function* () {
       const style = input.style ?? "art-forward";
       const paramsHash = hashParams(input);
@@ -178,7 +174,7 @@ const makeLinerNoteOrchestrator = Effect.gen(function* () {
       };
 
       // Generate the liner note
-      const generationResult = yield* generateLinerNote(request).pipe(
+      const generationResult = yield* generator.generate(request).pipe(
         Effect.mapError(
           (e) =>
             new LinerNoteOrchestrationError({
@@ -248,7 +244,7 @@ const makeLinerNoteOrchestrator = Effect.gen(function* () {
 export const LinerNoteOrchestratorLive: Layer.Layer<
   LinerNoteOrchestrator,
   never,
-  GcsStorageService
+  GcsStorageService | LinerNoteGenerationService
 > = Layer.effect(LinerNoteOrchestrator, makeLinerNoteOrchestrator);
 
 /**
@@ -272,7 +268,7 @@ export const orchestrateLinerNote = (
 ): Effect.Effect<
   OrchestrateLinerNoteResult,
   LinerNoteOrchestrationError,
-  LinerNoteOrchestrator | LinerNoteGenerationService
+  LinerNoteOrchestrator
 > =>
   Effect.flatMap(LinerNoteOrchestrator, (orchestrator) =>
     orchestrator.orchestrate(input)

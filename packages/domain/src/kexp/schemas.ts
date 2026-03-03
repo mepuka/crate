@@ -2,7 +2,7 @@ import { Schema } from "effect"
 
 // === Common Types ===
 
-export const RotationStatus = Schema.Literal("Heavy", "Medium", "Light", "R/N", "Library")
+export const RotationStatus = Schema.Literal("Heavy", "Medium", "Light", "R/N", "Library", "R")
 export type RotationStatus = Schema.Schema.Type<typeof RotationStatus>
 
 // === Play Entity ===

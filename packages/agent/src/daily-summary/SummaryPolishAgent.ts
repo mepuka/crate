@@ -15,8 +15,8 @@
  * @module
  */
 
-import { Effect, Schema, Clock, Data } from "effect"
-import { LanguageModel, Chat, Prompt } from "@effect/ai"
+import { Effect, Schema, Clock, Data, Config, Option } from "effect"
+import { LanguageModel, Chat, Prompt, Tokenizer } from "@effect/ai"
 import {
   buildPolishSystemPrompt,
   buildPolishMessage
@@ -245,6 +245,34 @@ export class SummaryPolishAgent extends Effect.Service<SummaryPolishAgent>()(
         researchId: draft.researchId
       })
 
+      const truncatePrompt = (
+        prompt: Prompt.Prompt,
+        maxTokens: number,
+        label: string
+      ): Effect.Effect<Prompt.Prompt, never> =>
+        Effect.serviceOption(Tokenizer.Tokenizer).pipe(
+          Effect.flatMap((tokenizerOption) =>
+            maxTokens > 0
+              ? Option.match(tokenizerOption, {
+                  onNone: () =>
+                    Effect.logWarning(`${label} prompt truncation skipped (Tokenizer unavailable)`).pipe(
+                      Effect.as(prompt)
+                    ),
+                  onSome: (tokenizer) =>
+                    tokenizer.truncate(prompt, maxTokens).pipe(
+                      Effect.catchAll((error) =>
+                        Effect.logWarning(
+                          `${label} prompt truncation failed: ${
+                            error instanceof Error ? error.message : String(error)
+                          }`
+                        ).pipe(Effect.as(prompt))
+                      )
+                    )
+                })
+              : Effect.succeed(prompt)
+          )
+        )
+
       const polish = (
         draft: DailySummaryType,
         research: ResearchContextType
@@ -257,6 +285,10 @@ export class SummaryPolishAgent extends Effect.Service<SummaryPolishAgent>()(
           yield* Effect.log(`Starting polish for ${draft.date}`)
 
           const startTime = yield* Clock.currentTimeMillis
+          const maxTokens = yield* Config.number("DAILY_SUMMARY_POLISH_MAX_TOKENS").pipe(
+            Config.withDefault(30000),
+            Effect.catchAll(() => Effect.succeed(30000))
+          )
 
           // Build prompt
           const systemPrompt = buildPolishSystemPrompt()
@@ -275,7 +307,8 @@ export class SummaryPolishAgent extends Effect.Service<SummaryPolishAgent>()(
             { role: "user", content: userMessage }
           ])
 
-          const chat = yield* Chat.fromPrompt(prompt)
+          const truncatedPrompt = yield* truncatePrompt(prompt, maxTokens, "Polish")
+          const chat = yield* Chat.fromPrompt(truncatedPrompt)
 
           // Token usage
           const tokenUsage = mutableTokenUsage()

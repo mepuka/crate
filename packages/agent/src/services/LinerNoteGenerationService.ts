@@ -16,8 +16,8 @@
 import { Effect, Schema, Data, Layer, Context, pipe } from "effect";
 import * as GoogleClientModule from "@effect/ai-google/GoogleClient";
 
-// Type alias for GoogleClient service
-type GoogleClientService = GoogleClientModule.Service;
+// Type alias for GoogleClient tag
+type GoogleClientTag = GoogleClientModule.GoogleClient;
 
 // Helper to cast Effect types when working with @effect/ai-google
 const asEffect = <A, E, R>(eff: unknown): Effect.Effect<A, E, R> =>
@@ -572,7 +572,7 @@ const makeLinerNoteGenerationService = Effect.gen(function* () {
 export const LinerNoteGenerationServiceLive: Layer.Layer<
   LinerNoteGenerationService,
   never,
-  GoogleClientService
+  GoogleClientTag
 > = Layer.effect(LinerNoteGenerationService, makeLinerNoteGenerationService);
 
 // =============================================================================

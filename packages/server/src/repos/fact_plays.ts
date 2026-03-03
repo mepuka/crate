@@ -6,7 +6,7 @@ import { MusicKBSqlLive } from "../sql/Sql.js"
 export class FactPlaysRepo extends Effect.Service<FactPlaysRepo>()(
   "FactPlaysRepo",
   {
-    effect: Effect.gen(function*() {
+    scoped: Effect.gen(function*() {
       const sql = yield* SqlClient.SqlClient
       const upsert = SqlSchema.single({
         Request: FactPlays.insert,

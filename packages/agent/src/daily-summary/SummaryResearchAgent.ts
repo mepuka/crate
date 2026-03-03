@@ -13,8 +13,8 @@
  * @module
  */
 
-import { Effect, Schema, Clock, Data } from "effect"
-import { LanguageModel, Chat, Prompt } from "@effect/ai"
+import { Effect, Schema, Clock, Data, Config, Option } from "effect"
+import { LanguageModel, Chat, Prompt, Tokenizer } from "@effect/ai"
 import { CrateToolkit, CrateToolkitWithContext } from "../tools/definitions.js"
 import { type TokenUsage, mutableTokenUsage } from "../multi-agent/types.js"
 import {
@@ -255,6 +255,34 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
         }
       }
 
+      const truncatePrompt = (
+        prompt: Prompt.Prompt,
+        maxTokens: number,
+        label: string
+      ): Effect.Effect<Prompt.Prompt, never> =>
+        Effect.serviceOption(Tokenizer.Tokenizer).pipe(
+          Effect.flatMap((tokenizerOption) =>
+            maxTokens > 0
+              ? Option.match(tokenizerOption, {
+                  onNone: () =>
+                    Effect.logWarning(`${label} prompt truncation skipped (Tokenizer unavailable)`).pipe(
+                      Effect.as(prompt)
+                    ),
+                  onSome: (tokenizer) =>
+                    tokenizer.truncate(prompt, maxTokens).pipe(
+                      Effect.catchAll((error) =>
+                        Effect.logWarning(
+                          `${label} prompt truncation failed: ${
+                            error instanceof Error ? error.message : String(error)
+                          }`
+                        ).pipe(Effect.as(prompt))
+                      )
+                    )
+                })
+              : Effect.succeed(prompt)
+          )
+        )
+
       const research = (
         dayData: DayData
       ): Effect.Effect<
@@ -266,9 +294,13 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
           yield* Effect.log(`Starting research for ${dayData.date}`)
 
           const startTime = yield* Clock.currentTimeMillis
+          const maxTokens = yield* Config.number("DAILY_SUMMARY_RESEARCH_MAX_TOKENS").pipe(
+            Config.withDefault(120000),
+            Effect.catchAll(() => Effect.succeed(120000))
+          )
 
           // Build prompt using array-based pattern (correct @effect/ai API)
-          const systemPrompt = buildResearchSystemPrompt()
+          const systemPrompt = buildResearchSystemPrompt({ includeArtifacts: false })
           const userMessage = buildDayDataMessage(dayData)
 
           const prompt = Prompt.make([
@@ -283,10 +315,10 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
             },
             { role: "user", content: userMessage }
           ])
-          const chat = yield* Chat.fromPrompt(prompt)
+          const truncatedPrompt = yield* truncatePrompt(prompt, maxTokens, "Research")
+          const chat = yield* Chat.fromPrompt(truncatedPrompt)
 
           // Track tool calls and token usage
-          let totalToolCalls = 0
           const tokenUsage = mutableTokenUsage()
 
           // =============================================================================
@@ -297,101 +329,110 @@ export class SummaryResearchAgent extends Effect.Service<SummaryResearchAgent>()
           // Increased limits for thorough exploration (Phase 2.5 enhancement)
           const maxIterations = 20 // Increased from 10 for deeper analysis
           const minIterations = 8 // Increased from 5 for baseline depth
+          const maxToolCalls = 50 // Increased from 25 for more thorough research
 
           // Run research loop
-          let iteration = 0
-          let hasMoreToolCalls = true
-          let consecutiveEmptyIterations = 0
+          const loopState = yield* Effect.iterate(
+            {
+              iteration: 0,
+              totalToolCalls: 0,
+              consecutiveEmptyIterations: 0
+            },
+            {
+              while: (state) =>
+                state.iteration < maxIterations &&
+                (state.iteration < minIterations || state.consecutiveEmptyIterations < 2) &&
+                state.totalToolCalls < maxToolCalls,
+              body: (state) =>
+                Effect.gen(function* () {
+                  yield* Effect.log(`Research iteration ${state.iteration + 1}`)
 
-          while (hasMoreToolCalls && iteration < maxIterations) {
-            yield* Effect.log(`Research iteration ${iteration + 1}`)
+                  // Determine tool choice based on iteration
+                  // Phase 1 (iteration 0-1): Search and basic graph exploration
+                  // Phase 2 (iteration 2-4): Include cached graph algorithm tools for deep analysis
+                  // Phase 3 (iteration 5+): Auto mode - model decides when done
+                  const toolChoice = state.iteration === 0
+                    ? {
+                        mode: "required" as const,
+                        oneOf: [
+                          "search_plays",
+                          "semantic_search",
+                          "hybrid_search",
+                          "explore_graph",
+                          "graph_connections"
+                        ] as const
+                      }
+                    : state.iteration < 2
+                    ? {
+                        mode: "required" as const,
+                        oneOf: ["explore_graph", "graph_connections", "find_graph_path"] as const
+                      }
+                    : state.iteration < 5
+                    ? {
+                        mode: "required" as const,
+                        oneOf: [
+                          // Cached graph algorithm tools for deep analysis
+                          "analyze_influence",
+                          "explore_neighborhood",
+                          "summarize_relationships",
+                          "analyze_time_period",
+                          "graph_connections"
+                        ] as const
+                      }
+                    : "auto" as const
 
-            // Determine tool choice based on iteration
-            // Phase 1 (iteration 0-1): Search and basic graph exploration
-            // Phase 2 (iteration 2-4): Include cached graph algorithm tools for deep analysis
-            // Phase 3 (iteration 5+): Auto mode - model decides when done
-            const toolChoice = iteration === 0
-              ? {
-                  mode: "required" as const,
-                  oneOf: [
-                    "search_plays",
-                    "semantic_search",
-                    "hybrid_search",
-                    "explore_graph",
-                    "graph_connections"
-                  ] as const
-                }
-              : iteration < 2
-              ? {
-                  mode: "required" as const,
-                  oneOf: ["explore_graph", "graph_connections", "find_graph_path"] as const
-                }
-              : iteration < 5
-              ? {
-                  mode: "required" as const,
-                  oneOf: [
-                    // Cached graph algorithm tools for deep analysis
-                    "analyze_influence",
-                    "explore_neighborhood",
-                    "summarize_relationships",
-                    "analyze_time_period",
-                    "graph_connections"
-                  ] as const
-                }
-              : "auto" as const
+                  const response = yield* chat
+                    .generateText({
+                      prompt: [],
+                      toolkit,
+                      toolChoice
+                    })
+                    .pipe(
+                      Effect.mapError(e => new SummaryResearchError({
+                        message: `Research iteration ${state.iteration + 1} failed: ${e instanceof Error ? e.message : String(e)}`,
+                        cause: e
+                      }))
+                    )
 
-            const response = yield* chat
-              .generateText({
-                prompt: [],
-                toolkit,
-                toolChoice
-              })
-              .pipe(
-                Effect.mapError(e => new SummaryResearchError({
-                  message: `Research iteration ${iteration + 1} failed: ${e instanceof Error ? e.message : String(e)}`,
-                  cause: e
-                }))
-              )
+                  // Track token usage
+                  const usage = response.usage
+                  if (usage) {
+                    const input = usage.inputTokens ?? 0
+                    const output = usage.outputTokens ?? 0
+                    tokenUsage.inputTokens += input
+                    tokenUsage.outputTokens += output
+                    tokenUsage.totalTokens += input + output
+                    // Note: cache tokens may be in provider-specific fields
+                  }
 
-            // Track token usage
-            const usage = response.usage
-            if (usage) {
-              const input = usage.inputTokens ?? 0
-              const output = usage.outputTokens ?? 0
-              tokenUsage.inputTokens += input
-              tokenUsage.outputTokens += output
-              tokenUsage.totalTokens += input + output
-              // Note: cache tokens may be in provider-specific fields
+                  const toolCallCount = response.toolCalls.length
+                  const totalToolCalls = state.totalToolCalls + toolCallCount
+                  const consecutiveEmptyIterations = toolCallCount === 0
+                    ? state.consecutiveEmptyIterations + 1
+                    : 0
+
+                  yield* Effect.log(`Iteration ${state.iteration + 1}: ${toolCallCount} tool calls`)
+
+                  return {
+                    iteration: state.iteration + 1,
+                    totalToolCalls,
+                    consecutiveEmptyIterations
+                  }
+                })
             }
+          )
 
-            const toolCallCount = response.toolCalls.length
-            totalToolCalls += toolCallCount
-            hasMoreToolCalls = toolCallCount > 0
-            iteration++
-
-            yield* Effect.log(`Iteration ${iteration}: ${toolCallCount} tool calls`)
-
-            // Early stopping: if we've done minimum iterations and model stopped calling tools
-            // Require 2 consecutive empty iterations to prevent premature exit
-            if (toolCallCount === 0) {
-              consecutiveEmptyIterations++
-              if (iteration >= minIterations && consecutiveEmptyIterations >= 2) {
-                yield* Effect.log("Early stop: model finished research (2 consecutive empty)")
-                break
-              }
-            } else {
-              consecutiveEmptyIterations = 0
-            }
-
-            // Early stopping: if we've accumulated enough tool calls (diminishing returns)
-            // Increased from 25 to 50 for more thorough research
-            if (iteration >= minIterations && totalToolCalls >= 50) {
-              yield* Effect.log(`Early stop: sufficient research (${totalToolCalls} tool calls)`)
-              break
-            }
+          if (loopState.totalToolCalls >= maxToolCalls) {
+            yield* Effect.log(`Early stop: sufficient research (${loopState.totalToolCalls} tool calls)`)
+          } else if (loopState.iteration >= maxIterations) {
+            yield* Effect.log(`Early stop: reached max iterations (${maxIterations})`)
+          } else if (loopState.iteration >= minIterations && loopState.consecutiveEmptyIterations >= 2) {
+            yield* Effect.log("Early stop: model finished research (2 consecutive empty)")
           }
 
-          yield* Effect.log(`Research phase complete: ${totalToolCalls} total tool calls over ${iteration} iterations`)
+          yield* Effect.log(
+            `Research phase complete: ${loopState.totalToolCalls} total tool calls over ${loopState.iteration} iterations`
+          )
 
           // =============================================================================
           // Phase 2: Generate structured output
@@ -544,15 +585,17 @@ Output the complete JSON now.`
             structuredResponse.value,
             dayData,
             durationMs,
-            totalToolCalls
+            loopState.totalToolCalls
           )
 
-          yield* Effect.log(`Research complete for ${dayData.date}: ${durationMs}ms, ${totalToolCalls} tool calls`)
+          yield* Effect.log(
+            `Research complete for ${dayData.date}: ${durationMs}ms, ${loopState.totalToolCalls} tool calls`
+          )
 
           return {
             context,
             durationMs,
-            toolCallCount: totalToolCalls,
+            toolCallCount: loopState.totalToolCalls,
             tokenUsage
           }
         })
@@ -576,9 +619,13 @@ Output the complete JSON now.`
           yield* Effect.log(`Starting artifact-based research for ${artifacts.date}`)
 
           const startTime = yield* Clock.currentTimeMillis
+          const maxTokens = yield* Config.number("DAILY_SUMMARY_RESEARCH_MAX_TOKENS").pipe(
+            Config.withDefault(120000),
+            Effect.catchAll(() => Effect.succeed(120000))
+          )
 
           // Build compact prompt with artifact references
-          const systemPrompt = buildResearchSystemPrompt()
+          const systemPrompt = buildResearchSystemPrompt({ includeArtifacts: true })
           const userMessage = buildDayDataIndexMessage(artifacts)
 
           const prompt = Prompt.make([
@@ -593,10 +640,10 @@ Output the complete JSON now.`
             },
             { role: "user", content: userMessage }
           ])
-          const chat = yield* Chat.fromPrompt(prompt)
+          const truncatedPrompt = yield* truncatePrompt(prompt, maxTokens, "Artifact research")
+          const chat = yield* Chat.fromPrompt(truncatedPrompt)
 
           // Track tool calls and token usage
-          let totalToolCalls = 0
           const tokenUsage = mutableTokenUsage()
 
           // =============================================================================
@@ -607,107 +654,118 @@ Output the complete JSON now.`
           // Significantly increased limits for thorough multi-pass exploration (Phase 2.5)
           const maxIterations = 25 // Increased from 12 for deep context discovery
           const minIterations = 10 // Increased from 5 for comprehensive research
+          const maxToolCalls = 60 // Increased from 30 for more comprehensive artifact exploration
 
           // Run research loop
-          let iteration = 0
-          let hasMoreToolCalls = true
-          let consecutiveEmptyIterations = 0
+          const loopState = yield* Effect.iterate(
+            {
+              iteration: 0,
+              totalToolCalls: 0,
+              consecutiveEmptyIterations: 0
+            },
+            {
+              while: (state) =>
+                state.iteration < maxIterations &&
+                (state.iteration < minIterations || state.consecutiveEmptyIterations < 2) &&
+                state.totalToolCalls < maxToolCalls,
+              body: (state) =>
+                Effect.gen(function* () {
+                  yield* Effect.log(`Research iteration ${state.iteration + 1}`)
 
-          while (hasMoreToolCalls && iteration < maxIterations) {
-            yield* Effect.log(`Research iteration ${iteration + 1}`)
+                  // Modified tool choice to encourage context discovery first
+                  // Phase 0 (iteration 0): Start with context discovery to understand data
+                  // Phase 1 (iteration 1-2): Search and basic graph exploration
+                  // Phase 2 (iteration 3-5): Deep graph analysis
+                  // Phase 3 (iteration 6+): Auto mode
+                  const toolChoice = state.iteration === 0
+                    ? {
+                        mode: "required" as const,
+                        oneOf: [
+                          // Start by exploring available context
+                          "context_list",
+                          "context_search",
+                          "context_read"
+                        ] as const
+                      }
+                    : state.iteration < 3
+                    ? {
+                        mode: "required" as const,
+                        oneOf: [
+                          "search_plays",
+                          "semantic_search",
+                          "hybrid_search",
+                          "context_search",
+                          "context_read",
+                          "explore_graph",
+                          "graph_connections"
+                        ] as const
+                      }
+                    : state.iteration < 6
+                    ? {
+                        mode: "required" as const,
+                        oneOf: [
+                          "analyze_influence",
+                          "explore_neighborhood",
+                          "summarize_relationships",
+                          "analyze_time_period",
+                          "graph_connections",
+                          "context_read",
+                          "context_search"
+                        ] as const
+                      }
+                    : "auto" as const
 
-            // Modified tool choice to encourage context discovery first
-            // Phase 0 (iteration 0): Start with context discovery to understand data
-            // Phase 1 (iteration 1-2): Search and basic graph exploration
-            // Phase 2 (iteration 3-5): Deep graph analysis
-            // Phase 3 (iteration 6+): Auto mode
-            const toolChoice = iteration === 0
-              ? {
-                  mode: "required" as const,
-                  oneOf: [
-                    // Start by exploring available context
-                    "context_list",
-                    "context_search",
-                    "context_read"
-                  ] as const
-                }
-              : iteration < 3
-              ? {
-                  mode: "required" as const,
-                  oneOf: [
-                    "search_plays",
-                    "semantic_search",
-                    "hybrid_search",
-                    "context_search",
-                    "context_read",
-                    "explore_graph",
-                    "graph_connections"
-                  ] as const
-                }
-              : iteration < 6
-              ? {
-                  mode: "required" as const,
-                  oneOf: [
-                    "analyze_influence",
-                    "explore_neighborhood",
-                    "summarize_relationships",
-                    "analyze_time_period",
-                    "graph_connections",
-                    "context_read",
-                    "context_search"
-                  ] as const
-                }
-              : "auto" as const
+                  const response = yield* chat
+                    .generateText({
+                      prompt: [],
+                      toolkit: toolkitWithContext,
+                      toolChoice
+                    })
+                    .pipe(
+                      Effect.mapError(e => new SummaryResearchError({
+                        message: `Research iteration ${state.iteration + 1} failed: ${e instanceof Error ? e.message : String(e)}`,
+                        cause: e
+                      }))
+                    )
 
-            const response = yield* chat
-              .generateText({
-                prompt: [],
-                toolkit: toolkitWithContext,
-                toolChoice
-              })
-              .pipe(
-                Effect.mapError(e => new SummaryResearchError({
-                  message: `Research iteration ${iteration + 1} failed: ${e instanceof Error ? e.message : String(e)}`,
-                  cause: e
-                }))
-              )
+                  // Track token usage
+                  const usage = response.usage
+                  if (usage) {
+                    const input = usage.inputTokens ?? 0
+                    const output = usage.outputTokens ?? 0
+                    tokenUsage.inputTokens += input
+                    tokenUsage.outputTokens += output
+                    tokenUsage.totalTokens += input + output
+                  }
 
-            // Track token usage
-            const usage = response.usage
-            if (usage) {
-              const input = usage.inputTokens ?? 0
-              const output = usage.outputTokens ?? 0
-              tokenUsage.inputTokens += input
-              tokenUsage.outputTokens += output
-              tokenUsage.totalTokens += input + output
+                  const toolCallCount = response.toolCalls.length
+                  const totalToolCalls = state.totalToolCalls + toolCallCount
+                  const consecutiveEmptyIterations = toolCallCount === 0
+                    ? state.consecutiveEmptyIterations + 1
+                    : 0
+
+                  yield* Effect.log(`Iteration ${state.iteration + 1}: ${toolCallCount} tool calls`)
+
+                  return {
+                    iteration: state.iteration + 1,
+                    totalToolCalls,
+                    consecutiveEmptyIterations
+                  }
+                })
             }
+          )
 
-            const toolCallCount = response.toolCalls.length
-            totalToolCalls += toolCallCount
-            hasMoreToolCalls = toolCallCount > 0
-            iteration++
-
-            yield* Effect.log(`Iteration ${iteration}: ${toolCallCount} tool calls`)
-
-            // Early stopping logic - require 2 consecutive empty iterations
-            if (toolCallCount === 0) {
-              consecutiveEmptyIterations++
-              if (iteration >= minIterations && consecutiveEmptyIterations >= 2) {
-                yield* Effect.log("Early stop: model finished research (2 consecutive empty)")
-                break
-              }
-            } else {
-              consecutiveEmptyIterations = 0
-            }
-
-            // Increased from 30 to 60 for more comprehensive artifact exploration
-            if (iteration >= minIterations && totalToolCalls >= 60) {
-              yield* Effect.log(`Early stop: sufficient research (${totalToolCalls} tool calls)`)
-              break
-            }
+          if (loopState.totalToolCalls >= maxToolCalls) {
+            yield* Effect.log(`Early stop: sufficient research (${loopState.totalToolCalls} tool calls)`)
+          } else if (loopState.iteration >= maxIterations) {
+            yield* Effect.log(`Early stop: reached max iterations (${maxIterations})`)
+          } else if (loopState.iteration >= minIterations && loopState.consecutiveEmptyIterations >= 2) {
+            yield* Effect.log("Early stop: model finished research (2 consecutive empty)")
           }
 
-          yield* Effect.log(`Research phase complete: ${totalToolCalls} total tool calls over ${iteration} iterations`)
+          yield* Effect.log(
+            `Research phase complete: ${loopState.totalToolCalls} total tool calls over ${loopState.iteration} iterations`
+          )
 
           // =============================================================================
           // Phase 2: Generate structured output
@@ -886,22 +944,24 @@ Output the complete JSON now.`
             structuredResponse.value,
             dayDataForContext,
             durationMs,
-            totalToolCalls
+            loopState.totalToolCalls
           )
 
-          yield* Effect.log(`Artifact-based research complete for ${artifacts.date}: ${durationMs}ms, ${totalToolCalls} tool calls`)
+          yield* Effect.log(
+            `Artifact-based research complete for ${artifacts.date}: ${durationMs}ms, ${loopState.totalToolCalls} tool calls`
+          )
 
           return {
             context,
             durationMs,
-            toolCallCount: totalToolCalls,
+            toolCallCount: loopState.totalToolCalls,
             tokenUsage
           }
         })
 
       return { research, researchWithArtifacts } satisfies SummaryResearchAgentInterface
     })
-    // Note: CrateToolkit is provided by CrateToolsLive layer at the app boundary
+    // Note: CrateToolkit/CrateToolkitWithContext are provided by CrateToolsWithContextLive at the app boundary
     // Toolkit.make() doesn't create a service with .Default, so we can't include it here
   }
 ) {}
@@ -913,7 +973,7 @@ Output the complete JSON now.`
 /**
  * Live layer for SummaryResearchAgent
  *
- * Note: This layer requires CrateToolkit to be provided externally.
- * Use CrateToolsLive from layers.ts to provide the toolkit handlers.
+ * Note: This layer requires CrateToolkit and CrateToolkitWithContext to be provided externally.
+ * Use CrateToolsWithContextLive from layers.ts to provide the toolkit handlers.
  */
 export const SummaryResearchAgentLive = SummaryResearchAgent.Default

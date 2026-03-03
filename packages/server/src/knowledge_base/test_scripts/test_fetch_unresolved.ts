@@ -12,7 +12,11 @@ const program = Effect.gen(function*() {
   yield* Console.log(unresolved)
 })
 
+const AppLayer = Layer.mergeAll(
+  MusicBrainzService.MusicBrainzService.Default,
+  Layer.scope
+)
+
 program.pipe(
-  Effect.provide(MusicBrainzService.MusicBrainzService.Default),
-  Effect.provide(Layer.scope)
+  Effect.provide(AppLayer)
 ).pipe(BunRuntime.runMain)

@@ -78,24 +78,44 @@ yield* mcp__effect-docs__get_effect_doc({
 - "Schema transformation validation domain modeling"
 - "Service boundaries avoiding requirement leakage"
 
-## Research Protocol: Effect Source Inspection
+## Research Protocol: Local Effect Source
 
-**CRITICAL TRIGGER: Type errors in service definitions you can't resolve**
+**CRITICAL: Always search local Effect source before designing complex services**
 
-When designing services and encountering TypeScript errors:
+This project has the full Effect monorepo available locally at `docs/effect-source/` (symlinked to `~/Dev/effect-source/effect/packages`). Search this source to understand actual implementations, service patterns, and Layer composition.
 
-**Key source files:**
-- `node_modules/effect/src/Context.ts` - Service context and tags
-- `node_modules/effect/src/Layer.ts` - Layer composition
-- `node_modules/@effect/schema/src/Schema.ts` - Schema definitions
-- `node_modules/effect/src/Effect.ts` - Core Effect types
+**Key source files for architecture:**
+- `docs/effect-source/effect/src/Context.ts` - Service context and tags
+- `docs/effect-source/effect/src/Layer.ts` - Layer composition
+- `docs/effect-source/effect/src/Effect.ts` - Core Effect types
+- `docs/effect-source/schema/src/Schema.ts` - Schema definitions
+- `docs/effect-source/platform/src/` - Platform service patterns
 
-**Use Read tool:**
-```typescript
-yield* Read("node_modules/effect/src/Layer.ts")
+**Search commands:**
+```bash
+# Find service patterns
+grep -r "Context.Tag\|Effect.Service" docs/effect-source/
+
+# Find Layer composition patterns
+grep -r "Layer.provide\|Layer.merge" docs/effect-source/
+
+# Search platform services for patterns
+grep -r "export class.*Service" docs/effect-source/platform/src/
+
+# Find usage examples in tests
+grep -r "Layer\." docs/effect-source/effect/test/
 ```
 
-This reveals the actual type constraints and helps resolve complex composition issues.
+**Use Read and Grep tools:**
+```typescript
+// Example: Understanding Layer composition
+yield* Read("docs/effect-source/effect/src/Layer.ts")
+
+// Example: Finding service patterns in platform
+yield* Grep({ pattern: "Effect.Service", path: "docs/effect-source/platform/src/" })
+```
+
+This reveals actual type constraints and idiomatic patterns for service design.
 
 ## When to Research vs When to Design
 

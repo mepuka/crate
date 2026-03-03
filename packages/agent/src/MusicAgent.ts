@@ -756,7 +756,9 @@ Focus on insight types that tell stories (Connection, DiscoveryArc, LocalScene, 
      * 4. Parses insights from response (TODO: structured parsing)
      * 5. Posts enrichments to FAISS API
      */
-    const enrichPlays = (playIds: number[]) =>
+    const enrichPlays = (
+      playIds: number[]
+    ): Effect.Effect<{ count: number }, MusicAgentError, MusicAgentRequirements> =>
       pipe(
         Effect.gen(function* () {
           yield* Effect.logInfo(
@@ -1302,8 +1304,7 @@ export const MusicAgentLive = MusicAgent.Default;
  * }).pipe(Effect.provide(MusicAgentWithAnthropicLive))
  * ```
  */
-export const MusicAgentWithAnthropicLive = Layer.mergeAll(
-  MusicAgentLive,
-  AnthropicModelLive,
-  ServicesFull // Provides ParallelResearchDeps for pre-research phase
+export const MusicAgentWithAnthropicLive = MusicAgentLive.pipe(
+  Layer.provideMerge(ServicesFull),
+  Layer.provideMerge(AnthropicModelLive) // Provides LanguageModel for enrichment
 );

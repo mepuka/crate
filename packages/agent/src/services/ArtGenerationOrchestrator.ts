@@ -14,7 +14,7 @@
  * @module
  */
 
-import { Effect, Context, Layer, Data, Option, Schema, pipe } from "effect";
+import { Effect, Context, Layer, Data, Option, Schema } from "effect";
 import { HttpClient, HttpClientRequest, HttpClientResponse, HttpBody } from "@effect/platform";
 import {
   LinerNoteGenerationService,
@@ -287,25 +287,20 @@ const makeArtGenerationOrchestrator = Effect.gen(function* () {
   const fetchAlbumArt = (
     url: string
   ): Effect.Effect<{ base64: string; mimeType: string }, ArtGenerationError> =>
-    pipe(
-      httpClient.get(url).pipe(
-        HttpClient.mapRequest(
-          HttpClientRequest.setHeaders({
-            "User-Agent": "CrateAgent/1.0",
-            Accept: "image/*",
-          })
-        )
-      ),
-      Effect.flatMap((response) =>
-        Effect.gen(function* () {
-          const buffer = yield* HttpClientResponse.arrayBuffer(response);
-          const base64 = Buffer.from(buffer).toString("base64");
-          const contentType =
-            response.headers["content-type"] || "image/jpeg";
-          const mimeType = contentType.split(";")[0].trim();
-          return { base64, mimeType };
+    Effect.gen(function* () {
+      const request = HttpClientRequest.get(url).pipe(
+        HttpClientRequest.setHeaders({
+          "User-Agent": "CrateAgent/1.0",
+          Accept: "image/*",
         })
-      ),
+      );
+      const response = yield* httpClient.execute(request);
+      const buffer = yield* response.arrayBuffer;
+      const base64 = Buffer.from(buffer).toString("base64");
+      const contentType = response.headers["content-type"] || "image/jpeg";
+      const mimeType = contentType.split(";")[0].trim();
+      return { base64, mimeType };
+    }).pipe(
       Effect.mapError(
         (e) =>
           new ArtGenerationError({
