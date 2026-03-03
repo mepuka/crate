@@ -1,7 +1,9 @@
 """Tests for database service."""
+
 import sqlite3
-from pathlib import Path
+
 import pytest
+
 from app.services.db_service import DatabaseService
 
 
@@ -14,36 +16,102 @@ def test_db_path(tmp_path):
 
     # Create schema
     cursor.execute("""
-        CREATE TABLE plays (
+        CREATE TABLE fact_plays (
             id INTEGER PRIMARY KEY,
+            airdate TEXT NOT NULL,
+            show INTEGER NOT NULL,
             artist TEXT NOT NULL,
             song TEXT NOT NULL,
             album TEXT,
-            airdate TEXT,
             labels TEXT,
+            artist_ids TEXT,
+            recording_id TEXT,
+            release_id TEXT,
+            release_group_id TEXT,
+            track_id TEXT,
             rotation_status TEXT,
             is_local INTEGER DEFAULT 0,
             is_live INTEGER DEFAULT 0,
             is_request INTEGER DEFAULT 0,
             comment TEXT,
-            show INTEGER,
-            artist_mbid TEXT,
-            recording_mbid TEXT,
-            release_mbid TEXT,
-            release_group_mbid TEXT
+            image_uri TEXT,
+            thumbnail_uri TEXT
         )
     """)
 
     # Insert test data
     test_plays = [
-        (1, "IDLES", "Mr. Motivator", "Live At KEXP", "2020-10-15T14:23:00", '["KEXP"]', "Library", 0, 1, 0, "High energy", 63830, None, None, None, None),
-        (2, "Madvillain", "All Caps", "Madvillainy", "2019-05-10T10:00:00", '["Stones Throw"]', "Heavy", 0, 0, 0, "Classic", 63829, None, None, None, None),
-        (3, "Test Artist", "Test Song", None, None, '[]', None, 1, 0, 1, None, None, "mbid-123", "mbid-456", None, None),
+        (
+            1,
+            "2020-10-15T14:23:00",
+            63830,
+            "IDLES",
+            "Mr. Motivator",
+            "Live At KEXP",
+            '["KEXP"]',
+            '["artist-mbid-1"]',
+            "recording-mbid-1",
+            "release-mbid-1",
+            "release-group-mbid-1",
+            None,
+            "Library",
+            0,
+            1,
+            0,
+            "High energy",
+            None,
+            None,
+        ),
+        (
+            2,
+            "2019-05-10T10:00:00",
+            63829,
+            "Madvillain",
+            "All Caps",
+            "Madvillainy",
+            '["Stones Throw"]',
+            '["artist-mbid-2"]',
+            "recording-mbid-2",
+            "release-mbid-2",
+            "release-group-mbid-2",
+            None,
+            "Heavy",
+            0,
+            0,
+            0,
+            "Classic",
+            None,
+            None,
+        ),
+        (
+            3,
+            "2018-01-01T00:00:00",
+            63828,
+            "Test Artist",
+            "Test Song",
+            None,
+            "[]",
+            '["mbid-123"]',
+            "mbid-456",
+            None,
+            None,
+            None,
+            None,
+            1,
+            0,
+            1,
+            None,
+            None,
+            None,
+        ),
     ]
 
-    cursor.executemany("""
-        INSERT INTO plays VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, test_plays)
+    cursor.executemany(
+        """
+        INSERT INTO fact_plays VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+        test_plays,
+    )
 
     conn.commit()
     conn.close()
@@ -64,9 +132,9 @@ def test_get_play_by_id(test_db_path):
 
     play = db.get_play_by_id(1)
     assert play is not None
-    assert play['id'] == 1
-    assert play['artist'] == "IDLES"
-    assert play['song'] == "Mr. Motivator"
+    assert play["id"] == 1
+    assert play["artist"] == "IDLES"
+    assert play["song"] == "Mr. Motivator"
 
     db.close()
 
@@ -90,8 +158,8 @@ def test_get_plays_by_ids(test_db_path):
     assert 1 in plays
     assert 2 in plays
     assert 3 in plays
-    assert plays[1]['artist'] == "IDLES"
-    assert plays[2]['artist'] == "Madvillain"
+    assert plays[1]["artist"] == "IDLES"
+    assert plays[2]["artist"] == "Madvillain"
 
     db.close()
 

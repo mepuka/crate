@@ -1,7 +1,8 @@
 """Hybrid search service combining FTS5 and FAISS with RRF."""
+
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .db_service import DatabaseService
@@ -13,11 +14,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class HybridResult:
     """Single result from hybrid search."""
+
     play_id: int
     rrf_score: float
-    bm25_rank: Optional[int] = None
-    faiss_rank: Optional[int] = None
-    faiss_score: Optional[float] = None
+    bm25_rank: int | None = None
+    faiss_rank: int | None = None
+    faiss_score: float | None = None
 
 
 class HybridSearchService:
@@ -30,11 +32,7 @@ class HybridSearchService:
 
     RRF_K = 60  # Standard RRF constant
 
-    def __init__(
-        self,
-        db_service: "DatabaseService",
-        search_service: "SearchService"
-    ):
+    def __init__(self, db_service: "DatabaseService", search_service: "SearchService"):
         """
         Initialize hybrid search service.
 
@@ -44,7 +42,7 @@ class HybridSearchService:
         """
         self.db = db_service
         self.faiss = search_service
-        self._fts5_available: Optional[bool] = None
+        self._fts5_available: bool | None = None
 
     @property
     def fts5_available(self) -> bool:
@@ -63,8 +61,8 @@ class HybridSearchService:
         k: int = 50,
         bm25_weight: float = 0.5,
         faiss_weight: float = 0.5,
-        use_expansion: bool = True
-    ) -> List[HybridResult]:
+        use_expansion: bool = True,
+    ) -> list[HybridResult]:
         """
         Perform hybrid search with RRF fusion.
 
@@ -81,8 +79,8 @@ class HybridSearchService:
         # Over-fetch from each system for good RRF overlap
         fetch_k = min(k * 2, 200)
 
-        bm25_results: Dict[int, int] = {}  # play_id -> rank
-        faiss_results: Dict[int, Tuple[int, float]] = {}  # play_id -> (rank, score)
+        bm25_results: dict[int, int] = {}  # play_id -> rank
+        faiss_results: dict[int, tuple[int, float]] = {}  # play_id -> (rank, score)
 
         # FTS5 search (if enabled and weighted)
         if bm25_weight > 0 and self.fts5_available:
@@ -103,8 +101,7 @@ class HybridSearchService:
                 play_ids, distances = self.faiss.search_and_map(query, k=fetch_k)
 
                 for rank, (play_id, score) in enumerate(
-                    zip(play_ids.tolist(), distances.tolist()),
-                    start=1
+                    zip(play_ids.tolist(), distances.tolist(), strict=False), start=1
                 ):
                     faiss_results[play_id] = (rank, float(score))
                 logger.debug(f"FAISS returned {len(play_ids)} results for '{query}'")
@@ -118,7 +115,7 @@ class HybridSearchService:
             logger.warning(f"No results found for query: {query}")
             return []
 
-        results: List[HybridResult] = []
+        results: list[HybridResult] = []
         for play_id in all_play_ids:
             rrf_score = 0.0
             bm25_rank = bm25_results.get(play_id)
@@ -132,13 +129,15 @@ class HybridSearchService:
             if faiss_rank is not None:
                 rrf_score += faiss_weight * (1.0 / (self.RRF_K + faiss_rank))
 
-            results.append(HybridResult(
-                play_id=play_id,
-                rrf_score=rrf_score,
-                bm25_rank=bm25_rank,
-                faiss_rank=faiss_rank,
-                faiss_score=faiss_score
-            ))
+            results.append(
+                HybridResult(
+                    play_id=play_id,
+                    rrf_score=rrf_score,
+                    bm25_rank=bm25_rank,
+                    faiss_rank=faiss_rank,
+                    faiss_score=faiss_score,
+                )
+            )
 
         # Sort by RRF score descending, take top k
         results.sort(key=lambda r: r.rrf_score, reverse=True)

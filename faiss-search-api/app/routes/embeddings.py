@@ -10,7 +10,7 @@ All operations use streaming, mmap, and temp files to stay within 4GB RAM constr
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 import numpy as np
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -200,7 +200,7 @@ async def get_pending_embeddings(
         if not pending_ids:
             logger.info("No pending plays found")
             return PendingPlaysResponse(
-                batch_id=datetime.utcnow().isoformat(), plays=[], total_pending=0
+                batch_id=datetime.now(UTC).isoformat(), plays=[], total_pending=0
             )
 
         # Fetch play metadata from database
@@ -231,7 +231,7 @@ async def get_pending_embeddings(
         logger.info(f"Returning {len(plays)} pending plays (total pending: {total_pending})")
 
         return PendingPlaysResponse(
-            batch_id=datetime.utcnow().isoformat(), plays=plays, total_pending=total_pending
+            batch_id=datetime.now(UTC).isoformat(), plays=plays, total_pending=total_pending
         )
 
     except Exception as e:
@@ -439,7 +439,7 @@ async def add_embeddings(
 
             # Validate and convert embeddings in worker thread to keep event loop responsive.
             embeddings = await anyio.to_thread.run_sync(
-                _prepare_add_embeddings, request.play_ids, request.embeddings
+                lambda: _prepare_add_embeddings(request.play_ids, request.embeddings)
             )
 
             # Run in thread pool to avoid blocking the event loop

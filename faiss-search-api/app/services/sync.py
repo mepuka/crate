@@ -8,12 +8,13 @@ Implements two-level locking:
 Uses threading.Lock (not asyncio.Lock) for reliable try-acquire semantics.
 asyncio.wait_for with timeout is unreliable for non-blocking acquire.
 """
+
+import logging
 import threading
 import time
-import anyio
 from contextlib import asynccontextmanager
-from typing import Optional
-import logging
+
+import anyio
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 class IntegrationInProgressError(Exception):
     """Raised when /add is attempted during integration."""
 
-    def __init__(self, duration_seconds: Optional[float] = None):
+    def __init__(self, duration_seconds: float | None = None):
         self.duration_seconds = duration_seconds
         msg = "Integration in progress"
         if duration_seconds:
@@ -49,7 +50,7 @@ class IndexSynchronizer:
 
     def __init__(self):
         self._lock = threading.Lock()  # NOT asyncio.Lock - for reliable try-acquire
-        self._integration_started_at: Optional[float] = None
+        self._integration_started_at: float | None = None
 
     @asynccontextmanager
     async def integration_context(self):
@@ -93,9 +94,7 @@ class IndexSynchronizer:
         """
         # True non-blocking acquire: acquire(blocking=False) returns immediately
         # Use lambda to wrap the call for anyio.to_thread.run_sync
-        acquired = await anyio.to_thread.run_sync(
-            lambda: self._lock.acquire(blocking=False)
-        )
+        acquired = await anyio.to_thread.run_sync(lambda: self._lock.acquire(blocking=False))
         if not acquired:
             duration = None
             if self._integration_started_at:
@@ -116,7 +115,7 @@ class IndexSynchronizer:
         return self._lock.locked()
 
     @property
-    def integration_duration(self) -> Optional[float]:
+    def integration_duration(self) -> float | None:
         """Get duration of current integration (None if not running)."""
         if self._integration_started_at:
             return time.time() - self._integration_started_at

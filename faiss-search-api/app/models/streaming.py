@@ -1,4 +1,5 @@
-from typing import Literal, Optional, List
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 StreamingPlatform = Literal["spotify", "apple_music", "bandcamp", "soundcloud", "youtube_music"]
@@ -10,24 +11,24 @@ class StreamingLink(BaseModel):
     platform: StreamingPlatform
     kind: StreamingLinkKind
     url: str
-    id: Optional[str] = None
-    display: Optional[str] = None
-    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    id: str | None = None
+    display: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     source: StreamingLinkSource
 
 
 class StreamingLinksRequest(BaseModel):
-    recording_mbid: Optional[str] = None
-    release_group_mbid: Optional[str] = None
-    release_mbid: Optional[str] = None
-    artist_mbid: Optional[str] = None
-    storefront: Optional[str] = Field(
+    recording_mbid: str | None = None
+    release_group_mbid: str | None = None
+    release_mbid: str | None = None
+    artist_mbid: str | None = None
+    storefront: str | None = Field(
         default=None,
-        description="Apple Music storefront code (e.g., 'us'). Defaults to 'us' if not provided."
+        description="Apple Music storefront code (e.g., 'us'). Defaults to 'us' if not provided.",
     )
 
 
 class StreamingLinksResponse(BaseModel):
-    links: List[StreamingLink]
+    links: list[StreamingLink]
     resolved_from: StreamingLinkSource
-    resolved_ids: Optional[dict] = None
+    resolved_ids: dict | None = None

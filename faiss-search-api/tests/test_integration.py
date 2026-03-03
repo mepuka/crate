@@ -4,30 +4,33 @@ Integration test with real data files.
 This test requires actual data files to be present in data/ directory.
 Skip if running in CI without data.
 """
-import pytest
+
 from pathlib import Path
 
+import pytest
+
 # Check if data files exist before importing services (to avoid import errors)
-DATA_FILES_EXIST = all([
-    Path("data/embeddings_256d.npy").exists(),
-    Path("data/play_ids.npy").exists(),
-    Path("data/pca_transformer_256d.joblib").exists(),
-    Path("data/embeddings_256d.index").exists(),
-    Path("data/metadata.json").exists(),
-    Path("data/music_kb.sqlite").exists(),
-])
+DATA_FILES_EXIST = all(
+    [
+        Path("data/embeddings_256d.npy").exists(),
+        Path("data/play_ids.npy").exists(),
+        Path("data/pca_transformer_256d.joblib").exists(),
+        Path("data/embeddings_256d.index").exists(),
+        Path("data/metadata.json").exists(),
+        Path("data/music_kb.sqlite").exists(),
+    ]
+)
 
 
 @pytest.mark.skipif(
-    not DATA_FILES_EXIST,
-    reason="Integration test requires real data files in data/ directory"
+    not DATA_FILES_EXIST, reason="Integration test requires real data files in data/ directory"
 )
 def test_full_search_pipeline():
     """Test complete search pipeline with real data."""
     # Import services only when running the test (to avoid import errors when skipping)
-    from app.services.search_service import FAISSSearchService
-    from app.services.db_service import DatabaseService
     from app.config import settings
+    from app.services.db_service import DatabaseService
+    from app.services.search_service import FAISSSearchService
 
     # Initialize services
     search_svc = FAISSSearchService(
@@ -35,7 +38,7 @@ def test_full_search_pipeline():
         play_ids_path=settings.PLAY_IDS_PATH,
         pca_path=settings.PCA_PATH,
         index_path=settings.INDEX_PATH,
-        metadata_path=settings.METADATA_PATH
+        metadata_path=settings.METADATA_PATH,
     )
     search_svc.initialize()
 
@@ -62,7 +65,7 @@ def test_full_search_pipeline():
 
     db_svc.close()
 
-    print(f"\n✓ Integration test passed")
+    print("\n✓ Integration test passed")
     print(f"  Query: '{query}'")
     print(f"  Results: {len(plays)}")
     print(f"  Top similarity: {distances[0]:.4f}")

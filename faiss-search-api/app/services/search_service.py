@@ -1,18 +1,22 @@
 """FAISS-based semantic search service."""
-import faiss
-import pickle
-import numpy as np
-from pathlib import Path
-from typing import Optional, Tuple
+
 import json
 import logging
+import pickle
 import threading
+from pathlib import Path
+
+import faiss
+import numpy as np
 
 try:
     import joblib
+
     HAS_JOBLIB = True
 except ImportError:
     HAS_JOBLIB = False
+
+import contextlib
 
 from sentence_transformers import SentenceTransformer
 
@@ -38,12 +42,12 @@ class FAISSSearchService:
         self,
         embeddings_path: Path,
         play_ids_path: Path,
-        pca_path: Optional[Path] = None,
-        index_path: Optional[Path] = None,
-        metadata_path: Optional[Path] = None,
+        pca_path: Path | None = None,
+        index_path: Path | None = None,
+        metadata_path: Path | None = None,
         nlist: int = 1024,
         nprobe: int = 10,
-        skip_embeddings_load: bool = True  # FAISS index contains vectors, .npy not needed
+        skip_embeddings_load: bool = True,  # FAISS index contains vectors, .npy not needed
     ):
         """
         Initialize the FAISS search service.
@@ -77,18 +81,18 @@ class FAISSSearchService:
             self.index_path = Path(index_path)
         else:
             # Derive from embeddings path (e.g., embeddings_384d.npy -> embeddings_384d.index)
-            self.index_path = self.embeddings_path.with_suffix('.index')
+            self.index_path = self.embeddings_path.with_suffix(".index")
 
         self.nlist = nlist
         self.nprobe = nprobe
 
         # Will be loaded during initialization
-        self.embeddings: Optional[np.ndarray] = None
-        self.play_ids: Optional[np.ndarray] = None
-        self.index: Optional[faiss.Index] = None
-        self.pca: Optional[object] = None  # None for BGE-small (native 384d)
-        self.model: Optional[SentenceTransformer] = None
-        self.model_name: Optional[str] = None
+        self.embeddings: np.ndarray | None = None
+        self.play_ids: np.ndarray | None = None
+        self.index: faiss.Index | None = None
+        self.pca: object | None = None  # None for BGE-small (native 384d)
+        self.model: SentenceTransformer | None = None
+        self.model_name: str | None = None
         self.embedding_dim: int = 384  # Default to BGE-small
         self.pca_applied: bool = False  # True only for legacy indexes
         self.dirty: bool = False  # Track if index has unsaved changes
@@ -109,15 +113,17 @@ class FAISSSearchService:
         if not self.metadata_path.exists():
             raise FileNotFoundError(f"Metadata not found: {self.metadata_path}")
 
-        with open(self.metadata_path, 'r') as f:
+        with open(self.metadata_path) as f:
             metadata = json.load(f)
 
         # Load model configuration
-        self.model_name = metadata.get('model_name', 'BAAI/bge-small-en-v1.5')
-        self.embedding_dim = metadata.get('embedding_dim', 384)
-        self.pca_applied = metadata.get('pca_applied', False)
+        self.model_name = metadata.get("model_name", "BAAI/bge-small-en-v1.5")
+        self.embedding_dim = metadata.get("embedding_dim", 384)
+        self.pca_applied = metadata.get("pca_applied", False)
 
-        logger.info(f"Metadata: model={self.model_name}, dim={self.embedding_dim}, pca={self.pca_applied}")
+        logger.info(
+            f"Metadata: model={self.model_name}, dim={self.embedding_dim}, pca={self.pca_applied}"
+        )
         return metadata
 
     def load_embeddings(self):
@@ -131,7 +137,7 @@ class FAISSSearchService:
             return
 
         logger.info(f"Loading embeddings from {self.embeddings_path}")
-        self.embeddings = np.load(self.embeddings_path).astype('float32')
+        self.embeddings = np.load(self.embeddings_path).astype("float32")
         logger.info(f"✓ Loaded embeddings: {self.embeddings.shape}")
 
     def load_play_ids(self):
@@ -141,7 +147,7 @@ class FAISSSearchService:
 
         logger.info(f"Loading play IDs from {self.play_ids_path} (mmap)")
         # Use mmap_mode='r' to map file into memory without loading fully
-        self.play_ids = np.load(self.play_ids_path, mmap_mode='r')
+        self.play_ids = np.load(self.play_ids_path, mmap_mode="r")
         logger.info(f"✓ Loaded play IDs: {self.play_ids.shape}")
 
         # Verify alignment (only if embeddings were loaded)
@@ -161,12 +167,12 @@ class FAISSSearchService:
 
         logger.info(f"Loading PCA transformer from {self.pca_path}")
 
-        if self.pca_path.suffix == '.joblib':
+        if self.pca_path.suffix == ".joblib":
             if not HAS_JOBLIB:
                 raise ImportError("joblib required for .joblib files")
             self.pca = joblib.load(self.pca_path)
         else:
-            with open(self.pca_path, 'rb') as f:
+            with open(self.pca_path, "rb") as f:
                 self.pca = pickle.load(f)
 
         logger.info(f"✓ PCA loaded: {self.pca.n_components_} components")
@@ -191,9 +197,11 @@ class FAISSSearchService:
             self.index = faiss.read_index(str(self.index_path), faiss.IO_FLAG_MMAP)
             self._index_is_mmap = True  # Track mmap state for mutation safety
             # Only set nprobe for IVF indexes (not IndexFlatIP)
-            if hasattr(self.index, 'nprobe'):
+            if hasattr(self.index, "nprobe"):
                 self.index.nprobe = self.nprobe
-            logger.info(f"✓ Index loaded: {self.index.ntotal:,} vectors (mmap, v{self._index_version})")
+            logger.info(
+                f"✓ Index loaded: {self.index.ntotal:,} vectors (mmap, v{self._index_version})"
+            )
 
     def encode_query(self, query_text: str) -> np.ndarray:
         """
@@ -217,27 +225,22 @@ class FAISSSearchService:
             # Re-normalize after PCA
             query_embedding = query_embedding / np.linalg.norm(query_embedding)
 
-        return query_embedding.astype('float32')
+        return query_embedding.astype("float32")
 
     def _search_internal(
-        self,
-        query: str,
-        k: int = 10
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        self, query_vector: np.ndarray, k: int = 10
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Internal search - caller must hold mutex.
 
         Args:
-            query: Search query text
+            query_vector: Encoded query vector
             k: Number of results to return
 
         Returns:
             Tuple of (indices, distances) where indices are FAISS indices.
             Filters out -1 indices (FAISS returns -1 when probe can't supply k hits).
         """
-        # Encode query (model is thread-safe for inference)
-        query_vector = self.encode_query(query)
-
         # Reshape for FAISS
         query_vector = query_vector.reshape(1, -1)
 
@@ -251,11 +254,7 @@ class FAISSSearchService:
 
         return indices_1d[valid_mask], distances_1d[valid_mask]
 
-    def search(
-        self,
-        query: str,
-        k: int = 10
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def search(self, query: str, k: int = 10) -> tuple[np.ndarray, np.ndarray]:
         """
         Thread-safe search for similar embeddings.
 
@@ -269,14 +268,12 @@ class FAISSSearchService:
             Tuple of (indices, distances) where indices are FAISS indices.
             Filters out -1 indices (FAISS returns -1 when probe can't supply k hits).
         """
+        # Encode outside mutex to maximize concurrent request throughput.
+        query_vector = self.encode_query(query)
         with self._mutex:
-            return self._search_internal(query, k)
+            return self._search_internal(query_vector, k)
 
-    def search_and_map(
-        self,
-        query: str,
-        k: int = 10
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def search_and_map(self, query: str, k: int = 10) -> tuple[np.ndarray, np.ndarray]:
         """
         ATOMIC search + ID mapping - holds mutex for entire operation.
 
@@ -290,8 +287,10 @@ class FAISSSearchService:
         Returns:
             Tuple of (play_ids, distances) - NOT raw FAISS indices
         """
+        # Encode outside mutex to avoid serializing model inference.
+        query_vector = self.encode_query(query)
         with self._mutex:
-            indices, distances = self._search_internal(query, k)
+            indices, distances = self._search_internal(query_vector, k)
             play_ids = self.play_ids[indices]
             return play_ids, distances
 
@@ -325,11 +324,7 @@ class FAISSSearchService:
         logger.info("✓ Initialization complete")
         logger.info("=" * 80)
 
-    def add_embeddings(
-        self,
-        play_ids: list[int],
-        embeddings: np.ndarray
-    ) -> dict:
+    def add_embeddings(self, play_ids: list[int], embeddings: np.ndarray) -> dict:
         """
         Thread-safe add of new embeddings to the in-memory FAISS index.
 
@@ -356,9 +351,7 @@ class FAISSSearchService:
 
             # Validate embeddings shape
             if embeddings.shape[0] != n_new:
-                raise ValueError(
-                    f"Mismatch: {n_new} play_ids but {embeddings.shape[0]} embeddings"
-                )
+                raise ValueError(f"Mismatch: {n_new} play_ids but {embeddings.shape[0]} embeddings")
             if embeddings.shape[1] != self.embedding_dim:
                 raise ValueError(
                     f"Wrong dimension: expected {self.embedding_dim}, got {embeddings.shape[1]}"
@@ -373,7 +366,7 @@ class FAISSSearchService:
                 logger.info(f"✓ Index cloned to RAM ({self.index.ntotal:,} vectors)")
 
             # Ensure float32 and normalized
-            embeddings = embeddings.astype('float32')
+            embeddings = embeddings.astype("float32")
             faiss.normalize_L2(embeddings)
 
             # Add to FAISS index (IVFFlat supports this without retraining)
@@ -399,7 +392,7 @@ class FAISSSearchService:
             return {
                 "added": n_new,
                 "total_vectors": self.index.ntotal,
-                "persisted": False  # Defer persistence
+                "persisted": False,  # Defer persistence
             }
 
     def _persist_index(self) -> bool:
@@ -413,8 +406,6 @@ class FAISSSearchService:
             True if persisted successfully, False otherwise
         """
         import os
-        import shutil
-        import tempfile
 
         tmp_index_path = None
         tmp_ids_path = None
@@ -446,10 +437,8 @@ class FAISSSearchService:
             # Clean up temp files if they exist
             for path in [tmp_index_path, tmp_ids_path]:
                 if path and os.path.exists(path):
-                    try:
+                    with contextlib.suppress(Exception):
                         os.unlink(path)
-                    except Exception:
-                        pass
             return False
 
     def persist_if_needed(self) -> bool:
@@ -486,13 +475,9 @@ class FAISSSearchService:
             raise RuntimeError("Embedding model not initialized")
 
         # BGE-small expects normalized embeddings
-        embeddings = self.model.encode(
-            texts,
-            normalize_embeddings=True,
-            show_progress_bar=False
-        )
+        embeddings = self.model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
 
-        return embeddings.astype('float32')
+        return embeddings.astype("float32")
 
     def hot_reload(self):
         """
@@ -512,19 +497,18 @@ class FAISSSearchService:
             self._index_is_mmap = True
 
             # Set nprobe for IVF indexes
-            if hasattr(self.index, 'nprobe'):
+            if hasattr(self.index, "nprobe"):
                 self.index.nprobe = self.nprobe
 
             # Load updated play_ids with mmap
-            self.play_ids = np.load(self.play_ids_path, mmap_mode='r')
+            self.play_ids = np.load(self.play_ids_path, mmap_mode="r")
 
             # Increment version and clear dirty flag
             self._index_version += 1
             self.dirty = False
 
             logger.info(
-                f"✓ Hot reloaded: {self.index.ntotal:,} vectors, "
-                f"v{self._index_version} (mmap)"
+                f"✓ Hot reloaded: {self.index.ntotal:,} vectors, v{self._index_version} (mmap)"
             )
 
     @property

@@ -1,55 +1,71 @@
 """FastAPI application for FAISS semantic search."""
-from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.middleware.cors import CORSMiddleware
+
+import asyncio
+import logging
+import threading
+import time
+from contextlib import asynccontextmanager, suppress
+from urllib.parse import quote, urlparse
+
+import anyio
+import httpx
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-import httpx
-from urllib.parse import urlparse, quote
-from contextlib import asynccontextmanager
-import time
-import logging
-from typing import Optional
-import anyio
-import asyncio
 
-from .services.search_service import FAISSSearchService
-from .services.db_service import DatabaseService
-from .services.hybrid_search_service import HybridSearchService
-from .services.sync import IndexSynchronizer
+from .config import settings
 from .models import (
-    SearchRequest, SearchResponse, HealthResponse, PlayResult, TimelineResponse,
-    BatchPlaysResponse, PlayCountResponse, UnprocessedPlaysResponse,
-    HybridSearchRequest, HybridSearchResponse, HybridPlayResult,
-    StreamingLinksRequest, StreamingLinksResponse, StreamingLink,
-    DataHealthResponse, TableHealth
+    BatchPlaysResponse,
+    DataHealthResponse,
+    HealthResponse,
+    HybridPlayResult,
+    HybridSearchRequest,
+    HybridSearchResponse,
+    PlayCountResponse,
+    PlayResult,
+    SearchRequest,
+    SearchResponse,
+    StreamingLink,
+    StreamingLinksRequest,
+    StreamingLinksResponse,
+    TableHealth,
+    TimelineResponse,
+    UnprocessedPlaysResponse,
 )
 from .models.insights import (
-    CreateInsightsRequest, InsightsResponse, GetInsightsResponse,
-    Insight, extract_referenced_mbids, generate_summary
+    CreateInsightsRequest,
+    GetInsightsResponse,
+    InsightsResponse,
+    extract_referenced_mbids,
+    generate_summary,
 )
-from .config import settings
-from .routes import graph, summary
-import json
-import os
-from fastapi import Header
+from .routes import embeddings, graph, summary
+from .security import require_api_key
+from .services.db_service import DatabaseService
+from .services.hybrid_search_service import HybridSearchService
+from .services.search_service import FAISSSearchService
+from .services.sync import IndexSynchronizer
 
 # Logging
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
 # Global service instances
-search_service: Optional[FAISSSearchService] = None
-hybrid_search_service: Optional[HybridSearchService] = None
-db_service: Optional[DatabaseService] = None
+search_service: FAISSSearchService | None = None
+hybrid_search_service: HybridSearchService | None = None
+db_service: DatabaseService | None = None
 index_synchronizer: IndexSynchronizer = IndexSynchronizer()  # Shared lock for /add vs /integrate
 startup_time: float = 0
-persistence_task: Optional[asyncio.Task] = None
+persistence_task: asyncio.Task | None = None
+_data_health_cache_lock = threading.Lock()
+_data_health_cache_entry: tuple[float, DataHealthResponse] | None = None
 
 
 async def background_persistence_loop():
@@ -111,7 +127,7 @@ async def lifespan(app: FastAPI):
                 metadata_path=settings.METADATA_PATH,
                 nlist=settings.FAISS_NLIST,
                 nprobe=settings.FAISS_NPROBE,
-                skip_embeddings_load=True  # FAISS index contains vectors, .npy not needed
+                skip_embeddings_load=True,  # FAISS index contains vectors, .npy not needed
             )
             search_service.initialize()
             logger.info("Search service initialized")
@@ -119,14 +135,15 @@ async def lifespan(app: FastAPI):
             # Initialize hybrid search with FTS5 (zero RAM overhead)
             # FTS5 runs in SQLite - no memory cost vs rank_bm25 Python library
             hybrid_search_service = HybridSearchService(
-                db_service=db_service,
-                search_service=search_service
+                db_service=db_service, search_service=search_service
             )
             logger.info(f"Hybrid search initialized (FTS5: {hybrid_search_service.fts5_available})")
 
         except FileNotFoundError as e:
             logger.warning(f"Search service disabled - missing embedding files: {e}")
-            logger.warning("To enable search, upload: play_ids.npy, embeddings_384d.index, metadata.json")
+            logger.warning(
+                "To enable search, upload: play_ids.npy, embeddings_384d.index, metadata.json"
+            )
             search_service = None
             hybrid_search_service = None
 
@@ -142,17 +159,14 @@ async def lifespan(app: FastAPI):
     yield  # Server runs
 
     # Shutdown
-    # Shutdown
     logger.info("Shutting down...")
-    
+
     # Cancel persistence loop
     if persistence_task:
         persistence_task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await persistence_task
-        except asyncio.CancelledError:
-            pass
-            
+
     # Final persist
     if search_service:
         logger.info("Running final index persistence...")
@@ -175,15 +189,16 @@ class CacheHeadersMiddleware(BaseHTTPMiddleware):
 
     # Cache durations in seconds
     CACHE_DURATIONS = {
-        "/api/health": 30,                    # 30 seconds - health should be fresh
-        "/api/search": 604800,                # 1 week (7 days)
-        "/api/plays/timeline": 30,            # 30 seconds - live updates need fresh data
-        "/api/plays/count": 300,              # 5 minutes - entity play counts are semi-stable
-        "/api/graph/connections": 604800,     # 1 week - deterministic graph data
-        "/api/image-proxy": 2592000,          # 30 days - images are static
-        "/openapi.json": 3600,                # 1 hour
-        "/docs": 3600,                        # 1 hour
-        "/redoc": 3600,                       # 1 hour
+        "/api/health": 30,  # 30 seconds - health should be fresh
+        "/api/health/data": 60,  # 60 seconds - expensive completeness checks
+        "/api/search": 604800,  # 1 week (7 days)
+        "/api/plays/timeline": 30,  # 30 seconds - live updates need fresh data
+        "/api/plays/count": 300,  # 5 minutes - entity play counts are semi-stable
+        "/api/graph/connections": 604800,  # 1 week - deterministic graph data
+        "/api/image-proxy": 2592000,  # 30 days - images are static
+        "/openapi.json": 3600,  # 1 hour
+        "/docs": 3600,  # 1 hour
+        "/redoc": 3600,  # 1 hour
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -249,6 +264,7 @@ app.add_middleware(CacheHeadersMiddleware)
 # Include routers
 app.include_router(graph.router)
 app.include_router(summary.router)
+app.include_router(embeddings.router)
 
 
 # Dependency injection
@@ -257,12 +273,12 @@ def get_search_service() -> FAISSSearchService:
     if search_service is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Search service not available - embedding files missing"
+            detail="Search service not available - embedding files missing",
         )
     return search_service
 
 
-def get_search_service_optional() -> Optional[FAISSSearchService]:
+def get_search_service_optional() -> FAISSSearchService | None:
     """Get search service (optional - returns None if not available)."""
     return search_service
 
@@ -272,7 +288,7 @@ def get_db_service() -> DatabaseService:
     if db_service is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database service not initialized"
+            detail="Database service not initialized",
         )
     return db_service
 
@@ -282,7 +298,7 @@ def get_hybrid_search_service() -> HybridSearchService:
     if hybrid_search_service is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Hybrid search service not available - BM25 index not built"
+            detail="Hybrid search service not available - BM25 index not built",
         )
     return hybrid_search_service
 
@@ -297,30 +313,23 @@ app.dependency_overrides[graph.get_db_service] = get_db_service
     response_model=HealthResponse,
     tags=["health"],
     summary="Health check",
-    description="Check service health and readiness"
+    description="Check service health and readiness",
 )
 async def health_check(
-    search: Optional[FAISSSearchService] = Depends(get_search_service_optional),
-    db: DatabaseService = Depends(get_db_service)
+    search: FAISSSearchService | None = Depends(get_search_service_optional),
+    db: DatabaseService = Depends(get_db_service),
 ) -> HealthResponse:
     """Health check endpoint."""
     try:
         import psutil
+
         process = psutil.Process()
         memory_mb = process.memory_info().rss / 1024 / 1024
     except ImportError:
         memory_mb = 0.0
 
-    # Check database connectivity with lightweight query
-    db_connected = False
-    try:
-        cursor = db.conn.cursor()
-        cursor.execute("SELECT 1")
-        cursor.fetchone()
-        db_connected = True
-    except Exception as e:
-        logger.warning(f"Database health check failed: {e}")
-        db_connected = False
+    # Check database connectivity in a worker thread.
+    db_connected = await anyio.to_thread.run_sync(_check_database_connectivity, db)
 
     # Determine search status
     search_available = search is not None and search.index is not None
@@ -328,10 +337,7 @@ async def health_check(
     total_vectors = search.index.ntotal if search_available else 0
 
     # Status: ok if db works, degraded if search missing
-    if db_connected:
-        api_status = "ok" if search_available else "degraded"
-    else:
-        api_status = "error"
+    api_status = ("ok" if search_available else "degraded") if db_connected else "error"
 
     # Get embedding dimension from search service
     embedding_dim = search.embedding_dim if search_available else settings.EMBEDDING_DIM
@@ -343,31 +349,35 @@ async def health_check(
         total_vectors=total_vectors,
         embedding_dimension=embedding_dim,
         memory_usage_mb=memory_mb,
-        uptime_seconds=time.time() - startup_time
+        uptime_seconds=time.time() - startup_time,
     )
 
 
 # Critical tables with minimum expected row counts for data completeness
 CRITICAL_TABLES = {
-    "fact_plays": 2_000_000,      # ~2.2M plays - CRITICAL if empty
-    "insights": 0,                 # Grows over time, may be empty
-    "mb_artists": 50_000,          # ~68K expected
-    "mb_recordings": 100_000,      # ~163K expected
-    "play_artists": 1_500_000,     # ~1.8M expected
+    "fact_plays": 2_000_000,  # ~2.2M plays - CRITICAL if empty
+    "insights": 0,  # Grows over time, may be empty
+    "mb_artists": 50_000,  # ~68K expected
+    "mb_recordings": 100_000,  # ~163K expected
+    "play_artists": 1_500_000,  # ~1.8M expected
 }
 
 
-@app.get(
-    "/api/health/data",
-    response_model=DataHealthResponse,
-    tags=["health"],
-    summary="Data completeness check",
-    description="Verify database data completeness - row counts, recent data, critical tables"
-)
-async def data_health_check(
-    db: DatabaseService = Depends(get_db_service)
-) -> DataHealthResponse:
-    """Data completeness health check endpoint."""
+def _check_database_connectivity(db: DatabaseService) -> bool:
+    """Run a lightweight DB connectivity check."""
+    try:
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchone()
+        return True
+    except Exception as e:
+        logger.warning(f"Database health check failed: {e}")
+        return False
+
+
+def _compute_data_health(db: DatabaseService) -> DataHealthResponse:
+    """Compute data-health payload using blocking SQLite operations."""
+    import os
     from datetime import datetime, timedelta
 
     warnings = []
@@ -376,11 +386,8 @@ async def data_health_check(
 
     # Get database file size
     db_size = 0
-    try:
-        import os
+    with suppress(Exception):
         db_size = os.path.getsize(db.db_path)
-    except Exception:
-        pass
 
     # Check table row counts
     cursor = db.conn.cursor()
@@ -401,21 +408,25 @@ async def data_health_check(
                 status = "ok"
                 message = f"{count:,} rows"
 
-            tables.append(TableHealth(
-                name=table_name,
-                row_count=count,
-                min_expected=min_expected,
-                status=status,
-                message=message
-            ))
+            tables.append(
+                TableHealth(
+                    name=table_name,
+                    row_count=count,
+                    min_expected=min_expected,
+                    status=status,
+                    message=message,
+                )
+            )
         except Exception as e:
-            tables.append(TableHealth(
-                name=table_name,
-                row_count=-1,
-                min_expected=min_expected,
-                status="critical",
-                message=f"Table missing: {str(e)}"
-            ))
+            tables.append(
+                TableHealth(
+                    name=table_name,
+                    row_count=-1,
+                    min_expected=min_expected,
+                    status="critical",
+                    message=f"Table missing: {str(e)}",
+                )
+            )
             errors.append(f"Missing table: {table_name}")
 
     # Check for recent plays (within last 7 days)
@@ -428,7 +439,7 @@ async def data_health_check(
             latest_play_date = result[0]
             # Parse the date and check if it's recent
             try:
-                latest_dt = datetime.fromisoformat(latest_play_date.replace('Z', '+00:00'))
+                latest_dt = datetime.fromisoformat(latest_play_date.replace("Z", "+00:00"))
                 seven_days_ago = datetime.now(latest_dt.tzinfo) - timedelta(days=7)
                 recent_plays_exist = latest_dt > seven_days_ago
                 if not recent_plays_exist:
@@ -455,8 +466,53 @@ async def data_health_check(
         recent_plays_exist=recent_plays_exist,
         latest_play_date=latest_play_date,
         warnings=warnings,
-        errors=errors
+        errors=errors,
     )
+
+
+def _get_cached_data_health(cache_ttl_seconds: int) -> DataHealthResponse | None:
+    """Return cached data-health payload when still fresh."""
+    if cache_ttl_seconds <= 0:
+        return None
+
+    with _data_health_cache_lock:
+        global _data_health_cache_entry
+        if _data_health_cache_entry is None:
+            return None
+
+        cached_at, cached_payload = _data_health_cache_entry
+        if (time.monotonic() - cached_at) >= cache_ttl_seconds:
+            _data_health_cache_entry = None
+            return None
+
+        # Return a copy to avoid accidental mutation between requests.
+        return cached_payload.model_copy(deep=True)
+
+
+def _set_cached_data_health(payload: DataHealthResponse) -> None:
+    """Store latest data-health payload in memory cache."""
+    with _data_health_cache_lock:
+        global _data_health_cache_entry
+        _data_health_cache_entry = (time.monotonic(), payload.model_copy(deep=True))
+
+
+@app.get(
+    "/api/health/data",
+    response_model=DataHealthResponse,
+    tags=["health"],
+    summary="Data completeness check",
+    description="Verify database data completeness - row counts, recent data, critical tables",
+)
+async def data_health_check(db: DatabaseService = Depends(get_db_service)) -> DataHealthResponse:
+    """Data completeness health check endpoint."""
+    cached = _get_cached_data_health(settings.DATA_HEALTH_CACHE_SECONDS)
+    if cached is not None:
+        return cached
+
+    payload = await anyio.to_thread.run_sync(_compute_data_health, db)
+    if settings.DATA_HEALTH_CACHE_SECONDS > 0:
+        _set_cached_data_health(payload)
+    return payload
 
 
 @app.post(
@@ -468,13 +524,13 @@ async def data_health_check(
     responses={
         200: {"description": "Successful search"},
         400: {"description": "Invalid request"},
-        500: {"description": "Search failed"}
-    }
+        500: {"description": "Search failed"},
+    },
 )
 async def search(
     request: SearchRequest,
     search_svc: FAISSSearchService = Depends(get_search_service),
-    db_svc: DatabaseService = Depends(get_db_service)
+    db_svc: DatabaseService = Depends(get_db_service),
 ) -> SearchResponse:
     """Semantic search endpoint."""
     # FAISS limitation: we can only retrieve top-k results, not true pagination
@@ -484,8 +540,8 @@ async def search(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Offset exceeds maximum of {MAX_OFFSET}. "
-                   "FAISS semantic search is limited to the top ~1000 most similar results. "
-                   "Consider using more specific search terms to narrow results."
+            "FAISS semantic search is limited to the top ~1000 most similar results. "
+            "Consider using more specific search terms to narrow results.",
         )
 
     try:
@@ -503,17 +559,15 @@ async def search(
         )
 
         # Apply pagination
-        paginated_ids = play_ids[request.offset:request.offset + request.limit]
-        paginated_distances = distances[request.offset:request.offset + request.limit]
+        paginated_ids = play_ids[request.offset : request.offset + request.limit]
+        paginated_distances = distances[request.offset : request.offset + request.limit]
 
         # Fetch from SQL (run in thread pool for consistency)
-        plays_dict = await asyncio.to_thread(
-            db_svc.get_plays_by_ids, paginated_ids.tolist()
-        )
+        plays_dict = await asyncio.to_thread(db_svc.get_plays_by_ids, paginated_ids.tolist())
 
         # Merge with similarity scores
         results = []
-        for play_id, similarity in zip(paginated_ids, paginated_distances):
+        for play_id, similarity in zip(paginated_ids, paginated_distances, strict=False):
             play_data = plays_dict.get(int(play_id))
             if play_data:
                 results.append(PlayResult(**play_data, similarity=float(similarity)))
@@ -533,14 +587,13 @@ async def search(
             total=len(play_ids),
             query_time_ms=query_time,
             query=request.query,
-            note=note
+            note=note,
         )
 
     except Exception as e:
         logger.error(f"Search failed: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Search failed: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Search failed: {str(e)}"
         )
 
 
@@ -568,13 +621,13 @@ async def search(
         200: {"description": "Successful search"},
         400: {"description": "Invalid request"},
         503: {"description": "Hybrid search not available"},
-        500: {"description": "Search failed"}
-    }
+        500: {"description": "Search failed"},
+    },
 )
 async def hybrid_search(
     request: HybridSearchRequest,
     hybrid_svc: HybridSearchService = Depends(get_hybrid_search_service),
-    db_svc: DatabaseService = Depends(get_db_service)
+    db_svc: DatabaseService = Depends(get_db_service),
 ) -> HybridSearchResponse:
     """Hybrid search endpoint combining BM25 and FAISS."""
     try:
@@ -587,47 +640,47 @@ async def hybrid_search(
             request.limit,
             request.bm25_weight,
             request.faiss_weight,
-            request.use_expansion
+            request.use_expansion,
         )
 
         # Get play IDs for database lookup
         play_ids = [r.play_id for r in results]
 
         # Fetch full play data from database (run in thread pool)
-        plays_dict = await asyncio.to_thread(
-            db_svc.get_plays_by_ids, play_ids
-        )
+        plays_dict = await asyncio.to_thread(db_svc.get_plays_by_ids, play_ids)
 
         # Merge hybrid results with play data
         hybrid_results = []
         for result in results:
             play_data = plays_dict.get(result.play_id)
             if play_data:
-                hybrid_results.append(HybridPlayResult(
-                    id=result.play_id,
-                    artist=play_data.get('artist', ''),
-                    song=play_data.get('song', ''),
-                    rrf_score=result.rrf_score,
-                    bm25_rank=result.bm25_rank,
-                    faiss_rank=result.faiss_rank,
-                    faiss_score=result.faiss_score,
-                    album=play_data.get('album'),
-                    airdate=play_data.get('airdate'),
-                    release_date=play_data.get('release_date'),
-                    labels=play_data.get('labels', []),
-                    rotation_status=play_data.get('rotation_status'),
-                    is_local=play_data.get('is_local', False),
-                    is_live=play_data.get('is_live', False),
-                    is_request=play_data.get('is_request', False),
-                    comment=play_data.get('comment'),
-                    show=play_data.get('show', 0),
-                    image_uri=play_data.get('image_uri'),
-                    thumbnail_uri=play_data.get('thumbnail_uri'),
-                    artist_mbid=play_data.get('artist_mbid'),
-                    recording_mbid=play_data.get('recording_mbid'),
-                    release_mbid=play_data.get('release_mbid'),
-                    release_group_mbid=play_data.get('release_group_mbid')
-                ))
+                hybrid_results.append(
+                    HybridPlayResult(
+                        id=result.play_id,
+                        artist=play_data.get("artist", ""),
+                        song=play_data.get("song", ""),
+                        rrf_score=result.rrf_score,
+                        bm25_rank=result.bm25_rank,
+                        faiss_rank=result.faiss_rank,
+                        faiss_score=result.faiss_score,
+                        album=play_data.get("album"),
+                        airdate=play_data.get("airdate"),
+                        release_date=play_data.get("release_date"),
+                        labels=play_data.get("labels", []),
+                        rotation_status=play_data.get("rotation_status"),
+                        is_local=play_data.get("is_local", False),
+                        is_live=play_data.get("is_live", False),
+                        is_request=play_data.get("is_request", False),
+                        comment=play_data.get("comment"),
+                        show=play_data.get("show", 0),
+                        image_uri=play_data.get("image_uri"),
+                        thumbnail_uri=play_data.get("thumbnail_uri"),
+                        artist_mbid=play_data.get("artist_mbid"),
+                        recording_mbid=play_data.get("recording_mbid"),
+                        release_mbid=play_data.get("release_mbid"),
+                        release_group_mbid=play_data.get("release_group_mbid"),
+                    )
+                )
 
         query_time = (time.time() - start_time) * 1000
 
@@ -637,18 +690,18 @@ async def hybrid_search(
             query_time_ms=query_time,
             query=request.query,
             bm25_weight=request.bm25_weight,
-            faiss_weight=request.faiss_weight
+            faiss_weight=request.faiss_weight,
         )
 
     except Exception as e:
         logger.error(f"Hybrid search failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Hybrid search failed: {str(e)}"
+            detail=f"Hybrid search failed: {str(e)}",
         )
 
 
-def _choose_source(req: StreamingLinksRequest) -> Optional[str]:
+def _choose_source(req: StreamingLinksRequest) -> str | None:
     if req.recording_mbid:
         return "recording_mbid"
     if req.release_group_mbid:
@@ -665,7 +718,10 @@ def _choose_source(req: StreamingLinksRequest) -> Optional[str]:
     response_model=StreamingLinksResponse,
     tags=["streaming"],
     summary="Build streaming links from MBIDs",
-    description="Returns Spotify/Apple Music search links using play metadata resolved from MusicBrainz IDs."
+    description=(
+        "Returns Spotify/Apple Music search links using play metadata "
+        "resolved from MusicBrainz IDs."
+    ),
 )
 async def streaming_links(
     request: StreamingLinksRequest = Depends(),
@@ -676,20 +732,24 @@ async def streaming_links(
     if source is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Provide at least one MBID (recording_mbid, release_group_mbid, release_mbid, artist_mbid)"
+            detail=(
+                "Provide at least one MBID "
+                "(recording_mbid, release_group_mbid, release_mbid, artist_mbid)"
+            ),
         )
 
-    play = db_svc.get_first_play_by_mbids(
-        recording_mbid=request.recording_mbid,
-        release_group_mbid=request.release_group_mbid,
-        release_mbid=request.release_mbid,
-        artist_mbid=request.artist_mbid
+    play = await anyio.to_thread.run_sync(
+        lambda: db_svc.get_first_play_by_mbids(
+            recording_mbid=request.recording_mbid,
+            release_group_mbid=request.release_group_mbid,
+            release_mbid=request.release_mbid,
+            artist_mbid=request.artist_mbid,
+        )
     )
 
     if play is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No play found for {source}"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"No play found for {source}"
         )
 
     artist = play.get("artist") or ""
@@ -712,46 +772,54 @@ async def streaming_links(
 
     if primary_term:
         confidence = 0.8 if source == "recording_mbid" else 0.6
-        links.append(StreamingLink(
-            platform="spotify",
-            kind="track",
-            url=spotify_search(primary_term),
-            display=primary_term,
-            confidence=confidence,
-            source=source,  # type: ignore[arg-type]
-        ))
-        links.append(StreamingLink(
-            platform="apple_music",
-            kind="track",
-            url=apple_music_search(primary_term),
-            display=primary_term,
-            confidence=confidence,
-            source=source,  # type: ignore[arg-type]
-        ))
+        links.append(
+            StreamingLink(
+                platform="spotify",
+                kind="track",
+                url=spotify_search(primary_term),
+                display=primary_term,
+                confidence=confidence,
+                source=source,  # type: ignore[arg-type]
+            )
+        )
+        links.append(
+            StreamingLink(
+                platform="apple_music",
+                kind="track",
+                url=apple_music_search(primary_term),
+                display=primary_term,
+                confidence=confidence,
+                source=source,  # type: ignore[arg-type]
+            )
+        )
 
     if album_term:
         confidence = 0.5 if source in {"release_group_mbid", "release_mbid"} else 0.4
-        links.append(StreamingLink(
-            platform="spotify",
-            kind="album",
-            url=spotify_search(album_term),
-            display=album_term,
-            confidence=confidence,
-            source=source,  # type: ignore[arg-type]
-        ))
-        links.append(StreamingLink(
-            platform="apple_music",
-            kind="album",
-            url=apple_music_search(album_term),
-            display=album_term,
-            confidence=confidence,
-            source=source,  # type: ignore[arg-type]
-        ))
+        links.append(
+            StreamingLink(
+                platform="spotify",
+                kind="album",
+                url=spotify_search(album_term),
+                display=album_term,
+                confidence=confidence,
+                source=source,  # type: ignore[arg-type]
+            )
+        )
+        links.append(
+            StreamingLink(
+                platform="apple_music",
+                kind="album",
+                url=apple_music_search(album_term),
+                display=album_term,
+                confidence=confidence,
+                source=source,  # type: ignore[arg-type]
+            )
+        )
 
     if not links:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Unable to build streaming links from provided MBIDs"
+            detail="Unable to build streaming links from provided MBIDs",
         )
 
     return StreamingLinksResponse(
@@ -784,21 +852,21 @@ async def streaming_links(
     responses={
         200: {"description": "Timeline page retrieved successfully"},
         400: {"description": "Invalid cursor, parameters, or multiple jump methods"},
-        500: {"description": "Query failed"}
-    }
+        500: {"description": "Query failed"},
+    },
 )
 async def get_timeline(
     limit: int = 50,
-    cursor: Optional[str] = None,
-    since: Optional[str] = None,
-    until: Optional[str] = None,
-    percentage: Optional[float] = None,
-    anchor_id: Optional[int] = None,
-    artist_mbid: Optional[str] = None,
-    recording_mbid: Optional[str] = None,
-    release_mbid: Optional[str] = None,
-    release_group_mbid: Optional[str] = None,
-    db_svc: DatabaseService = Depends(get_db_service)
+    cursor: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    percentage: float | None = None,
+    anchor_id: int | None = None,
+    artist_mbid: str | None = None,
+    recording_mbid: str | None = None,
+    release_mbid: str | None = None,
+    release_group_mbid: str | None = None,
+    db_svc: DatabaseService = Depends(get_db_service),
 ) -> TimelineResponse:
     """
     Get plays in chronological timeline (newest first) with unified navigation.
@@ -837,22 +905,26 @@ async def get_timeline(
     # Validate limit
     if limit < 1 or limit > 200:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Limit must be between 1 and 200"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Limit must be between 1 and 200"
         )
 
     # Count how many jump methods are being used
-    jump_methods = sum([
-        cursor is not None,
-        since is not None or until is not None,
-        percentage is not None,
-        anchor_id is not None
-    ])
+    jump_methods = sum(
+        [
+            cursor is not None,
+            since is not None or until is not None,
+            percentage is not None,
+            anchor_id is not None,
+        ]
+    )
 
     if jump_methods > 1:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only one navigation method allowed: cursor, time range (since/until), percentage, or anchor_id"
+            detail=(
+                "Only one navigation method allowed: cursor, time range "
+                "(since/until), percentage, or anchor_id"
+            ),
         )
 
     try:
@@ -865,7 +937,7 @@ async def get_timeline(
             if not 0.0 <= percentage <= 1.0:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Percentage must be between 0.0 and 1.0"
+                    detail="Percentage must be between 0.0 and 1.0",
                 )
             result = await anyio.to_thread.run_sync(
                 db_svc.get_plays_by_percentage,
@@ -874,7 +946,7 @@ async def get_timeline(
                 artist_mbid,
                 recording_mbid,
                 release_mbid,
-                release_group_mbid
+                release_group_mbid,
             )
 
         elif anchor_id is not None:
@@ -886,12 +958,13 @@ async def get_timeline(
                 artist_mbid,
                 recording_mbid,
                 release_mbid,
-                release_group_mbid
+                release_group_mbid,
             )
 
         elif since is not None or until is not None:
             # Time-based jump
             from datetime import datetime
+
             since_dt = datetime.fromisoformat(since) if since else None
             until_dt = datetime.fromisoformat(until) if until else None
             result = await anyio.to_thread.run_sync(
@@ -902,35 +975,34 @@ async def get_timeline(
                 artist_mbid,
                 recording_mbid,
                 release_mbid,
-                release_group_mbid
+                release_group_mbid,
             )
 
         else:
-            # Standard cursor pagination (fast indexed query - can run directly)
-            result = db_svc.get_plays_by_cursor(
-                limit=limit,
-                cursor=cursor,
-                artist_mbid=artist_mbid,
-                recording_mbid=recording_mbid,
-                release_mbid=release_mbid,
-                release_group_mbid=release_group_mbid
+            # Standard cursor pagination
+            result = await anyio.to_thread.run_sync(
+                lambda: db_svc.get_plays_by_cursor(
+                    limit=limit,
+                    cursor=cursor,
+                    artist_mbid=artist_mbid,
+                    recording_mbid=recording_mbid,
+                    release_mbid=release_mbid,
+                    release_group_mbid=release_group_mbid,
+                )
             )
 
         # Convert to PlayResult models (similarity=0 for timeline browsing)
-        play_results = [
-            PlayResult(**play_data, similarity=0.0)
-            for play_data in result['results']
-        ]
+        play_results = [PlayResult(**play_data, similarity=0.0) for play_data in result["results"]]
 
         query_time = (time.time() - start_time) * 1000
 
         return TimelineResponse(
             results=play_results,
-            next_cursor=result['next_cursor'],
-            has_more=result['has_more'],
+            next_cursor=result["next_cursor"],
+            has_more=result["has_more"],
             query_time_ms=query_time,
-            total_count=result.get('total_count'),
-            anchor_position=result.get('anchor_position')
+            total_count=result.get("total_count"),
+            anchor_position=result.get("anchor_position"),
         )
 
     except HTTPException:
@@ -938,15 +1010,12 @@ async def get_timeline(
         raise
     except ValueError as e:
         # Invalid cursor, datetime, or parameters
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         logger.error(f"Timeline query failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Timeline query failed: {str(e)}"
+            detail=f"Timeline query failed: {str(e)}",
         )
 
 
@@ -968,32 +1037,37 @@ async def get_timeline(
     responses={
         200: {"description": "Count retrieved successfully"},
         400: {"description": "No MBID filter provided"},
-        500: {"description": "Query failed"}
-    }
+        500: {"description": "Query failed"},
+    },
 )
 async def get_play_count(
-    artist_mbid: Optional[str] = None,
-    recording_mbid: Optional[str] = None,
-    release_mbid: Optional[str] = None,
-    release_group_mbid: Optional[str] = None,
-    db_svc: DatabaseService = Depends(get_db_service)
+    artist_mbid: str | None = None,
+    recording_mbid: str | None = None,
+    release_mbid: str | None = None,
+    release_group_mbid: str | None = None,
+    db_svc: DatabaseService = Depends(get_db_service),
 ) -> PlayCountResponse:
     """Get count of plays matching MBID filter."""
     # Require at least one MBID filter
     if not any([artist_mbid, recording_mbid, release_mbid, release_group_mbid]):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one MBID filter is required (artist_mbid, recording_mbid, release_mbid, or release_group_mbid)"
+            detail=(
+                "At least one MBID filter is required (artist_mbid, "
+                "recording_mbid, release_mbid, or release_group_mbid)"
+            ),
         )
 
     try:
         start_time = time.time()
 
-        count = db_svc.get_play_count(
-            artist_mbid=artist_mbid,
-            recording_mbid=recording_mbid,
-            release_mbid=release_mbid,
-            release_group_mbid=release_group_mbid
+        count = await anyio.to_thread.run_sync(
+            lambda: db_svc.get_play_count(
+                artist_mbid=artist_mbid,
+                recording_mbid=recording_mbid,
+                release_mbid=release_mbid,
+                release_group_mbid=release_group_mbid,
+            )
         )
 
         query_time = (time.time() - start_time) * 1000
@@ -1015,17 +1089,14 @@ async def get_play_count(
             mbid = release_group_mbid
 
         return PlayCountResponse(
-            count=count,
-            entity_type=entity_type,
-            mbid=mbid,
-            query_time_ms=query_time
+            count=count, entity_type=entity_type, mbid=mbid, query_time_ms=query_time
         )
 
     except Exception as e:
         logger.error(f"Play count query failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Play count query failed: {str(e)}"
+            detail=f"Play count query failed: {str(e)}",
         )
 
 
@@ -1052,14 +1123,14 @@ async def get_play_count(
     """,
     responses={
         200: {"description": "Unprocessed plays retrieved successfully"},
-        500: {"description": "Query failed"}
-    }
+        500: {"description": "Query failed"},
+    },
 )
 async def get_unprocessed_plays(
     limit: int = 50,
     strategy: str = "oldest_first",
-    min_play_id: Optional[int] = None,
-    db_svc: DatabaseService = Depends(get_db_service)
+    min_play_id: int | None = None,
+    db_svc: DatabaseService = Depends(get_db_service),
 ) -> UnprocessedPlaysResponse:
     """
     Get plays that don't have any insights yet.
@@ -1069,43 +1140,45 @@ async def get_unprocessed_plays(
     if strategy not in ["oldest_first", "newest_first", "random"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid strategy: {strategy}. Must be one of: oldest_first, newest_first, random"
+            detail=(
+                f"Invalid strategy: {strategy}. Must be one of: oldest_first, newest_first, random"
+            ),
         )
 
     if limit < 1 or limit > 500:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Limit must be between 1 and 500"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Limit must be between 1 and 500"
         )
 
     try:
         start_time = time.time()
 
-        result = db_svc.get_unprocessed_plays(
-            limit=limit,
-            strategy=strategy,
-            min_play_id=min_play_id
+        result = await anyio.to_thread.run_sync(
+            lambda: db_svc.get_unprocessed_plays(
+                limit=limit, strategy=strategy, min_play_id=min_play_id
+            )
         )
 
         query_time = (time.time() - start_time) * 1000
 
         return UnprocessedPlaysResponse(
-            play_ids=result['play_ids'],
-            count=result['count'],
-            total_unprocessed=result['total_unprocessed'],
-            strategy=result['strategy'],
-            query_time_ms=query_time
+            play_ids=result["play_ids"],
+            count=result["count"],
+            total_unprocessed=result["total_unprocessed"],
+            strategy=result["strategy"],
+            query_time_ms=query_time,
         )
 
     except Exception as e:
         logger.error(f"Unprocessed plays query failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unprocessed plays query failed: {str(e)}"
+            detail=f"Unprocessed plays query failed: {str(e)}",
         )
 
 
 # Enrichment endpoints
+
 
 @app.get(
     "/api/plays/batch",
@@ -1116,12 +1189,11 @@ async def get_unprocessed_plays(
     responses={
         200: {"description": "Plays retrieved successfully"},
         400: {"description": "Invalid play IDs format"},
-        500: {"description": "Batch fetch failed"}
-    }
+        500: {"description": "Batch fetch failed"},
+    },
 )
 async def get_plays_batch(
-    play_ids: str,
-    db_svc: DatabaseService = Depends(get_db_service)
+    play_ids: str, db_svc: DatabaseService = Depends(get_db_service)
 ) -> BatchPlaysResponse:
     """
     Fetch multiple plays by comma-separated IDs.
@@ -1133,20 +1205,14 @@ async def get_plays_batch(
         ids = [int(id.strip()) for id in play_ids.split(",")]
 
         if not ids:
-            raise HTTPException(
-                status_code=400,
-                detail="No play IDs provided"
-            )
+            raise HTTPException(status_code=400, detail="No play IDs provided")
 
         # Enforce maximum batch size for safety
         if len(ids) > 500:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Maximum 500 IDs allowed, got {len(ids)}"
-            )
+            raise HTTPException(status_code=400, detail=f"Maximum 500 IDs allowed, got {len(ids)}")
 
         # Fetch plays from database
-        plays_dict = db_svc.get_plays_by_ids(ids)
+        plays_dict = await anyio.to_thread.run_sync(db_svc.get_plays_by_ids, ids)
 
         # Convert to list maintaining order
         plays = []
@@ -1159,21 +1225,16 @@ async def get_plays_batch(
         return BatchPlaysResponse(plays=plays)
 
     except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid play IDs format: {str(e)}"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid play IDs format: {str(e)}")
     except Exception as e:
         logger.error(f"Batch fetch failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Batch fetch failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Batch fetch failed: {str(e)}")
 
 
 # =============================================================================
 # Insights API - Typed insight storage
 # =============================================================================
+
 
 @app.post(
     "/api/insights",
@@ -1199,24 +1260,20 @@ async def get_plays_batch(
         200: {"description": "Insights stored successfully"},
         400: {"description": "Invalid insight structure"},
         401: {"description": "Invalid API key"},
-        500: {"description": "Failed to store insights"}
-    }
+        500: {"description": "Failed to store insights"},
+    },
 )
 async def create_insights(
     request: CreateInsightsRequest,
-    x_api_key: str = Header(None)
+    x_api_key: str | None = Header(None),
+    db_svc: DatabaseService = Depends(get_db_service),
 ):
     """
     Store typed insights from agent.
 
     Validates insight structure and extracts MBIDs for indexing.
     """
-    global db_service
-
-    # API key check (if configured)
-    api_key = os.getenv("FAISS_API_KEY")
-    if api_key and x_api_key != api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+    require_api_key(x_api_key, endpoint_name="/api/insights")
 
     try:
         # Transform Pydantic models to dicts for database
@@ -1227,7 +1284,7 @@ async def create_insights(
 
         for insight in request.insights:
             # Get the insight tag (type discriminator)
-            tag = insight.tag if hasattr(insight, 'tag') else insight.model_dump().get("_tag")
+            tag = insight.tag if hasattr(insight, "tag") else insight.model_dump().get("_tag")
 
             # Extract referenced MBIDs for indexing
             ref_mbids = extract_referenced_mbids(insight)
@@ -1237,39 +1294,32 @@ async def create_insights(
 
             # Prepare dict for database
             insight_dict = {
-                'insight_type': tag,
-                'play_id': insight.playId,
-                'confidence': insight.confidence,
-                'source_type': insight.sourceType,
-                'source_recording_mbid': insight.sourceRecordingMbid,
-                'source_release_mbid': insight.sourceReleaseMbid,
-                'source_artist_mbids': insight.sourceArtistMbids,
-                'referenced_artist_mbid': ref_mbids.get('referenced_artist_mbid'),
-                'referenced_recording_mbid': ref_mbids.get('referenced_recording_mbid'),
-                'referenced_release_mbid': ref_mbids.get('referenced_release_mbid'),
-                'referenced_label_mbid': ref_mbids.get('referenced_label_mbid'),
-                'data': insight.model_dump(),
-                'summary': summary,
-                'eval_context': eval_context_dict,  # Shared across all insights in batch
+                "insight_type": tag,
+                "play_id": insight.playId,
+                "confidence": insight.confidence,
+                "source_type": insight.sourceType,
+                "source_recording_mbid": insight.sourceRecordingMbid,
+                "source_release_mbid": insight.sourceReleaseMbid,
+                "source_artist_mbids": insight.sourceArtistMbids,
+                "referenced_artist_mbid": ref_mbids.get("referenced_artist_mbid"),
+                "referenced_recording_mbid": ref_mbids.get("referenced_recording_mbid"),
+                "referenced_release_mbid": ref_mbids.get("referenced_release_mbid"),
+                "referenced_label_mbid": ref_mbids.get("referenced_label_mbid"),
+                "data": insight.model_dump(),
+                "summary": summary,
+                "eval_context": eval_context_dict,  # Shared across all insights in batch
             }
             insight_dicts.append(insight_dict)
 
         # Bulk insert
-        insight_ids = db_service.bulk_insert_insights(insight_dicts)
+        insight_ids = await anyio.to_thread.run_sync(db_svc.bulk_insert_insights, insight_dicts)
 
         logger.info(f"Stored {len(insight_ids)} typed insights")
-        return InsightsResponse(
-            status="success",
-            count=len(insight_ids),
-            insight_ids=insight_ids
-        )
+        return InsightsResponse(status="success", count=len(insight_ids), insight_ids=insight_ids)
 
     except Exception as e:
         logger.error(f"Failed to store insights: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to store insights: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to store insights: {str(e)}")
 
 
 @app.get(
@@ -1288,44 +1338,39 @@ async def create_insights(
     """,
     responses={
         200: {"description": "Insights retrieved successfully"},
-        500: {"description": "Failed to query insights"}
-    }
+        500: {"description": "Failed to query insights"},
+    },
 )
 async def get_insights(
-    play_id: Optional[int] = None,
-    insight_type: Optional[str] = None,
-    artist_mbid: Optional[str] = None,
-    confidence: Optional[str] = None,
+    play_id: int | None = None,
+    insight_type: str | None = None,
+    artist_mbid: str | None = None,
+    confidence: str | None = None,
     limit: int = 100,
-    offset: int = 0
+    offset: int = 0,
+    db_svc: DatabaseService = Depends(get_db_service),
 ):
     """
     Query insights with optional filters.
     """
-    global db_service
-
     try:
-        result = db_service.get_insights(
-            insight_type=insight_type,
-            play_id=play_id,
-            artist_mbid=artist_mbid,
-            confidence=confidence,
-            limit=limit,
-            offset=offset
+        result = await anyio.to_thread.run_sync(
+            lambda: db_svc.get_insights(
+                insight_type=insight_type,
+                play_id=play_id,
+                artist_mbid=artist_mbid,
+                confidence=confidence,
+                limit=limit,
+                offset=offset,
+            )
         )
 
         logger.info(f"Retrieved {len(result['insights'])} insights (total: {result['total']})")
-        return GetInsightsResponse(
-            insights=result['insights'],
-            total=result['total']
-        )
+        return GetInsightsResponse(insights=result["insights"], total=result["total"])
 
     except Exception as e:
         logger.error(f"Failed to query insights: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to query insights: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to query insights: {str(e)}")
 
 
 @app.get(
@@ -1335,31 +1380,22 @@ async def get_insights(
     description="Get all insights for a specific play, optionally grouped by type.",
     responses={
         200: {"description": "Insights retrieved successfully"},
-        500: {"description": "Failed to fetch insights"}
-    }
+        500: {"description": "Failed to fetch insights"},
+    },
 )
-async def get_insights_for_play(play_id: int):
+async def get_insights_for_play(play_id: int, db_svc: DatabaseService = Depends(get_db_service)):
     """
     Get all insights for a specific play.
     """
-    global db_service
-
     try:
-        insights = db_service.get_insights_for_play(play_id)
+        insights = await anyio.to_thread.run_sync(db_svc.get_insights_for_play, play_id)
 
         logger.info(f"Retrieved {len(insights)} insights for play {play_id}")
-        return {
-            "play_id": play_id,
-            "insights": insights,
-            "total": len(insights)
-        }
+        return {"play_id": play_id, "insights": insights, "total": len(insights)}
 
     except Exception as e:
         logger.error(f"Failed to get insights for play {play_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get insights: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get insights: {str(e)}")
 
 
 @app.get(
@@ -1367,16 +1403,17 @@ async def get_insights_for_play(play_id: int):
     tags=["insights"],
     summary="Get insights from same show context",
     description="Get insights for plays within a time window around a given play. "
-                "Provides 'same show' context for what's been discussed nearby on the timeline.",
+    "Provides 'same show' context for what's been discussed nearby on the timeline.",
     responses={
         200: {"description": "Context insights retrieved successfully"},
-        500: {"description": "Failed to fetch context insights"}
-    }
+        500: {"description": "Failed to fetch context insights"},
+    },
 )
 async def get_insights_for_context(
     play_id: int,
     window_hours: int = 3,
-    limit: int = 20
+    limit: int = 20,
+    db_svc: DatabaseService = Depends(get_db_service),
 ):
     """
     Get insights for plays within a time window around a given play.
@@ -1390,13 +1427,11 @@ async def get_insights_for_context(
         window_hours: Hours before/after to include (default 3 = typical show length)
         limit: Max insights to return (default 20)
     """
-    global db_service
-
     try:
-        result = db_service.get_insights_for_context(
-            play_id=play_id,
-            window_hours=window_hours,
-            limit=limit
+        result = await anyio.to_thread.run_sync(
+            lambda: db_svc.get_insights_for_context(
+                play_id=play_id, window_hours=window_hours, limit=limit
+            )
         )
 
         logger.info(
@@ -1406,14 +1441,8 @@ async def get_insights_for_context(
         return result
 
     except Exception as e:
-        logger.error(
-            f"Failed to get context insights for play {play_id}: {e}",
-            exc_info=True
-        )
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get context insights: {str(e)}"
-        )
+        logger.error(f"Failed to get context insights for play {play_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get context insights: {str(e)}")
 
 
 # Image proxy endpoint - bypasses CORS for album art
@@ -1432,6 +1461,14 @@ ALLOWED_IMAGE_DOMAINS = {
 MAX_IMAGE_PROXY_REDIRECTS = 5
 
 
+async def _close_upstream_stream(
+    upstream_response: httpx.Response, upstream_client: httpx.AsyncClient
+) -> None:
+    """Close upstream resources after stream completion."""
+    await upstream_response.aclose()
+    await upstream_client.aclose()
+
+
 def is_domain_allowed(domain: str) -> bool:
     """Check if a domain is in the allowed list for image proxy."""
     domain = domain.lower()
@@ -1439,10 +1476,7 @@ def is_domain_allowed(domain: str) -> bool:
         return True
     # Check if it's a subdomain of an allowed domain
     # SECURITY: Must use '.' prefix to prevent evilarchive.org from matching archive.org
-    for allowed_domain in ALLOWED_IMAGE_DOMAINS:
-        if domain.endswith('.' + allowed_domain):
-            return True
-    return False
+    return any(domain.endswith("." + allowed_domain) for allowed_domain in ALLOWED_IMAGE_DOMAINS)
 
 
 @app.get(
@@ -1452,7 +1486,8 @@ def is_domain_allowed(domain: str) -> bool:
     description="""
     Proxies external images through the API server to bypass CORS restrictions.
 
-    **Security:** Only allows images from trusted domains (archive.org, kexp.org, coverartarchive.org).
+    **Security:** Only allows images from trusted domains
+    (archive.org, kexp.org, coverartarchive.org).
 
     **Caching:** Responses are cached for 30 days by both the server and client.
 
@@ -1462,8 +1497,8 @@ def is_domain_allowed(domain: str) -> bool:
         200: {"description": "Image content streamed"},
         400: {"description": "Invalid URL or domain not allowed"},
         404: {"description": "Image not found"},
-        502: {"description": "Failed to fetch image from origin"}
-    }
+        502: {"description": "Failed to fetch image from origin"},
+    },
 )
 async def image_proxy(url: str):
     """
@@ -1475,14 +1510,13 @@ async def image_proxy(url: str):
     # Parse and validate URL
     try:
         parsed = urlparse(url)
-        if not parsed.scheme in ('http', 'https'):
+        if parsed.scheme not in ("http", "https"):
             raise ValueError("Invalid URL scheme")
         if not parsed.netloc:
             raise ValueError("Invalid URL format")
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid URL: {str(e)}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid URL: {str(e)}"
         )
 
     # Check domain is allowed
@@ -1491,101 +1525,126 @@ async def image_proxy(url: str):
         logger.warning(f"Image proxy: blocked domain {domain}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Domain not allowed: {domain}. Only archive.org, kexp.org, and coverartarchive.org images can be proxied."
+            detail=(
+                f"Domain not allowed: {domain}. Only archive.org, kexp.org, "
+                "and coverartarchive.org images can be proxied."
+            ),
         )
 
     # Fetch the image with manual redirect handling (SSRF protection)
     # We validate each redirect target to prevent redirecting to internal/disallowed hosts
+    upstream_client = httpx.AsyncClient(timeout=30.0)
+    upstream_response: httpx.Response | None = None
+    stream_handed_off = False
+
     try:
         current_url = url
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            for redirect_count in range(MAX_IMAGE_PROXY_REDIRECTS + 1):
-                response = await client.get(current_url, follow_redirects=False)
+        for _ in range(MAX_IMAGE_PROXY_REDIRECTS + 1):
+            request = upstream_client.build_request("GET", current_url)
+            upstream_response = await upstream_client.send(request, stream=True)
 
-                # Handle redirects manually
-                if response.status_code in (301, 302, 303, 307, 308):
-                    redirect_url = response.headers.get('location')
-                    if not redirect_url:
-                        raise HTTPException(
-                            status_code=status.HTTP_502_BAD_GATEWAY,
-                            detail="Redirect response missing location header"
-                        )
+            # Handle redirects manually
+            if upstream_response.status_code in (301, 302, 303, 307, 308):
+                redirect_url = upstream_response.headers.get("location")
+                await upstream_response.aclose()
+                upstream_response = None
 
-                    # Resolve relative redirects
-                    from urllib.parse import urljoin
-                    redirect_url = urljoin(current_url, redirect_url)
+                if not redirect_url:
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Redirect response missing location header",
+                    )
 
-                    # Validate redirect target domain
-                    redirect_parsed = urlparse(redirect_url)
-                    redirect_domain = redirect_parsed.netloc.lower()
+                # Resolve relative redirects
+                from urllib.parse import urljoin
 
-                    if not is_domain_allowed(redirect_domain):
-                        logger.warning(
-                            f"Image proxy: blocked redirect to {redirect_domain} (from {domain})"
-                        )
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Redirect to disallowed domain: {redirect_domain}"
-                        )
+                redirect_url = urljoin(current_url, redirect_url)
 
-                    current_url = redirect_url
-                    continue  # Follow the redirect
+                # Validate redirect target domain
+                redirect_parsed = urlparse(redirect_url)
+                redirect_domain = redirect_parsed.netloc.lower()
 
-                # Not a redirect, break the loop
-                break
-            else:
-                # Exceeded max redirects
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Too many redirects (>{MAX_IMAGE_PROXY_REDIRECTS})"
-                )
+                if not is_domain_allowed(redirect_domain):
+                    logger.warning(
+                        f"Image proxy: blocked redirect to {redirect_domain} (from {domain})"
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Redirect to disallowed domain: {redirect_domain}",
+                    )
 
-            if response.status_code == 404:
-                # Return cacheable 404 to prevent repeated requests for known-broken images
-                return Response(
-                    content=b'',
-                    status_code=404,
-                    headers={
-                        "Cache-Control": "public, max-age=3600",  # 1 hour
-                    }
-                )
+                current_url = redirect_url
+                continue  # Follow the redirect
 
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Failed to fetch image: HTTP {response.status_code}"
-                )
-
-            # Validate content type is an image
-            content_type = response.headers.get('content-type', '')
-            if not content_type.startswith('image/'):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"URL does not point to an image: {content_type}"
-                )
-
-            # Return streaming response with proper headers
-            # Note: CORS headers are handled by nginx, don't add them here
-            return StreamingResponse(
-                iter([response.content]),
-                media_type=content_type,
-                headers={
-                    "Cache-Control": "public, max-age=604800",  # 7 days
-                }
+            # Not a redirect, break the loop
+            break
+        else:
+            # Exceeded max redirects
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Too many redirects (>{MAX_IMAGE_PROXY_REDIRECTS})",
             )
+
+        if upstream_response is None:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to fetch image from origin"
+            )
+
+        if upstream_response.status_code == 404:
+            await upstream_response.aclose()
+            upstream_response = None
+            await upstream_client.aclose()
+            # Return cacheable 404 to prevent repeated requests for known-broken images
+            return Response(
+                content=b"",
+                status_code=404,
+                headers={
+                    "Cache-Control": "public, max-age=3600",  # 1 hour
+                },
+            )
+
+        if upstream_response.status_code != 200:
+            status_code = upstream_response.status_code
+            await upstream_response.aclose()
+            upstream_response = None
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to fetch image: HTTP {status_code}",
+            )
+
+        # Validate content type is an image
+        content_type = upstream_response.headers.get("content-type", "")
+        if not content_type.startswith("image/"):
+            await upstream_response.aclose()
+            upstream_response = None
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"URL does not point to an image: {content_type}",
+            )
+
+        # Return streaming response with proper headers
+        # Note: CORS headers are handled by nginx, don't add them here
+        stream_handed_off = True
+        return StreamingResponse(
+            upstream_response.aiter_bytes(),
+            media_type=content_type,
+            headers={
+                "Cache-Control": "public, max-age=604800",  # 7 days
+            },
+            background=BackgroundTask(_close_upstream_stream, upstream_response, upstream_client),
+        )
 
     except httpx.TimeoutException:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Timeout fetching image from origin"
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="Timeout fetching image from origin"
         )
     except httpx.RequestError as e:
         logger.error(f"Image proxy fetch error: {e}")
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to fetch image: {str(e)}"
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Failed to fetch image: {str(e)}"
         )
-
-
-
-
+    finally:
+        if not stream_handed_off:
+            if upstream_response is not None:
+                await upstream_response.aclose()
+            await upstream_client.aclose()

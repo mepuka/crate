@@ -5,12 +5,13 @@ This module tests the MBID filtering functionality added to the timeline API,
 ensuring that filters work correctly across all navigation methods.
 """
 
-import pytest
-import sqlite3
 import json
-from pathlib import Path
+import sqlite3
 import tempfile
 from datetime import datetime
+from pathlib import Path
+
+import pytest
 
 from app.services.db_service import DatabaseService
 
@@ -18,7 +19,7 @@ from app.services.db_service import DatabaseService
 @pytest.fixture
 def test_db():
     """Create a temporary test database with sample data."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.db', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".db", delete=False) as f:
         db_path = f.name
 
     conn = sqlite3.connect(db_path)
@@ -55,6 +56,14 @@ def test_db():
     cursor.execute("CREATE INDEX idx_fact_plays_release_id ON fact_plays(release_id)")
     cursor.execute("CREATE INDEX idx_fact_plays_release_group_id ON fact_plays(release_group_id)")
     cursor.execute("CREATE INDEX idx_fact_plays_artist_ids ON fact_plays(artist_ids)")
+    cursor.execute("""
+        CREATE TABLE play_artists (
+            play_id INTEGER NOT NULL,
+            artist_mbid TEXT NOT NULL,
+            PRIMARY KEY (play_id, artist_mbid)
+        )
+    """)
+    cursor.execute("CREATE INDEX idx_play_artists_artist_mbid ON play_artists(artist_mbid)")
 
     # Sample MBIDs for testing
     artist_mbid_1 = "a74b1b7f-71a5-4011-9441-d0b5e4122711"  # Radiohead
@@ -67,41 +76,136 @@ def test_db():
     # Insert test data with different MBIDs
     test_plays = [
         # Artist 1 plays
-        (1, "2024-01-10T10:00:00", 100, "Radiohead", "Creep", "Pablo Honey",
-         json.dumps(["Capitol"]), json.dumps([artist_mbid_1]),
-         recording_mbid_1, release_mbid_1, release_group_mbid_1, None,
-         "Heavy", 0, 0, 0, None, None, None),
-
-        (2, "2024-01-09T14:00:00", 100, "Radiohead", "Karma Police", "OK Computer",
-         json.dumps(["Capitol"]), json.dumps([artist_mbid_1]),
-         recording_mbid_2, None, None, None,
-         "Heavy", 0, 0, 0, None, None, None),
-
+        (
+            1,
+            "2024-01-10T10:00:00",
+            100,
+            "Radiohead",
+            "Creep",
+            "Pablo Honey",
+            json.dumps(["Capitol"]),
+            json.dumps([artist_mbid_1]),
+            recording_mbid_1,
+            release_mbid_1,
+            release_group_mbid_1,
+            None,
+            "Heavy",
+            0,
+            0,
+            0,
+            None,
+            None,
+            None,
+        ),
+        (
+            2,
+            "2024-01-09T14:00:00",
+            100,
+            "Radiohead",
+            "Karma Police",
+            "OK Computer",
+            json.dumps(["Capitol"]),
+            json.dumps([artist_mbid_1]),
+            recording_mbid_2,
+            None,
+            None,
+            None,
+            "Heavy",
+            0,
+            0,
+            0,
+            None,
+            None,
+            None,
+        ),
         # Artist 2 plays
-        (3, "2024-01-08T16:00:00", 100, "The Beatles", "Hey Jude", "Hey Jude",
-         json.dumps(["Apple"]), json.dumps([artist_mbid_2]),
-         None, None, None, None,
-         "Heavy", 0, 0, 0, None, None, None),
-
-        (4, "2024-01-07T12:00:00", 100, "The Beatles", "Let It Be", "Let It Be",
-         json.dumps(["Apple"]), json.dumps([artist_mbid_2]),
-         None, None, None, None,
-         "Heavy", 0, 0, 0, None, None, None),
-
+        (
+            3,
+            "2024-01-08T16:00:00",
+            100,
+            "The Beatles",
+            "Hey Jude",
+            "Hey Jude",
+            json.dumps(["Apple"]),
+            json.dumps([artist_mbid_2]),
+            None,
+            None,
+            None,
+            None,
+            "Heavy",
+            0,
+            0,
+            0,
+            None,
+            None,
+            None,
+        ),
+        (
+            4,
+            "2024-01-07T12:00:00",
+            100,
+            "The Beatles",
+            "Let It Be",
+            "Let It Be",
+            json.dumps(["Apple"]),
+            json.dumps([artist_mbid_2]),
+            None,
+            None,
+            None,
+            None,
+            "Heavy",
+            0,
+            0,
+            0,
+            None,
+            None,
+            None,
+        ),
         # No MBIDs
-        (5, "2024-01-06T18:00:00", 100, "Unknown Artist", "Unknown Song", None,
-         json.dumps([]), None, None, None, None, None,
-         None, 0, 0, 0, None, None, None),
+        (
+            5,
+            "2024-01-06T18:00:00",
+            100,
+            "Unknown Artist",
+            "Unknown Song",
+            None,
+            json.dumps([]),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            0,
+            0,
+            0,
+            None,
+            None,
+            None,
+        ),
     ]
 
-    cursor.executemany("""
+    cursor.executemany(
+        """
         INSERT INTO fact_plays (
             id, airdate, show, artist, song, album, labels, artist_ids,
             recording_id, release_id, release_group_id, track_id,
             rotation_status, is_local, is_live, is_request,
             comment, image_uri, thumbnail_uri
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, test_plays)
+    """,
+        test_plays,
+    )
+
+    cursor.executemany(
+        "INSERT INTO play_artists (play_id, artist_mbid) VALUES (?, ?)",
+        [
+            (1, artist_mbid_1),
+            (2, artist_mbid_1),
+            (3, artist_mbid_2),
+            (4, artist_mbid_2),
+        ],
+    )
 
     conn.commit()
     conn.close()
@@ -121,50 +225,46 @@ class TestMBIDFiltering:
 
         # Filter by Radiohead MBID
         result = service.get_plays_by_cursor(
-            limit=10,
-            artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
+            limit=10, artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
         )
 
-        assert len(result['results']) == 2
-        assert all("Radiohead" in play['artist'] for play in result['results'])
-        assert result['results'][0]['id'] == 1  # Most recent first
-        assert result['results'][1]['id'] == 2
+        assert len(result["results"]) == 2
+        assert all("Radiohead" in play["artist"] for play in result["results"])
+        assert result["results"][0]["id"] == 1  # Most recent first
+        assert result["results"][1]["id"] == 2
 
     def test_cursor_filter_by_recording_mbid(self, test_db):
         """Test cursor pagination with recording MBID filter."""
         service = DatabaseService(test_db)
 
         result = service.get_plays_by_cursor(
-            limit=10,
-            recording_mbid="6b9b4b7f-71a5-4011-9441-d0b5e4122711"
+            limit=10, recording_mbid="6b9b4b7f-71a5-4011-9441-d0b5e4122711"
         )
 
-        assert len(result['results']) == 1
-        assert result['results'][0]['song'] == "Creep"
+        assert len(result["results"]) == 1
+        assert result["results"][0]["song"] == "Creep"
 
     def test_cursor_filter_by_release_mbid(self, test_db):
         """Test cursor pagination with release MBID filter."""
         service = DatabaseService(test_db)
 
         result = service.get_plays_by_cursor(
-            limit=10,
-            release_mbid="8d9d6d9f-93c7-6233-b663-f2d7g6344933"
+            limit=10, release_mbid="8d9d6d9f-93c7-6233-b663-f2d7g6344933"
         )
 
-        assert len(result['results']) == 1
-        assert result['results'][0]['album'] == "Pablo Honey"
+        assert len(result["results"]) == 1
+        assert result["results"][0]["album"] == "Pablo Honey"
 
     def test_cursor_filter_by_release_group_mbid(self, test_db):
         """Test cursor pagination with release group MBID filter."""
         service = DatabaseService(test_db)
 
         result = service.get_plays_by_cursor(
-            limit=10,
-            release_group_mbid="9e0e7e0f-a4d8-7344-c774-g3e8h7455a44"
+            limit=10, release_group_mbid="9e0e7e0f-a4d8-7344-c774-g3e8h7455a44"
         )
 
-        assert len(result['results']) == 1
-        assert result['results'][0]['album'] == "Pablo Honey"
+        assert len(result["results"]) == 1
+        assert result["results"][0]["album"] == "Pablo Honey"
 
     def test_cursor_multiple_filters(self, test_db):
         """Test cursor pagination with multiple MBID filters combined."""
@@ -174,12 +274,12 @@ class TestMBIDFiltering:
         result = service.get_plays_by_cursor(
             limit=10,
             artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711",
-            recording_mbid="6b9b4b7f-71a5-4011-9441-d0b5e4122711"
+            recording_mbid="6b9b4b7f-71a5-4011-9441-d0b5e4122711",
         )
 
-        assert len(result['results']) == 1
-        assert result['results'][0]['song'] == "Creep"
-        assert "Radiohead" in result['results'][0]['artist']
+        assert len(result["results"]) == 1
+        assert result["results"][0]["song"] == "Creep"
+        assert "Radiohead" in result["results"][0]["artist"]
 
     def test_time_range_with_mbid_filter(self, test_db):
         """Test time range query with MBID filter."""
@@ -189,14 +289,11 @@ class TestMBIDFiltering:
         until = datetime.fromisoformat("2024-01-31T23:59:59")
 
         result = service.get_plays_by_time_range(
-            since=since,
-            until=until,
-            limit=10,
-            artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
+            since=since, until=until, limit=10, artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
         )
 
-        assert len(result['results']) == 2
-        assert all("Radiohead" in play['artist'] for play in result['results'])
+        assert len(result["results"]) == 2
+        assert all("Radiohead" in play["artist"] for play in result["results"])
 
     def test_percentage_with_mbid_filter(self, test_db):
         """Test percentage jump with MBID filter."""
@@ -204,14 +301,12 @@ class TestMBIDFiltering:
 
         # Jump to 0% (newest) of Radiohead plays
         result = service.get_plays_by_percentage(
-            percentage=0.0,
-            limit=10,
-            artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
+            percentage=0.0, limit=10, artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
         )
 
-        assert len(result['results']) == 2
-        assert result['total_count'] == 2  # Only 2 Radiohead plays
-        assert all("Radiohead" in play['artist'] for play in result['results'])
+        assert len(result["results"]) == 2
+        assert result["total_count"] == 2  # Only 2 Radiohead plays
+        assert all("Radiohead" in play["artist"] for play in result["results"])
 
     def test_anchor_with_mbid_filter(self, test_db):
         """Test anchor jump with MBID filter."""
@@ -219,15 +314,13 @@ class TestMBIDFiltering:
 
         # Get plays around ID 2 (Karma Police), filtered by artist
         result = service.get_plays_around_id(
-            anchor_id=2,
-            limit=10,
-            artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
+            anchor_id=2, limit=10, artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
         )
 
         # Should return both Radiohead plays centered on ID 2
-        assert len(result['results']) == 2
-        assert result['anchor_position'] is not None
-        assert all("Radiohead" in play['artist'] for play in result['results'])
+        assert len(result["results"]) == 2
+        assert result["anchor_position"] is not None
+        assert all("Radiohead" in play["artist"] for play in result["results"])
 
     def test_cursor_pagination_with_filter(self, test_db):
         """Test cursor pagination works correctly with filters."""
@@ -235,37 +328,33 @@ class TestMBIDFiltering:
 
         # First page with limit=1
         page1 = service.get_plays_by_cursor(
-            limit=1,
-            artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
+            limit=1, artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
         )
 
-        assert len(page1['results']) == 1
-        assert page1['has_more'] is True
-        assert page1['next_cursor'] is not None
+        assert len(page1["results"]) == 1
+        assert page1["has_more"] is True
+        assert page1["next_cursor"] is not None
 
         # Second page using cursor
         page2 = service.get_plays_by_cursor(
-            limit=1,
-            cursor=page1['next_cursor'],
-            artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
+            limit=1, cursor=page1["next_cursor"], artist_mbid="a74b1b7f-71a5-4011-9441-d0b5e4122711"
         )
 
-        assert len(page2['results']) == 1
-        assert page2['has_more'] is False
-        assert page1['results'][0]['id'] != page2['results'][0]['id']
+        assert len(page2["results"]) == 1
+        assert page2["has_more"] is False
+        assert page1["results"][0]["id"] != page2["results"][0]["id"]
 
     def test_no_results_with_nonexistent_mbid(self, test_db):
         """Test that filtering by nonexistent MBID returns no results."""
         service = DatabaseService(test_db)
 
         result = service.get_plays_by_cursor(
-            limit=10,
-            artist_mbid="00000000-0000-0000-0000-000000000000"
+            limit=10, artist_mbid="00000000-0000-0000-0000-000000000000"
         )
 
-        assert len(result['results']) == 0
-        assert result['has_more'] is False
-        assert result['next_cursor'] is None
+        assert len(result["results"]) == 0
+        assert result["has_more"] is False
+        assert result["next_cursor"] is None
 
     def test_filter_without_mbid_returns_all(self, test_db):
         """Test that queries without MBID filters return all plays."""
@@ -273,7 +362,7 @@ class TestMBIDFiltering:
 
         result = service.get_plays_by_cursor(limit=10)
 
-        assert len(result['results']) == 5  # All plays
+        assert len(result["results"]) == 5  # All plays
 
     def test_mbid_filter_case_sensitivity(self, test_db):
         """Test that MBID filters are case-insensitive (as UUIDs should be)."""
@@ -282,11 +371,11 @@ class TestMBIDFiltering:
         # Test with uppercase MBID
         result = service.get_plays_by_cursor(
             limit=10,
-            artist_mbid="A74B1B7F-71A5-4011-9441-D0B5E4122711"  # Uppercase
+            artist_mbid="A74B1B7F-71A5-4011-9441-D0B5E4122711",  # Uppercase
         )
 
         # Should still match (COLLATE NOCASE ensures case-insensitive comparison)
-        assert len(result['results']) == 2
+        assert len(result["results"]) == 2
 
 
 class TestBuildMBIDFilterClause:
@@ -295,45 +384,47 @@ class TestBuildMBIDFilterClause:
     def test_no_filters(self, test_db):
         """Test building filter clause with no filters."""
         service = DatabaseService(test_db)
-        where_clause, params = service._build_mbid_filter_clause()
+        where_clause, params, needs_artist_join = service._build_mbid_filter_clause()
 
         assert where_clause == ""
         assert params == []
+        assert needs_artist_join is False
 
     def test_artist_filter_only(self, test_db):
         """Test building filter clause with artist filter only."""
         service = DatabaseService(test_db)
-        where_clause, params = service._build_mbid_filter_clause(
+        where_clause, params, needs_artist_join = service._build_mbid_filter_clause(
             artist_mbid="test-mbid"
         )
 
-        assert "EXISTS (SELECT 1 FROM json_each(artist_ids) WHERE value = ? COLLATE NOCASE)" in where_clause
+        assert "pa.artist_mbid = ?" in where_clause
         assert params == ["test-mbid"]
+        assert needs_artist_join is True
 
     def test_recording_filter_only(self, test_db):
         """Test building filter clause with recording filter only."""
         service = DatabaseService(test_db)
-        where_clause, params = service._build_mbid_filter_clause(
+        where_clause, params, needs_artist_join = service._build_mbid_filter_clause(
             recording_mbid="test-mbid"
         )
 
-        assert "recording_id = ?" in where_clause
+        assert "fp.recording_id = ?" in where_clause
         assert params == ["test-mbid"]
+        assert needs_artist_join is False
 
     def test_multiple_filters(self, test_db):
         """Test building filter clause with multiple filters."""
         service = DatabaseService(test_db)
-        where_clause, params = service._build_mbid_filter_clause(
-            artist_mbid="artist-mbid",
-            recording_mbid="recording-mbid",
-            release_mbid="release-mbid"
+        where_clause, params, needs_artist_join = service._build_mbid_filter_clause(
+            artist_mbid="artist-mbid", recording_mbid="recording-mbid", release_mbid="release-mbid"
         )
 
-        assert "EXISTS (SELECT 1 FROM json_each(artist_ids) WHERE value = ? COLLATE NOCASE)" in where_clause
-        assert "recording_id = ?" in where_clause
-        assert "release_id = ?" in where_clause
+        assert "pa.artist_mbid = ?" in where_clause
+        assert "fp.recording_id = ?" in where_clause
+        assert "fp.release_id = ?" in where_clause
         assert " AND " in where_clause
         assert len(params) == 3
+        assert needs_artist_join is True
 
 
 if __name__ == "__main__":

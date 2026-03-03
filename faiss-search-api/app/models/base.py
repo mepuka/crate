@@ -1,6 +1,6 @@
 """Pydantic models for request/response validation."""
-from typing import Optional, List
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SearchRequest(BaseModel):
@@ -11,26 +11,17 @@ class SearchRequest(BaseModel):
         min_length=1,
         max_length=500,
         description="Semantic search query text",
-        examples=["psychedelic rock", "jazz fusion"]
+        examples=["psychedelic rock", "jazz fusion"],
     )
-    limit: int = Field(
-        default=20,
-        ge=1,
-        le=100,
-        description="Maximum number of results to return"
-    )
-    offset: int = Field(
-        default=0,
-        ge=0,
-        description="Pagination offset"
-    )
+    limit: int = Field(default=20, ge=1, le=100, description="Maximum number of results to return")
+    offset: int = Field(default=0, ge=0, description="Pagination offset")
 
-    @field_validator('query')
+    @field_validator("query")
     @classmethod
     def query_not_empty(cls, v: str) -> str:
         """Validate query is not empty or whitespace."""
         if not v.strip():
-            raise ValueError('Query cannot be empty or whitespace')
+            raise ValueError("Query cannot be empty or whitespace")
         return v.strip()
 
 
@@ -44,41 +35,40 @@ class PlayResult(BaseModel):
     artist: str
     song: str
     similarity: float = Field(
-        ge=-1.0,
-        le=1.0,
-        description="Cosine similarity score from FAISS inner product search"
+        ge=-1.0, le=1.0, description="Cosine similarity score from FAISS inner product search"
     )
 
     # Optional metadata
-    album: Optional[str] = None
-    airdate: Optional[str] = None
-    release_date: Optional[str] = None
-    labels: List[str] = Field(default_factory=list)
-    rotation_status: Optional[str] = None
+    album: str | None = None
+    airdate: str | None = None
+    release_date: str | None = None
+    labels: list[str] = Field(default_factory=list)
+    rotation_status: str | None = None
     is_local: bool = False
     is_live: bool = False
     is_request: bool = False
-    comment: Optional[str] = None
+    comment: str | None = None
     show: int  # Always present in database
 
     # Album artwork URLs
-    image_uri: Optional[str] = None
-    thumbnail_uri: Optional[str] = None
+    image_uri: str | None = None
+    thumbnail_uri: str | None = None
 
     # MusicBrainz IDs (artist_mbid is a JSON array of UUIDs)
-    artist_mbid: Optional[List[str]] = None
-    recording_mbid: Optional[str] = None
-    release_mbid: Optional[str] = None
-    release_group_mbid: Optional[str] = None
+    artist_mbid: list[str] | None = None
+    recording_mbid: str | None = None
+    release_mbid: str | None = None
+    release_group_mbid: str | None = None
 
 
 class SearchResponse(BaseModel):
     """Search response with results and metadata."""
 
-    results: List[PlayResult]
+    results: list[PlayResult]
     total: int
     query_time_ms: float
     query: str
+    note: str | None = None
 
 
 class HybridSearchRequest(BaseModel):
@@ -89,37 +79,25 @@ class HybridSearchRequest(BaseModel):
         min_length=1,
         max_length=500,
         description="Search query text",
-        examples=["Funkadelic", "upbeat electronic dance"]
+        examples=["Funkadelic", "upbeat electronic dance"],
     )
-    limit: int = Field(
-        default=50,
-        ge=1,
-        le=200,
-        description="Maximum number of results to return"
-    )
+    limit: int = Field(default=50, ge=1, le=200, description="Maximum number of results to return")
     bm25_weight: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="Weight for BM25 keyword search (0-1)"
+        default=0.5, ge=0.0, le=1.0, description="Weight for BM25 keyword search (0-1)"
     )
     faiss_weight: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="Weight for FAISS semantic search (0-1)"
+        default=0.5, ge=0.0, le=1.0, description="Weight for FAISS semantic search (0-1)"
     )
     use_expansion: bool = Field(
-        default=True,
-        description="Apply query expansion (artist aliases, genre synonyms)"
+        default=True, description="Apply query expansion (artist aliases, genre synonyms)"
     )
 
-    @field_validator('query')
+    @field_validator("query")
     @classmethod
     def query_not_empty(cls, v: str) -> str:
         """Validate query is not empty or whitespace."""
         if not v.strip():
-            raise ValueError('Query cannot be empty or whitespace')
+            raise ValueError("Query cannot be empty or whitespace")
         return v.strip()
 
 
@@ -132,42 +110,40 @@ class HybridPlayResult(BaseModel):
     id: int
     artist: str
     song: str
-    rrf_score: float = Field(
-        description="Reciprocal Rank Fusion score (higher = better)"
-    )
+    rrf_score: float = Field(description="Reciprocal Rank Fusion score (higher = better)")
 
     # Ranking info
-    bm25_rank: Optional[int] = Field(None, description="Rank in BM25 results (None if not found)")
-    faiss_rank: Optional[int] = Field(None, description="Rank in FAISS results (None if not found)")
-    faiss_score: Optional[float] = Field(None, description="FAISS similarity score")
+    bm25_rank: int | None = Field(None, description="Rank in BM25 results (None if not found)")
+    faiss_rank: int | None = Field(None, description="Rank in FAISS results (None if not found)")
+    faiss_score: float | None = Field(None, description="FAISS similarity score")
 
     # Optional metadata
-    album: Optional[str] = None
-    airdate: Optional[str] = None
-    release_date: Optional[str] = None
-    labels: List[str] = Field(default_factory=list)
-    rotation_status: Optional[str] = None
+    album: str | None = None
+    airdate: str | None = None
+    release_date: str | None = None
+    labels: list[str] = Field(default_factory=list)
+    rotation_status: str | None = None
     is_local: bool = False
     is_live: bool = False
     is_request: bool = False
-    comment: Optional[str] = None
+    comment: str | None = None
     show: int = 0
 
     # Album artwork URLs
-    image_uri: Optional[str] = None
-    thumbnail_uri: Optional[str] = None
+    image_uri: str | None = None
+    thumbnail_uri: str | None = None
 
     # MusicBrainz IDs
-    artist_mbid: Optional[List[str]] = None
-    recording_mbid: Optional[str] = None
-    release_mbid: Optional[str] = None
-    release_group_mbid: Optional[str] = None
+    artist_mbid: list[str] | None = None
+    recording_mbid: str | None = None
+    release_mbid: str | None = None
+    release_group_mbid: str | None = None
 
 
 class HybridSearchResponse(BaseModel):
     """Hybrid search response with BM25 + FAISS results."""
 
-    results: List[HybridPlayResult]
+    results: list[HybridPlayResult]
     total: int
     query_time_ms: float
     query: str
@@ -189,6 +165,7 @@ class HealthResponse(BaseModel):
 
 class TableHealth(BaseModel):
     """Health status for a single table."""
+
     name: str
     row_count: int
     min_expected: int
@@ -198,37 +175,31 @@ class TableHealth(BaseModel):
 
 class DataHealthResponse(BaseModel):
     """Data completeness health check response."""
+
     status: str  # "healthy", "warning", "critical"
     checked_at: str
     db_size_bytes: int
-    tables: List[TableHealth]
+    tables: list[TableHealth]
     recent_plays_exist: bool  # Has plays in last 7 days
-    latest_play_date: Optional[str] = None
-    warnings: List[str] = []
-    errors: List[str] = []
+    latest_play_date: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 class TimelineResponse(BaseModel):
     """Timeline response with cursor-based pagination."""
 
-    results: List[PlayResult]
-    next_cursor: Optional[str] = Field(
-        None,
-        description="Cursor for fetching the next page, None if no more results"
+    results: list[PlayResult]
+    next_cursor: str | None = Field(
+        None, description="Cursor for fetching the next page, None if no more results"
     )
-    has_more: bool = Field(
-        description="Whether more results exist beyond this page"
+    has_more: bool = Field(description="Whether more results exist beyond this page")
+    query_time_ms: float = Field(description="Query execution time in milliseconds")
+    total_count: int | None = Field(
+        None, description="Total number of plays (only provided for percentage-based queries)"
     )
-    query_time_ms: float = Field(
-        description="Query execution time in milliseconds"
-    )
-    total_count: Optional[int] = Field(
-        None,
-        description="Total number of plays (only provided for percentage-based queries)"
-    )
-    anchor_position: Optional[int] = Field(
-        None,
-        description="Index of anchor play in results (only for anchor-based queries)"
+    anchor_position: int | None = Field(
+        None, description="Index of anchor play in results (only for anchor-based queries)"
     )
 
 
@@ -244,7 +215,7 @@ class EnrichmentRequest(BaseModel):
     """Request to create enrichments from agent."""
 
     enrichment_type: str
-    enrichments: List[EnrichmentItem]
+    enrichments: list[EnrichmentItem]
 
 
 class EnrichmentResponse(BaseModel):
@@ -257,7 +228,7 @@ class EnrichmentResponse(BaseModel):
 class BatchPlaysResponse(BaseModel):
     """Response for batch play fetch."""
 
-    plays: List[PlayResult]
+    plays: list[PlayResult]
 
 
 class EnrichmentData(BaseModel):
@@ -274,7 +245,7 @@ class EnrichmentData(BaseModel):
 class GetEnrichmentsResponse(BaseModel):
     """Response for fetching enrichments."""
 
-    enrichments: List[EnrichmentData]
+    enrichments: list[EnrichmentData]
     total: int
 
 
@@ -282,16 +253,20 @@ class PlayCountResponse(BaseModel):
     """Response for play count queries."""
 
     count: int = Field(description="Number of matching plays")
-    entity_type: Optional[str] = Field(None, description="Type of entity filtered (artist, recording, etc)")
-    mbid: Optional[str] = Field(None, description="MBID that was filtered")
+    entity_type: str | None = Field(
+        None, description="Type of entity filtered (artist, recording, etc)"
+    )
+    mbid: str | None = Field(None, description="MBID that was filtered")
     query_time_ms: float = Field(description="Query execution time in milliseconds")
 
 
 class UnprocessedPlaysResponse(BaseModel):
     """Response for unprocessed plays query (Cloud Scheduler integration)."""
 
-    play_ids: List[int] = Field(description="List of play IDs without insights")
+    play_ids: list[int] = Field(description="List of play IDs without insights")
     count: int = Field(description="Number of play IDs returned")
     total_unprocessed: int = Field(description="Total count of plays without insights")
-    strategy: str = Field(description="Selection strategy used (oldest_first, newest_first, random)")
+    strategy: str = Field(
+        description="Selection strategy used (oldest_first, newest_first, random)"
+    )
     query_time_ms: float = Field(description="Query execution time in milliseconds")

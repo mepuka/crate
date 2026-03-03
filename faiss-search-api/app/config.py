@@ -1,9 +1,10 @@
 """Application configuration using Pydantic settings."""
+
 import logging
 from pathlib import Path
-from typing import List, Optional
-from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +13,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=True
+        env_file=".env", env_file_encoding="utf-8", case_sensitive=True
     )
 
     # Paths
@@ -38,13 +37,15 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     LOG_LEVEL: str = "INFO"
+    REQUIRE_API_KEY: bool = True
+    DATA_HEALTH_CACHE_SECONDS: int = 60
 
     # CORS - comma-separated list of allowed origins
     # Production: set CORS_ORIGINS env var to include your frontend domain
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,https://crate-music-web.web.app,https://crate-music-web.firebaseapp.com"
 
     @property
-    def cors_origins_list(self) -> List[str]:
+    def cors_origins_list(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
         if not self.CORS_ORIGINS.strip():
             return []
@@ -52,18 +53,18 @@ class Settings(BaseSettings):
 
     # FAISS
     FAISS_NLIST: int = 1024  # Number of clusters for IVF
-    FAISS_NPROBE: int = 10   # Number of clusters to probe
+    FAISS_NPROBE: int = 10  # Number of clusters to probe
 
     # Pub/Sub configuration for enrichment triggers
     PUBSUB_ENABLED: bool = False  # Opt-in: set to True to enable publishing
     # GCP_PROJECT_ID: Required when PUBSUB_ENABLED=True. No default to prevent
     # accidental cross-environment publishing.
-    GCP_PROJECT_ID: Optional[str] = None
+    GCP_PROJECT_ID: str | None = None
     PUBSUB_TOPIC: str = "new-plays"  # Topic name (not full path)
     PUBSUB_TIMEOUT_SECONDS: int = 30
 
-    @model_validator(mode='after')
-    def validate_pubsub_config(self) -> 'Settings':
+    @model_validator(mode="after")
+    def validate_pubsub_config(self) -> "Settings":
         """Validate Pub/Sub config when enabled."""
         if self.PUBSUB_ENABLED:
             if not self.GCP_PROJECT_ID:

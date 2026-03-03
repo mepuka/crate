@@ -1,7 +1,5 @@
 """Tests for configuration."""
-import os
-from pathlib import Path
-import pytest
+
 from app.config import Settings
 
 
@@ -11,6 +9,8 @@ def test_settings_loads_defaults():
     assert settings.DATABASE_PATH is not None
     assert settings.EMBEDDINGS_PATH is not None
     assert settings.LOG_LEVEL == "INFO"
+    assert settings.REQUIRE_API_KEY is True
+    assert settings.DATA_HEALTH_CACHE_SECONDS == 60
 
 
 def test_settings_from_env(monkeypatch):

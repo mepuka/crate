@@ -46,14 +46,14 @@ Production-ready FastAPI service for semantic search over 2.2M KEXP music plays 
 ### Local Development
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (creates .venv)
+uv sync --extra dev
 
 # Set up data files (see Data Preparation)
 # Copy/symlink data files to ./data/
 
 # Run server
-uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload
 
 # Access docs
 open http://localhost:8000/docs
@@ -134,7 +134,7 @@ conn.close()
 |----------|--------|-------------|
 | `/api/search` | POST | Semantic search over plays |
 | `/api/plays/timeline` | GET | Browse plays chronologically |
-| `/api/plays/{id}` | GET | Get single play by ID |
+| `/api/plays/batch` | GET | Get multiple plays by IDs |
 | `/api/plays/count` | GET | Get play counts by entity |
 | `/api/health` | GET | Health check |
 
@@ -143,6 +143,8 @@ conn.close()
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/embeddings/pending` | GET | Get plays needing embeddings |
+| `/api/embeddings/pca-model` | GET | Download PCA model |
+| `/api/embeddings/integrate` | POST | Batch integrate embeddings |
 | `/api/embeddings/add` | POST | Add embeddings to FAISS index |
 
 ### Example: Semantic Search
@@ -203,18 +205,31 @@ Environment variables (set in docker-compose.yml):
 | `EMBEDDING_DIM` | 384 | Embedding dimension |
 | `CORS_ORIGINS` | * | Allowed origins |
 | `LOG_LEVEL` | INFO | Logging level |
+| `REQUIRE_API_KEY` | true | Require API key for mutating endpoints |
+| `FAISS_API_KEY` | - | Shared API key for protected endpoints |
 
 ## Testing
 
 ```bash
-# Run all tests
-pytest
+# Run all tests (from faiss-search-api/)
+uv run pytest -q
 
 # Run with coverage
-pytest --cov=app --cov-report=html
+uv run pytest --cov=app --cov-report=html
 
 # Run specific test
-pytest tests/test_api.py::test_search_endpoint_valid -v
+uv run pytest tests/test_api.py::test_search_endpoint_valid -v
+
+# Lint / format / typecheck
+uv run ruff check app tests
+uv run ruff format app tests
+uv run mypy app
+```
+
+Or use `Makefile` shortcuts:
+```bash
+make sync
+make check
 ```
 
 ### Performance Benchmarks
