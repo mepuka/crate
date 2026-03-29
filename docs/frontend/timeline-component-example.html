@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crate Timeline Bar - Interactive Prototype</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #0a0a0f;
+      color: #e0e0e8;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background:
+        radial-gradient(at 0% 0%, hsla(253, 70%, 20%, 0.3) 0px, transparent 50%),
+        radial-gradient(at 50% 50%, hsla(180, 70%, 20%, 0.2) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, hsla(300, 70%, 20%, 0.3) 0px, transparent 50%),
+        #0a0a0f;
+      animation: meshMove 30s ease-in-out infinite;
+    }
+
+    @keyframes meshMove {
+      0%, 100% { background-position: 0% 0%, 50% 50%, 100% 100%, 0% 0%; }
+      50% { background-position: 100% 100%, 50% 50%, 0% 0%, 0% 0%; }
+    }
+
+    .container {
+      display: flex;
+      gap: 48px;
+      align-items: center;
+      padding: 32px;
+    }
+
+    .timeline-wrapper {
+      position: relative;
+      width: 60px;
+      height: 80vh;
+      max-height: 800px;
+    }
+
+    .timeline-canvas,
+    .timeline-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .timeline-svg {
+      cursor: pointer;
+      z-index: 2;
+    }
+
+    .timeline-canvas {
+      z-index: 1;
+      border-radius: 12px;
+    }
+
+    /* Glassmorphism tooltip */
+    .timeline-tooltip {
+      position: fixed;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px) saturate(150%);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      white-space: nowrap;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+    }
+
+    .timeline-tooltip.visible {
+      opacity: 1;
+    }
+
+    .timeline-tooltip__title {
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #fff;
+    }
+
+    .timeline-tooltip__meta {
+      font-size: 11px;
+      opacity: 0.7;
+    }
+
+    /* Info panel */
+    .info-panel {
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(20px) saturate(150%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 32px;
+      width: 400px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .info-panel h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .info-panel p {
+      font-size: 14px;
+      line-height: 1.6;
+      opacity: 0.8;
+      margin-bottom: 24px;
+    }
+
+    .stats {
+      display: grid;
+      gap: 16px;
+    }
+
+    .stat {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .stat__label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      opacity: 0.6;
+      margin-bottom: 4px;
+    }
+
+    .stat__value {
+      font-size: 24px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .instructions {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 12px;
+      opacity: 0.6;
+    }
+
+    .instructions kbd {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 11px;
+    }
+
+    /* Marker pulse animation */
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+        r: 6;
+      }
+      50% {
+        opacity: 0.6;
+        r: 8;
+      }
+    }
+
+    .marker-pulse {
+      animation: pulse 2s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="timeline-wrapper">
+      <canvas id="densityCanvas" class="timeline-canvas"></canvas>
+      <svg
+        id="timelineSvg"
+        class="timeline-svg"
+        viewBox="0 0 60 1000"
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <!-- Time gradient (present to past) -->
+          <linearGradient id="timeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="hsla(220, 30%, 85%, 0.25)" />
+            <stop offset="50%" stop-color="hsla(220, 30%, 50%, 0.15)" />
+            <stop offset="100%" stop-color="hsla(220, 30%, 15%, 0.1)" />
+          </linearGradient>
+
+          <!-- Glow filter -->
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+
+        <!-- Base bar -->
+        <rect
+          x="22"
+          y="0"
+          width="16"
+          height="1000"
+          fill="url(#timeGradient)"
+          rx="8"
+        />
+
+        <!-- Markers group (will be populated by JS) -->
+        <g id="markers"></g>
+
+        <!-- Interaction overlay -->
+        <rect
+          id="interactionRect"
+          x="0"
+          y="0"
+          width="60"
+          height="1000"
+          fill="transparent"
+        />
+
+        <!-- Hover line (hidden by default) -->
+        <line
+          id="hoverLine"
+          x1="0"
+          x2="60"
+          y1="0"
+          y2="0"
+          stroke="white"
+          stroke-width="1"
+          stroke-opacity="0"
+          stroke-dasharray="4 2"
+        />
+      </svg>
+    </div>
+
+    <div class="info-panel">
+      <h1>Timeline Bar Prototype</h1>
+      <p>
+        Interactive visualization of 2.2M KEXP plays using hybrid SVG+Canvas rendering
+        with mathematical density aggregation.
+      </p>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="stat__label">Total Plays</div>
+          <div class="stat__value" id="totalPlays">2,200,000</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Hovered Play</div>
+          <div class="stat__value" id="hoveredPlay">—</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Viewport Markers</div>
+          <div class="stat__value" id="markerCount">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Density Buckets</div>
+          <div class="stat__value">500</div>
+        </div>
+      </div>
+
+      <div class="instructions">
+        <strong>Interactions:</strong><br>
+        • Hover over timeline to preview position<br>
+        • Click to add viewport marker<br>
+        • <kbd>R</kbd> to randomize density data<br>
+        • <kbd>C</kbd> to clear markers
+      </div>
+    </div>
+  </div>
+
+  <div id="tooltip" class="timeline-tooltip">
+    <div class="timeline-tooltip__title" id="tooltipTitle">Play #1,234,567</div>
+    <div class="timeline-tooltip__meta" id="tooltipMeta">≈ March 2018</div>
+  </div>
+
+  <script>
+    // Configuration
+    const TOTAL_PLAYS = 2_200_000
+    const BUCKET_COUNT = 500
+    const TIMELINE_START_DATE = new Date('2001-01-01')
+    const TIMELINE_END_DATE = new Date()
+
+    // State
+    let densityData = []
+    let markers = []
+
+    // DOM elements
+    const canvas = document.getElementById('densityCanvas')
+    const ctx = canvas.getContext('2d')
+    const svg = document.getElementById('timelineSvg')
+    const interactionRect = document.getElementById('interactionRect')
+    const hoverLine = document.getElementById('hoverLine')
+    const markersGroup = document.getElementById('markers')
+    const tooltip = document.getElementById('tooltip')
+    const tooltipTitle = document.getElementById('tooltipTitle')
+    const tooltipMeta = document.getElementById('tooltipMeta')
+    const hoveredPlayStat = document.getElementById('hoveredPlay')
+    const markerCountStat = document.getElementById('markerCount')
+
+    // Initialize canvas size
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect()
+      canvas.width = rect.width * window.devicePixelRatio
+      canvas.height = rect.height * window.devicePixelRatio
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
+    }
+
+    // Generate density data (simulated)
+    function generateDensityData() {
+      densityData = []
+      for (let i = 0; i < BUCKET_COUNT; i++) {
+        // Simulate varying density with some randomness
+        const baseCount = Math.random() * 5000
+        const surge = Math.sin(i / 50) * 2000 // Periodic surges
+        const playCount = Math.max(0, baseCount + surge)
+        densityData.push(playCount)
+      }
+
+      // Normalize
+      const maxCount = Math.max(...densityData)
+      densityData = densityData.map(count => count / maxCount)
+    }
+
+    // Render density heatmap on Canvas
+    function renderDensityHeatmap() {
+      const rect = canvas.getBoundingClientRect()
+      const width = rect.width
+      const height = rect.height
+
+      ctx.clearRect(0, 0, width, height)
+
+      const bucketHeight = height / BUCKET_COUNT
+
+      densityData.forEach((density, i) => {
+        const y = i * bucketHeight
+        const opacity = density * 0.4 // Max 40% opacity
+
+        // Gradient from blue (low) to purple (high)
+        const hue = 220 + (density * 60) // 220 (blue) to 280 (purple)
+        ctx.fillStyle = `hsla(${hue}, 80%, 60%, ${opacity})`
+        ctx.fillRect(0, y, width, bucketHeight)
+      })
+    }
+
+    // Convert play ID to percentage position
+    function playIdToPercent(playId) {
+      return (playId / TOTAL_PLAYS) * 100
+    }
+
+    // Convert percentage to play ID
+    function percentToPlayId(percent) {
+      return Math.floor((percent / 100) * TOTAL_PLAYS)
+    }
+
+    // Estimate date from play ID
+    function playIdToDate(playId) {
+      const totalTime = TIMELINE_END_DATE - TIMELINE_START_DATE
+      const playTime = TIMELINE_START_DATE.getTime() + (playId / TOTAL_PLAYS) * totalTime
+      return new Date(playTime)
+    }
+
+    // Format date
+    function formatDate(date) {
+      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
+    }
+
+    // Add marker
+    function addMarker(playId) {
+      markers.push(playId)
+      renderMarkers()
+      updateStats()
+    }
+
+    // Render markers
+    function renderMarkers() {
+      markersGroup.innerHTML = ''
+
+      markers.forEach((playId, index) => {
+        const percent = playIdToPercent(playId)
+        const y = (percent / 100) * 1000
+
+        // Glow
+        const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+        glow.setAttribute('cx', '30')
+        glow.setAttribute('cy', y)
+        glow.setAttribute('r', '10')
+        glow.setAttribute('fill', 'hsla(45, 100%, 50%, 0.3)')
+        glow.setAttribute('filter', 'blur(6px)')
+        glow.classList.add('marker-pulse')
+        markersGroup.appendChild(glow)
+
+        // Marker
+        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+        marker.setAttribute('cx', '30')
+        marker.setAttribute('cy', y)
+        marker.setAttribute('r', '5')
+        marker.setAttribute('fill', 'hsl(45, 100%, 60%)')
+        marker.setAttribute('stroke', 'hsl(45, 100%, 80%)')
+        marker.setAttribute('stroke-width', '1.5')
+        marker.setAttribute('filter', 'url(#glow)')
+        markersGroup.appendChild(marker)
+      })
+    }
+
+    // Update stats
+    function updateStats() {
+      markerCountStat.textContent = markers.length
+    }
+
+    // Handle mouse move
+    interactionRect.addEventListener('mousemove', (e) => {
+      const rect = svg.getBoundingClientRect()
+      const y = e.clientY - rect.top
+      const percent = (y / rect.height) * 100
+      const playId = percentToPlayId(percent)
+      const date = playIdToDate(playId)
+
+      // Update hover line
+      hoverLine.setAttribute('y1', (percent / 100) * 1000)
+      hoverLine.setAttribute('y2', (percent / 100) * 1000)
+      hoverLine.setAttribute('stroke-opacity', '0.5')
+
+      // Update tooltip
+      tooltipTitle.textContent = `Play #${playId.toLocaleString()}`
+      tooltipMeta.textContent = `≈ ${formatDate(date)}`
+      tooltip.style.left = `${e.clientX + 20}px`
+      tooltip.style.top = `${e.clientY - 40}px`
+      tooltip.classList.add('visible')
+
+      // Update stat
+      hoveredPlayStat.textContent = playId.toLocaleString()
+    })
+
+    // Handle mouse leave
+    interactionRect.addEventListener('mouseleave', () => {
+      hoverLine.setAttribute('stroke-opacity', '0')
+      tooltip.classList.remove('visible')
+      hoveredPlayStat.textContent = '—'
+    })
+
+    // Handle click
+    interactionRect.addEventListener('click', (e) => {
+      const rect = svg.getBoundingClientRect()
+      const y = e.clientY - rect.top
+      const percent = (y / rect.height) * 100
+      const playId = percentToPlayId(percent)
+      addMarker(playId)
+    })
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'r' || e.key === 'R') {
+        generateDensityData()
+        renderDensityHeatmap()
+      }
+      if (e.key === 'c' || e.key === 'C') {
+        markers = []
+        renderMarkers()
+        updateStats()
+      }
+    })
+
+    // Initialize
+    resizeCanvas()
+    generateDensityData()
+    renderDensityHeatmap()
+    updateStats()
+
+    // Add some initial markers
+    addMarker(Math.floor(TOTAL_PLAYS * 0.25))
+    addMarker(Math.floor(TOTAL_PLAYS * 0.5))
+    addMarker(Math.floor(TOTAL_PLAYS * 0.75))
+
+    // Resize handler
+    window.addEventListener('resize', () => {
+      resizeCanvas()
+      renderDensityHeatmap()
+    })
+  </script>
+</body>
+</html>
